@@ -1,0 +1,15 @@
+User-agent: *
+
+# Admin and internal tools — not for public indexing
+Disallow: /admin.php
+Disallow: /admin/
+Disallow: /load_gpx.php
+Disallow: /import_sotamaps_gpx.php
+Disallow: /activation_ics.php
+Disallow: /sotlas_integration.php
+Disallow: /choose_group.php
+Disallow: /activation_zone.php
+Disallow: /gpx_files/
+
+# Allow everything else
+Allow: /
