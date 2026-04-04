@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V8
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Secrets / credentials (never commit these)
+sotaplanner_secrets.php
+config.local.php
+
+# GPX uploads (large user files, not source code)
+gpx_files/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
