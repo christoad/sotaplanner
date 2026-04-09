@@ -387,7 +387,7 @@ function get_activation_zone_from_api($summit_ref, $lat, $lon, $elevation) {
         'summit_lat'            => floatval($lat),
         'summit_long'           => floatval($lon),
         'summit_alt'            => intval(round($elevation)), // must be integer meters
-        'deg_delta'             => 0.001,   // search radius ~110m around summit
+        'deg_delta'             => 0.040,   // matches activation.zone web UI default (~4.4km search radius)
         'sota_summit_alt_thres' => 25,      // SOTA rule: 25m vertical drop defines zone
     ]);
 
