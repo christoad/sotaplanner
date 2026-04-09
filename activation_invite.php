@@ -12,7 +12,7 @@ $pa_id = (int)$_GET['id'];
 
 $stmt = $db->prepare("
     SELECT pa.id as pa_id, pa.summit_id, pa.planning_group_id, pa.planned_date,
-           pa.hike_start_time, pa.callsigns, pa.activation_duration_min, pa.invitation_message,
+           pa.hike_start_time, pa.callsigns, pa.activation_duration_min, pa.invitation_message, pa.travel_notes, pa.location_link,
            s.name as summit_name, s.sota_ref, s.region, s.points,
            s.elevation_ft, s.elevation_m,
            s.latitude, s.longitude, s.trailhead_lat, s.trailhead_lng,
@@ -491,7 +491,7 @@ $difficulty_labels = [
     <p style="margin-top: 1.25rem; font-size: 1rem; opacity: 0.88; max-width: 560px; margin-left: auto; margin-right: auto; line-height: 1.6;">
         You're invited to join us for a day on the mountain! We'll be hiking to the summit and making
         amateur radio contacts with stations around the world — no radio license needed to tag along.
-        Lace up your boots and come enjoy the views.
+        Lace up your hiking boots and come enjoy the views.
     </p>
     <div style="margin-top: 1.25rem;">
         <button class="btn-outline-white" onclick="document.getElementById('sota-modal').classList.add('open')">
@@ -502,12 +502,20 @@ $difficulty_labels = [
 
 <div class="container">
 
-<?php if ($pa['invitation_message']): ?>
-    <!-- Custom Invitation Message -->
+<?php if ($pa['invitation_message'] || $pa['travel_notes']): ?>
+    <!-- Custom Invitation Message + Travel Notes -->
     <div class="card" style="border-left: 5px solid var(--gold); background: #FFFDE7;">
-        <p style="font-size: 1.05rem; line-height: 1.75; color: #333;">
+        <?php if ($pa['invitation_message']): ?>
+        <p style="font-size: 1.05rem; line-height: 1.75; color: #333; margin-bottom: <?= $pa['travel_notes'] ? '1rem' : '0' ?>;">
             <?= nl2br(htmlspecialchars($pa['invitation_message'])) ?>
         </p>
+        <?php endif; ?>
+        <?php if ($pa['travel_notes']): ?>
+        <div style="<?= $pa['invitation_message'] ? 'border-top: 1px solid #f0d060; padding-top: 0.85rem;' : '' ?>">
+            <div style="font-weight:700; font-size:0.85rem; text-transform:uppercase; letter-spacing:0.05em; color:#7a6000; margin-bottom:0.4rem;">🅿️ Parking &amp; Travel Info</div>
+            <div style="font-size:0.95rem; line-height:1.7; color:#333;"><?= nl2br(htmlspecialchars($pa['travel_notes'])) ?></div>
+        </div>
+        <?php endif; ?>
     </div>
 <?php endif; ?>
 
@@ -752,26 +760,33 @@ $difficulty_labels = [
     </div>
     <?php endif; ?>
 
-    <div style="background:#EEF4FB; border-radius:8px; padding:1rem 1.1rem; border-left:4px solid #1565C0; display:flex; gap:0.85rem; align-items:flex-start;">
-        <span style="font-size:1.4rem; flex-shrink:0;">📡</span>
+    <div style="background:#FFF8E1; border-radius:8px; padding:1rem 1.1rem; border-left:4px solid #F9A825; display:flex; gap:0.85rem; align-items:flex-start;">
+        <span style="font-size:1.4rem; flex-shrink:0;">⚠️</span>
         <div style="font-size:0.9rem; line-height:1.6; color:#1a1a2e;">
-            <strong>Safety Tip: Always Tell Someone Where You're Going</strong><br>
-            Before any hike, let a friend or family member know your plans — where you're headed,
-            who you're with, and when to expect you back. Feel free to share this page with them as your trip plan.<br><br>
-            KI6CR will be transmitting GPS location updates every 10 minutes via
-            <strong>Garmin inReach</strong> satellite technology, so the group can be located
-            even without cell service. Share this live tracking link with anyone who may need it:<br>
-            <a href="https://share.garmin.com/KI6CR" target="_blank"
-               style="color:#1565C0; font-weight:700; word-break:break-all;">https://share.garmin.com/KI6CR</a>
+            <strong>Safety: Hiking &amp; Mountaineering Involves Real Risk</strong><br>
+            Hiking to mountain summits is physically demanding and inherently dangerous. Conditions can change
+            rapidly — weather, terrain, and altitude are serious factors. <strong>Please do not join if you are
+            sick, injured, or in poor health.</strong> Know your limits and come prepared with appropriate gear,
+            water, and clothing for the conditions.<br><br>
+            Always let someone at home know your plans — where you're going, who you're with, and when
+            to expect you back. <strong>Share this invitation page</strong> with a friend or family member as
+            your trip plan so they know where to look if needed.
         </div>
     </div>
 
-    <?php if ($pa['travel_notes']): ?>
-    <div style="background:#FFFDE7; border-radius:8px; padding:1rem 1.1rem; border-left:4px solid var(--gold); margin-top:1rem;">
-        <div style="font-weight:700; margin-bottom:0.4rem;">🥾 Hike Notes</div>
-        <div style="font-size:0.95rem; line-height:1.7; color:#333;"><?= nl2br(htmlspecialchars($pa['travel_notes'])) ?></div>
+    <?php if (!empty($pa['location_link'])): ?>
+    <div style="background:#EEF4FB; border-radius:8px; padding:1rem 1.1rem; border-left:4px solid #1565C0; display:flex; gap:0.85rem; align-items:flex-start; margin-top:0.75rem;">
+        <span style="font-size:1.4rem; flex-shrink:0;">📡</span>
+        <div style="font-size:0.9rem; line-height:1.6; color:#1a1a2e;">
+            <strong>Live Group Location</strong><br>
+            The hiking group will be sharing their real-time location for the duration of this trip.
+            Share this link with anyone who may need to know where the group is:<br>
+            <a href="<?= htmlspecialchars($pa['location_link']) ?>" target="_blank"
+               style="color:#1565C0; font-weight:700; word-break:break-all;"><?= htmlspecialchars($pa['location_link']) ?></a>
+        </div>
     </div>
     <?php endif; ?>
+
 </div>
 
 <?php if ($gpx): ?>
@@ -1171,7 +1186,7 @@ $difficulty_labels = [
         <?php if ($pa['sota_ref']): ?>
         <p style="margin-top:1rem; font-size:0.85rem; color:#666;">
             Learn more about this summit at
-            <a href="https://sotl.as/summits/<?= urlencode($pa['sota_ref']) ?>" target="_blank"
+            <a href="https://sotl.as/summits/<?= str_replace('%2F', '/', rawurlencode($pa['sota_ref'])) ?>" target="_blank"
                style="color:var(--teal); font-weight:600;">SOTLas</a>
             or the
             <a href="https://www.sotadata.org.uk/en/summit/<?= urlencode($pa['sota_ref']) ?>" target="_blank"
@@ -1181,5 +1196,8 @@ $difficulty_labels = [
     </div>
 </div>
 
+<footer style="text-align:center; padding:2rem 1rem 1.5rem; color:#aaa; font-size:0.78rem;">
+    SOTA Planner &nbsp;·&nbsp; <a href="changelog.php" style="color:#aaa; text-decoration:none;">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com" style="color:#aaa; text-decoration:none;">sotaplanner.com</a>
+</footer>
 </body>
 </html>

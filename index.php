@@ -1306,7 +1306,7 @@ $summits = $stmt->fetchAll();
     </script>
 
     <footer style="text-align:center; padding: 2rem 1rem 1.5rem; color:#aaa; font-size:0.78rem;">
-        SOTA Planner &nbsp;·&nbsp; v0.9 beta &nbsp;·&nbsp; <a href="https://sotaplanner.com" style="color:#aaa; text-decoration:none;">sotaplanner.com</a>
+        SOTA Planner &nbsp;·&nbsp; <a href="changelog.php" style="color:#aaa; text-decoration:none;">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com" style="color:#aaa; text-decoration:none;">sotaplanner.com</a>
     </footer>
 
     <!-- How It Works Modal -->

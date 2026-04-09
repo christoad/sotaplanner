@@ -452,8 +452,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($current_group) {
             $stmt = $db->prepare("
                 INSERT INTO planned_activations
-                    (summit_id, planning_group_id, planned_date, hike_start_time, callsigns, activation_duration_min, invitation_message, travel_notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (summit_id, planning_group_id, planned_date, hike_start_time, callsigns, activation_duration_min, invitation_message, travel_notes, location_link)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $stmt->execute([
                 $summit_id,
@@ -463,7 +463,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_POST['planned_callsigns'],
                 (int)$_POST['activation_duration_min'],
                 $_POST['invitation_message'] ?: null,
-                $_POST['travel_notes'] ?: null
+                $_POST['travel_notes'] ?: null,
+                $_POST['location_link'] ?: null
             ]);
             header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
             exit;
@@ -488,7 +489,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $db->prepare("
                 UPDATE planned_activations
                 SET planned_date = ?, hike_start_time = ?, callsigns = ?,
-                    activation_duration_min = ?, invitation_message = ?, travel_notes = ?
+                    activation_duration_min = ?, invitation_message = ?, travel_notes = ?, location_link = ?
                 WHERE id = ? AND planning_group_id = ?
             ");
             $stmt->execute([
@@ -498,6 +499,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 (int)$_POST['activation_duration_min'],
                 $_POST['invitation_message'] ?: null,
                 $_POST['travel_notes'] ?: null,
+                $_POST['location_link'] ?: null,
                 $pa_id,
                 $current_group['id']
             ]);
@@ -2001,7 +2003,7 @@ $directions_lng = $summit['trailhead_lng'] ?? $summit['longitude'];
                         $peak_slug = strtolower(trim($peak_slug, '-'));
                         $invite_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') .
                                       '://' . $_SERVER['HTTP_HOST'] .
-                                      dirname($_SERVER['REQUEST_URI']) . '/activation_invite.php?id=' . $pa['id'] .
+                                      rtrim(dirname($_SERVER['REQUEST_URI']), '/') . '/activation_invite.php?id=' . $pa['id'] .
                                       '&peak=' . rawurlencode($peak_slug);
                     ?>
                     <div style="background: var(--snow); border-left: 4px solid var(--gold); border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem;">
@@ -2066,6 +2068,12 @@ $directions_lng = $summit['trailhead_lng'] ?? $summit['longitude'];
                                     <label style="font-size:0.8rem;">Parking & Travel Notes</label>
                                     <textarea name="travel_notes" style="width:100%;"><?= htmlspecialchars($pa['travel_notes'] ?? '') ?></textarea>
                                 </div>
+                                <div style="margin-bottom:1rem;">
+                                    <label style="font-size:0.8rem;">Real-Time Location Sharing Link (optional)</label>
+                                    <input type="url" name="location_link" style="width:100%;"
+                                           value="<?= htmlspecialchars($pa['location_link'] ?? '') ?>"
+                                           placeholder="e.g. https://share.garmin.com/… or any live tracking URL">
+                                </div>
                                 <div style="display:flex; gap:0.5rem;">
                                     <button type="submit" name="edit_planned_activation" class="btn btn-small">💾 Save Changes</button>
                                     <button type="button" onclick="toggleEdit(<?= $pa['id'] ?>)" class="btn btn-secondary btn-small">Cancel</button>
@@ -2110,6 +2118,12 @@ $directions_lng = $summit['trailhead_lng'] ?? $summit['longitude'];
                     <label style="font-size: 0.85rem;">Parking & Travel Notes (optional)</label>
                     <textarea name="travel_notes" style="width: 100%;"
                               placeholder="Where to park, trailhead directions, carpooling info, etc."></textarea>
+                </div>
+                <div style="margin-bottom: 1rem;">
+                    <label style="font-size: 0.85rem;">Real-Time Location Sharing Link (optional)</label>
+                    <input type="url" name="location_link" style="width: 100%;"
+                           placeholder="e.g. https://share.garmin.com/… or any live tracking URL">
+                    <div style="font-size: 0.75rem; color: #888; margin-top: 0.25rem;">If provided, guests on the invitation page will see a link to follow the group's live location.</div>
                 </div>
                 <button type="submit" name="add_planned_activation" class="btn btn-small">📅 Schedule Activation</button>
             </form>
@@ -2537,5 +2551,8 @@ function escHtml(str) {
     return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 </script>
+<footer style="text-align:center; padding:2rem 1rem 1.5rem; color:#aaa; font-size:0.78rem;">
+    SOTA Planner &nbsp;·&nbsp; <a href="changelog.php" style="color:#aaa; text-decoration:none;">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com" style="color:#aaa; text-decoration:none;">sotaplanner.com</a>
+</footer>
 </body>
 </html>

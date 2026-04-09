@@ -1,4 +1,6 @@
 <?php
+define('APP_VERSION', '1.0.0');
+
 // Enable error reporting for debugging
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
