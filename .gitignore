@@ -10,6 +10,7 @@ Thumbs.db
 # Secrets / credentials (never commit these)
 sotaplanner_secrets.php
 config.local.php
+backup_db.sh
 
 # GPX uploads (large user files, not source code)
 gpx_files/
@@ -19,3 +20,4 @@ gpx_files/
 .idea/
 *.swp
 *.swo
+/screenshots

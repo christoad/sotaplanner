@@ -85,6 +85,11 @@ if ($gpx && $gpx['activation_zone_polygon']) {
     }
 }
 
+// GPX download filename
+$gpx_download_name = preg_replace('/[^a-zA-Z0-9]+/', '-', $pa['summit_name'] ?? 'summit')
+    . ($pa['sota_ref'] ? '-' . preg_replace('/[^a-zA-Z0-9]+/', '-', $pa['sota_ref']) : '')
+    . '.gpx';
+
 // Timeline math
 $units         = $pa['units'];
 $drive_one_way = round(($pa['drive_time_min'] ?? 0) / 2);
@@ -713,11 +718,11 @@ $difficulty_labels = [
 <!-- GUEST DRIVE TIME -->
 <div class="card" id="drive-section">
     <h2>🏠 Your Drive Time</h2>
-    <p style="color:#555; margin-bottom:1rem;">Enter your address to get a personalized departure time and driving directions to the trailhead.</p>
+    <p style="color:#555; margin-bottom:1rem;">Enter your address to get a personalized departure time and driving directions to the trailhead using Google Maps</p>
 
     <div class="guest-form">
         <form method="POST">
-            <label style="font-weight:700; font-size:0.9rem;">Your starting address</label>
+            <label style="font-weight:700; font-size:0.9rem;">Your starting address (be specific for the best results)</label>
             <input type="text" name="guest_address" id="guest-address-input"
                    value="<?= htmlspecialchars($guest_address) ?>"
                    placeholder="1234 Main St, Los Angeles, CA">
@@ -833,6 +838,14 @@ $difficulty_labels = [
                        background:white; color:#00A8E0; font-weight:700; font-size:0.78rem;
                        cursor:pointer; transition:all 0.2s;">AT&T</button>
         <span style="font-size:0.72rem; color:#999; margin-left:0.1rem;">Cell data may be optimistic in mountainous terrain</span>
+
+        <?php if ($gpx): ?>
+        <span style="color:#ddd; font-size:0.75rem;">|</span>
+        <a href="load_gpx.php?id=<?= $gpx['id'] ?>" download="<?= htmlspecialchars($gpx_download_name) ?>"
+           style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #4A7C59;
+                  background:#4A7C59; color:white; font-weight:700; font-size:0.78rem;
+                  text-decoration:none; display:inline-block; line-height:1.4;">⬇ Download GPX</a>
+        <?php endif; ?>
     </div>
 
     <div id="gpx-map" style="height: 420px; border-radius: 10px; border: 2px solid #ddd;"></div>

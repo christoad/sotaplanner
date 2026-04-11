@@ -563,6 +563,9 @@ $notes = $stmt->fetchAll();
 $selected_address = getSelectedAddress($db);
 // Track type determines how one-way GPX tracks are used for round-trip planning
 $track_type = $gpx_data['track_type'] ?? 'round-trip';
+$gpx_download_name = $gpx_data ? preg_replace('/[^a-zA-Z0-9]+/', '-', $summit['name'] ?? 'summit')
+    . ($summit['sota_ref'] ? '-' . preg_replace('/[^a-zA-Z0-9]+/', '-', $summit['sota_ref']) : '')
+    . '.gpx' : '';
 $one_way = ($track_type === 'ascent' || $track_type === 'descent');
 // has_timestamps is not stored in the DB — derive it from hiking_time:
 // if the track had no timestamps, hiking_time stays 0 since speed can't be computed.
@@ -1554,6 +1557,12 @@ $directions_lng = $summit['trailhead_lng'] ?? $summit['longitude'];
                                    background:white; color:#00A8E0; font-weight:700; font-size:0.78rem;
                                    cursor:pointer; transition:all 0.2s;">AT&T</button>
                     <span style="font-size:0.72rem; color:#999; margin-left:0.1rem;">Cell data may be optimistic in mountainous terrain</span>
+
+                    <span style="color:#ddd; font-size:0.75rem;">|</span>
+                    <a href="load_gpx.php?id=<?= $gpx_data['id'] ?>" download="<?= htmlspecialchars($gpx_download_name) ?>"
+                       style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #4A7C59;
+                              background:#4A7C59; color:white; font-weight:700; font-size:0.78rem;
+                              text-decoration:none; display:inline-block; line-height:1.4;">⬇ Download GPX</a>
                 </div>
                 <div id="gpx-map" style="height: 450px; border-radius: 8px; border: 2px solid #ddd; margin-bottom: 0.5rem;"></div>
                 <p style="font-size:0.72rem; color:#aaa; margin-bottom:1rem;">Coverage data: FCC Form 477 filings (2021), via ArcGIS public tile service. Carrier-reported estimates — actual signal in mountainous terrain may differ.</p>
