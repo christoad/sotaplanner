@@ -26,7 +26,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 setCurrentPlanningGroup($new_group_id);
                 $_SESSION['manage_group_id'] = $new_group_id;
                 
-                $message = "Planning group created! Now add addresses for this group.";
+                $message = "Planning group created! Now add a starting location for your group below.";
+                $scroll_to_addresses = true;
             } catch (PDOException $e) {
                 $error = "Error creating group: " . $e->getMessage();
             }
@@ -59,6 +60,7 @@ if (isset($_POST['select_group'])) {
         if ($group_id > 0) {
             $_SESSION['manage_group_id'] = $group_id;
             setCurrentPlanningGroup($group_id);
+            $scroll_to_addresses = true;
         }
     }
     
@@ -374,7 +376,7 @@ $is_first_visit = !$managing_group_id;
         <div style="text-align: center; margin-bottom: 2rem;">
             <img src="logo.png" alt="SOTA Planner" class="logo">
             <h1>Planning Groups & Addresses</h1>
-            <p class="subtitle">Choose or create your planning group, then manage addresses</p>
+            <p class="subtitle">A <strong>planning group</strong> is you and your activation friends — it holds your summit wishlist, saved addresses, and drive-time calculations.</p>
         </div>
 
         <?php if ($message): ?>
@@ -385,62 +387,74 @@ $is_first_visit = !$managing_group_id;
             <div class="message error"><?= htmlspecialchars($error) ?></div>
         <?php endif; ?>
 
-        <!-- Planning Group Selection -->
-        <div class="blue-box">
-            <form method="POST" id="groupForm">
-                <div class="form-group">
-                    <label style="font-size: 1.2rem; margin-bottom: 1rem;">📋 Select Your Planning Group:</label>
-                    <select name="group_id" class="big-select" onchange="this.form.submit()">
-                        <option value="">Choose existing planning group...</option>
-                        <?php foreach ($all_groups as $group): ?>
-                            <option value="<?= $group['id'] ?>" <?= ($managing_group && $managing_group['id'] == $group['id']) ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($group['name']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                    <input type="hidden" name="select_group" value="1">
-                </div>
-            </form>
+        <!-- Step 1: Two-path layout -->
+        <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 0; align-items: stretch; margin-bottom: 2rem;">
 
-            <?php if ($managing_group): ?>
-                <div style="text-align: center; margin-top: 2rem;">
-                    <form method="POST" style="display: inline;">
-                        <input type="hidden" name="group_id" value="<?= $managing_group['id'] ?>">
-                        <button type="submit" name="activate_group" class="btn btn-primary">
-                            🚀 Plan for "<?= htmlspecialchars($managing_group['name']) ?>"
-                        </button>
+            <!-- Option A: Select existing -->
+            <div class="blue-box" style="margin-bottom: 0; border-radius: 12px 0 0 12px;">
+                <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(255,255,255,0.6); margin-bottom: 0.5rem;">
+                    <?= count($all_groups) > 0 ? 'Returning?' : 'Have a group?' ?>
+                </div>
+                <h2 style="color: white; font-size: 1.4rem; margin-bottom: 1.25rem;">Join an Existing Group</h2>
+                <?php if (count($all_groups) > 0): ?>
+                    <form method="POST" id="groupForm">
+                        <select name="group_id" class="big-select" style="font-size: 1.1rem; padding: 1rem;" onchange="this.form.submit()">
+                            <option value="">Choose a group...</option>
+                            <?php foreach ($all_groups as $group): ?>
+                                <option value="<?= $group['id'] ?>" <?= ($managing_group && $managing_group['id'] == $group['id']) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($group['name']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <input type="hidden" name="select_group" value="1">
                     </form>
-                </div>
-            <?php endif; ?>
-        </div>
+                    <?php if ($managing_group): ?>
+                        <div style="margin-top: 1.25rem;">
+                            <form method="POST">
+                                <input type="hidden" name="group_id" value="<?= $managing_group['id'] ?>">
+                                <button type="submit" name="activate_group" class="btn btn-primary" style="width: 100%; text-align: center;">
+                                    🚀 Plan for "<?= htmlspecialchars($managing_group['name']) ?>"
+                                </button>
+                            </form>
+                        </div>
+                    <?php endif; ?>
+                <?php else: ?>
+                    <p style="color: rgba(255,255,255,0.7); font-size: 0.95rem;">No groups yet — create one to get started.</p>
+                <?php endif; ?>
+            </div>
 
-        <!-- Create New Group -->
-        <div class="card">
-            <h2 style="color: var(--navy); margin-bottom: 1.5rem;">Create New Planning Group</h2>
-            <form method="POST">
-                <div class="form-group">
-                    <label>Group Name:</label>
-                    <input type="text" name="group_name" placeholder="e.g., Ham Pals, Weekend Warriors" required>
-                    <p class="help-text">This group is for you and your friends who activate together</p>
-                </div>
+            <!-- OR divider -->
+            <div style="display: flex; align-items: center; justify-content: center; background: #c8c4ba; padding: 0 1.25rem; min-width: 70px;">
+                <span style="font-weight: 800; font-size: 1.1rem; color: #5a5650; letter-spacing: 0.12em;">OR</span>
+            </div>
 
-                <div class="form-group">
-                    <label>Units:</label>
-                    <select name="units">
-                        <option value="imperial">Imperial (miles, feet)</option>
-                        <option value="metric">Metric (km, meters)</option>
-                    </select>
-                </div>
-
-                <button type="submit" name="create_group" class="btn btn-secondary">
-                    ➕ Create Group
-                </button>
-            </form>
+            <!-- Option B: Create new -->
+            <div class="card" style="margin-bottom: 0; border-radius: 0 12px 12px 0; border-left: 3px solid #e0ddd5;">
+                <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #aaa; margin-bottom: 0.5rem;">New here?</div>
+                <h2 style="color: var(--navy); font-size: 1.4rem; margin-bottom: 1.25rem;">Create a New Group</h2>
+                <form method="POST">
+                    <div class="form-group" style="margin-bottom: 1rem;">
+                        <label style="color: var(--navy);">Group Name</label>
+                        <input type="text" name="group_name" placeholder="e.g., K3MGM and Friends, Weekend Warriors" required>
+                        <p class="help-text">Name it after your crew</p>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 1.25rem;">
+                        <label style="color: var(--navy);">Preferred Units</label>
+                        <select name="units">
+                            <option value="imperial">Imperial (miles, feet)</option>
+                            <option value="metric">Metric (km, meters)</option>
+                        </select>
+                    </div>
+                    <button type="submit" name="create_group" class="btn btn-secondary" style="width: 100%;">
+                        ➕ Create Group
+                    </button>
+                </form>
+            </div>
         </div>
 
         <!-- Manage Addresses (only show if group selected) -->
         <?php if ($managing_group): ?>
-            <div class="card">
+            <div class="card" id="addresses">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
                     <h2 style="color: var(--navy); margin: 0;">
                         Addresses for "<?= htmlspecialchars($managing_group['name']) ?>"
@@ -485,9 +499,14 @@ $is_first_visit = !$managing_group_id;
                         <?php endforeach; ?>
                     </ul>
                 <?php else: ?>
-                    <p style="color: #999; text-align: center; padding: 2rem;">
-                        No addresses yet. Click "Add Address" to add one!
-                    </p>
+                    <div style="text-align: center; padding: 2rem; background: #f0f7f4; border-radius: 8px; border: 2px dashed #4A7C59;">
+                        <div style="font-size: 2rem; margin-bottom: 0.75rem;">📍</div>
+                        <p style="font-weight: 700; color: #2C4A3E; margin-bottom: 0.5rem;">Add your first starting location</p>
+                        <p style="color: #666; font-size: 0.9rem; margin-bottom: 1.25rem;">This can be a home address, a park-and-ride, or any place your group typically drives from. Drive times to summits will be calculated from this location.</p>
+                        <button onclick="document.getElementById('addressModal').style.display='flex'" class="btn btn-secondary">
+                            ➕ Add a Location
+                        </button>
+                    </div>
                 <?php endif; ?>
 
                 <p class="help-text" style="margin-top: 1.5rem;">
@@ -527,6 +546,14 @@ $is_first_visit = !$managing_group_id;
             </div>
         </div>
     </div>
+<?php if (!empty($scroll_to_addresses) && $managing_group): ?>
+<script>
+    window.addEventListener('load', function() {
+        var el = document.getElementById('addresses');
+        if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'});
+    });
+</script>
+<?php endif; ?>
 <footer style="text-align:center; padding:2rem 1rem 1.5rem; color:#aaa; font-size:0.78rem;">
     SOTA Planner &nbsp;·&nbsp; <a href="changelog.php" style="color:#aaa; text-decoration:none;">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com" style="color:#aaa; text-decoration:none;">sotaplanner.com</a>
 </footer>

@@ -126,7 +126,7 @@
             No signup or email required. Ready to use as-is.
         </p>
 
-        <a href="manage_addresses.php" class="cta-button">
+        <a href="planning_groups.php" class="cta-button">
             🚀 Create or Choose Planning Group
         </a>
 

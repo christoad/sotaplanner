@@ -39,12 +39,30 @@
 <div class="container">
     <a href="index.php" class="back">← Back to Planner</a>
 
-    <!-- v1.0.0 -->
+    <!-- v1.0.1 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.0.1</span>
+            <span class="version-date">April 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">UX improvements and activation zone precision update.</p>
+        <ul>
+            <li><span class="tag tag-improve">Improve</span> Activation zone polygon now matches activation.zone website precision — updated deg_delta from 0.001 to 0.040</li>
+            <li><span class="tag tag-new">New</span> GPX download button on summit detail and invitation pages for loading tracks onto watches and phones</li>
+            <li><span class="tag tag-new">New</span> Daily automated database backup via cron (14-day retention)</li>
+            <li><span class="tag tag-improve">Improve</span> Planning Groups page redesigned — "Join existing" and "Create new" shown side-by-side with clear OR divider</li>
+            <li><span class="tag tag-improve">Improve</span> Page renamed from manage_addresses.php to planning_groups.php to better reflect its purpose</li>
+            <li><span class="tag tag-improve">Improve</span> Empty addresses state now prompts user to add a starting location with explanation of how it's used</li>
+            <li><span class="tag tag-improve">Improve</span> Page auto-scrolls to addresses section after selecting or creating a group</li>
+        </ul>
+    </div>
+
+    <!-- v1.0.0 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.0.0</span>
             <span class="version-date">April 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Initial public release. Full feature set for planning, researching, and sharing SOTA activations.</p>
         <ul>

@@ -987,7 +987,7 @@ $summits = $stmt->fetchAll();
                             <span style="font-size: 0.85rem; opacity: 0.7;">→ Add one to calculate drive times</span>
                         </div>
                     <?php endif; ?>
-                    <a href="manage_addresses.php" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; text-decoration: none;">✏️ Manage</a>
+                    <a href="planning_groups.php" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; text-decoration: none;">✏️ Manage</a>
                 </div>
             </div>
             <div style="display: flex; gap: 0.75rem; align-items: flex-start;">
