@@ -292,14 +292,17 @@ $stmt = $db->prepare("
            g.use_for_hike_time,
            g.use_for_elevation,
            s.drive_time_min as drive_time,
-           (SELECT GROUP_CONCAT(DISTINCT a.callsigns ORDER BY a.activation_date DESC SEPARATOR ', ')
-            FROM activations a
-            WHERE a.summit_id = s.id
-              AND a.planning_group_id = ?
-              AND YEAR(CONVERT_TZ(a.activation_date, '+00:00', '+00:00')) = YEAR(UTC_TIMESTAMP())
-           ) as this_year_callsigns
+           ay.this_year_callsigns
     FROM summits s
     LEFT JOIN gpx_tracks g ON s.id = g.summit_id AND g.planning_group_id = ?
+    LEFT JOIN (
+        SELECT summit_id,
+               GROUP_CONCAT(DISTINCT callsigns ORDER BY activation_date DESC SEPARATOR ', ') AS this_year_callsigns
+        FROM activations
+        WHERE planning_group_id = ?
+          AND YEAR(CONVERT_TZ(activation_date, '+00:00', '+00:00')) = YEAR(UTC_TIMESTAMP())
+        GROUP BY summit_id
+    ) ay ON ay.summit_id = s.id
     WHERE $where_clause
     ORDER BY
         CASE
