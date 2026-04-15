@@ -60,7 +60,6 @@ if (isset($_POST['select_group'])) {
         if ($group_id > 0) {
             $_SESSION['manage_group_id'] = $group_id;
             setCurrentPlanningGroup($group_id);
-            $scroll_to_addresses = true;
         }
     }
     

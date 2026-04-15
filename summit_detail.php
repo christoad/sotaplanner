@@ -612,6 +612,43 @@ if ($gpx_data && $gpx_data['use_for_hike_time'] && $has_timestamps) {
 }
 $directions_lat = $summit['trailhead_lat'] ?? $summit['latitude'];
 $directions_lng = $summit['trailhead_lng'] ?? $summit['longitude'];
+
+// --- Timeline Gantt data ---
+$tl_drive_one = $summit['drive_time_min'] ? intval(round($summit['drive_time_min'] / 2)) : 0;
+if ($summit['hike_time_up_min'] && $summit['hike_time_down_min']) {
+    $tl_hike_up   = $summit['hike_time_up_min'];
+    $tl_hike_down = $summit['hike_time_down_min'];
+} elseif ($hike_time_total) {
+    $tl_hike_up   = intval(round($hike_time_total * 0.6));
+    $tl_hike_down = $hike_time_total - $tl_hike_up;
+} else {
+    $tl_hike_up = $tl_hike_down = 0;
+}
+$tl_activation = ($gpx_data && $gpx_data['activation_time'] > 0)
+    ? intval(round($gpx_data['activation_time'] / 60))
+    : 60;
+$tl_total = $tl_drive_one * 2 + $tl_hike_up + $tl_activation + $tl_hike_down;
+$tl_show = $tl_total > 0;
+if ($tl_show) {
+    $tl_drive_pct      = $tl_drive_one  > 0 ? round($tl_drive_one  / $tl_total * 100, 1) : 0;
+    $tl_hike_up_pct    = $tl_hike_up    > 0 ? round($tl_hike_up    / $tl_total * 100, 1) : 0;
+    $tl_activation_pct =                       round($tl_activation / $tl_total * 100, 1);
+    $tl_hike_down_pct  = $tl_hike_down  > 0 ? round($tl_hike_down  / $tl_total * 100, 1) : 0;
+    // Milestones: [pct_position, label, elapsed_minutes]
+    $tl_m = [];
+    $elapsed = 0;
+    if ($tl_drive_one > 0) { $tl_m[] = [0, 'Depart', 0]; }
+    $elapsed += $tl_drive_one;
+    $tl_m[] = [round($elapsed / $tl_total * 100, 1), 'Trailhead', $elapsed];
+    $elapsed += $tl_hike_up;
+    if ($tl_hike_up > 0) $tl_m[] = [round($elapsed / $tl_total * 100, 1), 'Summit', $elapsed];
+    $elapsed += $tl_activation;
+    $tl_m[] = [round($elapsed / $tl_total * 100, 1), 'Radio Done', $elapsed];
+    $elapsed += $tl_hike_down;
+    if ($tl_hike_down > 0) $tl_m[] = [round($elapsed / $tl_total * 100, 1), 'Trailhead', $elapsed];
+    $elapsed += $tl_drive_one;
+    if ($tl_drive_one > 0) $tl_m[] = [round($elapsed / $tl_total * 100, 1), 'Home', $elapsed];
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -736,7 +773,7 @@ $directions_lng = $summit['trailhead_lng'] ?? $summit['longitude'];
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
             gap: 0.5rem;
-            margin-bottom: 1rem;
+            margin-bottom: 0.75rem;
         }
 
         .stat-card {
@@ -1094,6 +1131,45 @@ $directions_lng = $summit['trailhead_lng'] ?? $summit['longitude'];
                 font-size: 1.25rem;
             }
         }
+
+        /* ── Timeline Gantt ── */
+        .timeline-toggle {
+            background: none; border: 1px solid #ccc; color: #4A90A4;
+            border-radius: 6px; padding: 0.4rem 0.9rem; font-size: 0.8rem;
+            font-weight: 700; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .timeline-toggle:hover { background: #f0f7fa; border-color: #4A90A4; }
+        .timeline-section { margin-top: 0.75rem; }
+        .tl-gantt-bar {
+            display: flex; border-radius: 8px; overflow: hidden;
+            height: 48px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .tl-seg {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; overflow: hidden; padding: 0 4px; transition: flex 0.3s;
+        }
+        .tl-seg .seg-label { font-size: 0.68rem; font-weight: 700; text-align: center; line-height: 1.2; white-space: nowrap; color: white; }
+        .tl-seg .seg-time  { font-size: 0.62rem; opacity: 0.85; margin-top: 2px; white-space: nowrap; color: white; }
+        .tl-drive     { background: #8D6E63; }
+        .tl-hike-up   { background: #43A047; }
+        .tl-radio     { background: var(--navy); }
+        .tl-hike-down { background: #66BB6A; }
+        .tl-drive-back{ background: #8D6E63; }
+        .tl-milestones-wrap { position: relative; height: 52px; margin-top: 0.25rem; }
+        .tl-milestone {
+            position: absolute; display: flex; flex-direction: column;
+            align-items: center; transform: translateX(-50%);
+        }
+        .tl-milestone-dot { width: 7px; height: 7px; background: var(--navy); border-radius: 50%; margin-bottom: 3px; }
+        .tl-milestone-dur  { font-weight: 700; color: var(--navy); font-size: 0.72rem; white-space: nowrap; }
+        .tl-milestone-lbl  { color: #777; font-size: 0.65rem; text-align: center; white-space: nowrap; }
+        .tl-legend {
+            display: flex; flex-wrap: wrap; gap: 0.5rem 1rem;
+            margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid #eee; font-size: 0.78rem;
+        }
+        .tl-legend-item { display: flex; align-items: center; gap: 0.35rem; }
+        .tl-legend-dot  { width: 11px; height: 11px; border-radius: 3px; flex-shrink: 0; }
     </style>
     <!-- Leaflet.js for GPS maps -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -1247,6 +1323,74 @@ $directions_lng = $summit['trailhead_lng'] ?? $summit['longitude'];
                 </div>
             </div>
         </div>
+
+        <?php if ($tl_show): ?>
+        <button class="timeline-toggle" onclick="
+            var s = document.getElementById('activation-timeline');
+            var expanded = s.style.display !== 'none';
+            s.style.display = expanded ? 'none' : 'block';
+            this.textContent = expanded ? '📅 Show Activation Timeline' : '📅 Hide Activation Timeline';
+        ">📅 Show Activation Timeline</button>
+
+        <div id="activation-timeline" style="display:none;">
+            <div class="timeline-section">
+                <div class="tl-gantt-bar">
+                    <?php if ($tl_drive_pct > 0): ?>
+                    <div class="tl-seg tl-drive" style="flex:<?= $tl_drive_pct ?>;">
+                        <span class="seg-label">🚗 Drive</span>
+                        <span class="seg-time"><?= $tl_drive_one ?>m</span>
+                    </div>
+                    <?php endif; ?>
+                    <?php if ($tl_hike_up_pct > 0): ?>
+                    <div class="tl-seg tl-hike-up" style="flex:<?= $tl_hike_up_pct ?>;">
+                        <span class="seg-label">🥾 Hike Up</span>
+                        <span class="seg-time"><?= $tl_hike_up ?>m</span>
+                    </div>
+                    <?php endif; ?>
+                    <div class="tl-seg tl-radio" style="flex:<?= $tl_activation_pct ?>;">
+                        <span class="seg-label">📻 Radio</span>
+                        <span class="seg-time"><?= $tl_activation ?>m</span>
+                    </div>
+                    <?php if ($tl_hike_down_pct > 0): ?>
+                    <div class="tl-seg tl-hike-down" style="flex:<?= $tl_hike_down_pct ?>;">
+                        <span class="seg-label">🥾 Hike Down</span>
+                        <span class="seg-time"><?= $tl_hike_down ?>m</span>
+                    </div>
+                    <?php endif; ?>
+                    <?php if ($tl_drive_pct > 0): ?>
+                    <div class="tl-seg tl-drive-back" style="flex:<?= $tl_drive_pct ?>;">
+                        <span class="seg-label">🚗 Drive</span>
+                        <span class="seg-time"><?= $tl_drive_one ?>m</span>
+                    </div>
+                    <?php endif; ?>
+                </div>
+
+                <div class="tl-milestones-wrap">
+                    <?php foreach ($tl_m as [$pct, $label, $mins]): ?>
+                    <div class="tl-milestone" style="left:<?= min($pct, 98) ?>%;">
+                        <div class="tl-milestone-dot"></div>
+                        <div class="tl-milestone-dur"><?= $mins === 0 ? 'Start' : '+' . formatTime($mins) ?></div>
+                        <div class="tl-milestone-lbl"><?= $label ?></div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+
+                <div class="tl-legend">
+                    <?php if ($tl_drive_pct > 0): ?>
+                    <div class="tl-legend-item"><div class="tl-legend-dot" style="background:#8D6E63;"></div> Drive (<?= $tl_drive_one ?> min each way)</div>
+                    <?php endif; ?>
+                    <?php if ($tl_hike_up_pct > 0): ?>
+                    <div class="tl-legend-item"><div class="tl-legend-dot" style="background:#43A047;"></div> Hike Up (<?= formatTime($tl_hike_up) ?>)</div>
+                    <?php endif; ?>
+                    <div class="tl-legend-item"><div class="tl-legend-dot" style="background:var(--navy);"></div> Radio / Activation (<?= formatTime($tl_activation) ?>)</div>
+                    <?php if ($tl_hike_down_pct > 0): ?>
+                    <div class="tl-legend-item"><div class="tl-legend-dot" style="background:#66BB6A;"></div> Hike Down (<?= formatTime($tl_hike_down) ?>)</div>
+                    <?php endif; ?>
+                    <div class="tl-legend-item" style="font-weight:700; color:var(--navy);">Total Day: ~<?= formatTime($tl_total) ?></div>
+                </div>
+            </div>
+        </div>
+        <?php endif; ?>
 
         <!-- Edit Form - Compact Grid -->
         <div class="card">
@@ -1406,6 +1550,7 @@ $directions_lng = $summit['trailhead_lng'] ?? $summit['longitude'];
 
                 <!-- Stats Grid -->
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                    <?php if ($has_timestamps): ?>
                     <div style="background: #f9f9f9; padding: 1rem; border-radius: 8px; text-align: center; border: 1px solid #e0e0e0;">
                         <div style="font-size: 1.5rem;">🚶</div>
                         <div style="font-size: 1.5rem; font-weight: 700; color: var(--teal); margin: 0.5rem 0;">
@@ -1414,7 +1559,7 @@ $directions_lng = $summit['trailhead_lng'] ?? $summit['longitude'];
                         <div style="font-size: 0.8rem; color: #666; font-weight: 600;">Hiking Time</div>
                         <small style="color: #999; font-size: 0.7rem;">Excludes activation zone</small>
                     </div>
-                    
+
                     <div style="background: #f9f9f9; padding: 1rem; border-radius: 8px; text-align: center; border: 1px solid #e0e0e0;">
                         <div style="font-size: 1.5rem;">📻</div>
                         <div style="font-size: 1.5rem; font-weight: 700; color: var(--navy); margin: 0.5rem 0;">
@@ -1423,7 +1568,8 @@ $directions_lng = $summit['trailhead_lng'] ?? $summit['longitude'];
                         <div style="font-size: 0.8rem; color: #666; font-weight: 600;">Activation Time</div>
                         <small style="color: #999; font-size: 0.7rem;">Time in zone</small>
                     </div>
-                    
+                    <?php endif; ?>
+
                     <div style="background: #f9f9f9; padding: 1rem; border-radius: 8px; text-align: center; border: 1px solid #e0e0e0;">
                         <div style="font-size: 1.5rem;">📏</div>
                         <div style="font-size: 1.5rem; font-weight: 700; color: var(--forest-dark); margin: 0.5rem 0;">
@@ -1435,7 +1581,7 @@ $directions_lng = $summit['trailhead_lng'] ?? $summit['longitude'];
                         <div style="font-size: 0.8rem; color: #666; font-weight: 600;">Total Distance</div>
                         <small style="color: #999; font-size: 0.7rem;">Round trip</small>
                     </div>
-                    
+
                     <div style="background: #f9f9f9; padding: 1rem; border-radius: 8px; text-align: center; border: 1px solid #e0e0e0;">
                         <div style="font-size: 1.5rem;">⛰️</div>
                         <div style="font-size: 1.5rem; font-weight: 700; color: var(--gold); margin: 0.5rem 0;">
@@ -1447,7 +1593,8 @@ $directions_lng = $summit['trailhead_lng'] ?? $summit['longitude'];
                         <div style="font-size: 0.8rem; color: #666; font-weight: 600;">Elevation Gain</div>
                         <small style="color: #999; font-size: 0.7rem;">From GPS</small>
                     </div>
-                    
+
+                    <?php if ($has_timestamps): ?>
                     <div style="background: #f9f9f9; padding: 1rem; border-radius: 8px; text-align: center; border: 1px solid #e0e0e0;">
                         <div style="font-size: 1.5rem;">⚡</div>
                         <div style="font-size: 1.5rem; font-weight: 700; color: var(--teal); margin: 0.5rem 0;">
@@ -1459,7 +1606,7 @@ $directions_lng = $summit['trailhead_lng'] ?? $summit['longitude'];
                         <div style="font-size: 0.8rem; color: #666; font-weight: 600;">Hiking Speed</div>
                         <small style="color: #999; font-size: 0.7rem;">Average</small>
                     </div>
-                    
+
                     <div style="background: #f9f9f9; padding: 1rem; border-radius: 8px; text-align: center; border: 1px solid #e0e0e0;">
                         <div style="font-size: 1.5rem;">☕</div>
                         <div style="font-size: 1.5rem; font-weight: 700; color: var(--peak-brown); margin: 0.5rem 0;">
@@ -1468,6 +1615,13 @@ $directions_lng = $summit['trailhead_lng'] ?? $summit['longitude'];
                         <div style="font-size: 0.8rem; color: #666; font-weight: 600;">Rest Breaks</div>
                         <small style="color: #999; font-size: 0.7rem;">Stops >3 min</small>
                     </div>
+                    <?php else: ?>
+                    <div style="background: #FFF8E1; padding: 1rem; border-radius: 8px; text-align: center; border: 1px dashed #E6B84A; grid-column: span 2;">
+                        <div style="font-size: 1.5rem;">📡</div>
+                        <div style="font-size: 0.85rem; font-weight: 700; color: #7a5c00; margin: 0.5rem 0;">Want more stats? Upload your hike recording!</div>
+                        <small style="color: #9a7a20; font-size: 0.75rem;">The current file is a route without timestamps. After your activation, upload the GPX recorded by your GPS watch or device to unlock hiking time, activation time, speed, and rest break stats.</small>
+                    </div>
+                    <?php endif; ?>
                 </div>
 
 

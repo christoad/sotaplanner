@@ -39,8 +39,25 @@
 <div class="container">
     <a href="index.php" class="back">← Back to Planner</a>
 
-    <!-- v1.0.1 -->
+    <!-- v1.0.2 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.0.2</span>
+            <span class="version-date">April 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Activation timeline visualization and GPX stat display improvements.</p>
+        <ul>
+            <li><span class="tag tag-new">New</span> Activation Timeline on summit detail page — collapsible Gantt chart showing drive, hike up, radio time, and hike down segments with milestone markers</li>
+            <li><span class="tag tag-improve">Improve</span> GPX stat cards (hiking time, activation time, speed, rest breaks) are now hidden when the uploaded file is a route without timestamps</li>
+            <li><span class="tag tag-new">New</span> "Want more stats?" banner shown when a route-only GPX is present, prompting user to upload a recorded track after their activation</li>
+            <li><span class="tag tag-fix">Fix</span> Directions focus on activation invite page now uses <code>preventScroll:true</code> to avoid a double-scroll jump when tapping drive/return buttons</li>
+            <li><span class="tag tag-fix">Fix</span> Removed unintended auto-scroll to addresses section after selecting a planning group</li>
+        </ul>
+    </div>
+
+    <!-- v1.0.1 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.0.1</span>
             <span class="version-date">April 2026</span>

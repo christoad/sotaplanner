@@ -482,7 +482,7 @@ $difficulty_labels = [
                 🗺️ Get Directions
             </a>
         <?php else: ?>
-            <button class="btn-outline-white" style="font-size:0.85rem;" onclick="document.getElementById('drive-section').scrollIntoView({behavior:'smooth'}); setTimeout(()=>document.getElementById('guest-address-input').focus(),400);">
+            <button class="btn-outline-white" style="font-size:0.85rem;" onclick="document.getElementById('drive-section').scrollIntoView({behavior:'smooth'}); setTimeout(()=>document.getElementById('guest-address-input').focus({preventScroll:true}),400);">
                 🗺️ Get Directions
             </button>
         <?php endif; ?>
@@ -547,7 +547,7 @@ $difficulty_labels = [
                           text-decoration:none;">🗺️ Directions</a>
             </div>
         <?php else: ?>
-            <div class="fact-box clickable" onclick="document.getElementById('drive-section').scrollIntoView({behavior:'smooth'}); document.getElementById('guest-address-input').focus();">
+            <div class="fact-box clickable" onclick="document.getElementById('drive-section').scrollIntoView({behavior:'smooth'}); document.getElementById('guest-address-input').focus({preventScroll:true});">
                 <div class="fact-icon">🚗</div>
                 <div class="fact-value" style="font-size:0.85rem; color: var(--teal);">Calculate<br>My Drive</div>
                 <div class="fact-label">Tap to personalize</div>
@@ -582,7 +582,7 @@ $difficulty_labels = [
                 <div class="fact-label">Your Return</div>
             </div>
         <?php else: ?>
-            <div class="fact-box clickable" onclick="document.getElementById('drive-section').scrollIntoView({behavior:'smooth'}); document.getElementById('guest-address-input').focus();">
+            <div class="fact-box clickable" onclick="document.getElementById('drive-section').scrollIntoView({behavior:'smooth'}); document.getElementById('guest-address-input').focus({preventScroll:true});">
                 <div class="fact-icon">🏠</div>
                 <div class="fact-value" style="font-size:0.85rem; color: var(--teal);">Calculate<br>My Drive</div>
                 <div class="fact-label">Tap to personalize</div>
@@ -671,7 +671,7 @@ $difficulty_labels = [
         <?php if ($show_drive): ?>
         <div class="legend-item"><div class="legend-dot" style="background:#555;"></div> Total Day: ~<?= formatTime($total_min) ?></div>
         <?php else: ?>
-        <div class="legend-item" style="color:var(--teal); cursor:pointer;" onclick="document.getElementById('drive-section').scrollIntoView({behavior:'smooth'}); document.getElementById('guest-address-input').focus();">
+        <div class="legend-item" style="color:var(--teal); cursor:pointer;" onclick="document.getElementById('drive-section').scrollIntoView({behavior:'smooth'}); document.getElementById('guest-address-input').focus({preventScroll:true});">
             🚗 <em>Add your address below to include drive time</em>
         </div>
         <?php endif; ?>
