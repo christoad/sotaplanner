@@ -451,11 +451,80 @@ $difficulty_labels = [
         .result-box h3 { color: #1B5E20; margin-bottom: 0.75rem; }
 
         @media (max-width: 600px) {
-            .hero h1 { font-size: 1.75rem; }
-            .gantt-seg .seg-label { font-size: 0.6rem; }
+            /* ── Hero ── */
+            .hero { padding: 1.75rem 1.25rem 1.5rem; }
+            .hero h1 { font-size: 1.75rem; line-height: 1.15; }
+            .hero-date { font-size: 1rem; padding: 0.5rem 1.1rem; margin-bottom: 1rem; }
+            .hero-sub  { font-size: 0.95rem; }
+
+            /* ── Layout ── */
+            .container { padding: 1.1rem 1rem; }
+            .card { padding: 1.25rem; border-radius: 10px; margin-bottom: 1rem; }
+            .card h2 { font-size: 1.05rem; margin-bottom: 0.9rem; padding-bottom: 0.55rem; }
+
+            /* ── Quick facts: responsive grid instead of no-wrap scroll ── */
+            .quick-facts {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+                overflow-x: visible;
+                padding-bottom: 0;
+                gap: 0.5rem;
+            }
+            .fact-box { min-width: unset; padding: 0.75rem 0.4rem; }
+            .fact-icon  { font-size: 1.3rem; }
+            .fact-value { font-size: 0.82rem; }
+            .fact-label { font-size: 0.62rem; }
+
+            /* ── Gantt bar: strip labels — bar is visual-only on mobile ── */
+            .gantt-bar { height: 36px; border-radius: 6px; }
+            .gantt-seg .seg-label { display: none; }
             .gantt-seg .seg-time  { display: none; }
-            .milestone-label { display: none; }
-            .milestone-time { font-size: 0.7rem; }
+
+            /* ── Milestones: convert to vertical event list ──
+               Absolute positioning at left:X% causes overlap & clipping on small screens.
+               On mobile we replace with a simple top-to-bottom time list. ── */
+            .gantt-milestones-container {
+                position: static;
+                height: auto;
+                margin-top: 0.75rem;
+                display: flex;
+                flex-direction: column;
+                gap: 0.35rem;
+                padding: 0.6rem 0.75rem;
+                background: #f8f9fa;
+                border-radius: 8px;
+            }
+            .milestone {
+                position: static !important;
+                transform: none !important;
+                flex-direction: row;
+                gap: 0.55rem;
+                align-items: center;
+                justify-content: flex-start;
+            }
+            .milestone-dot   { margin-bottom: 0; flex-shrink: 0; }
+            .milestone-time  { font-size: 0.85rem; font-weight: 700; white-space: nowrap; min-width: 70px; }
+            .milestone-label { display: block !important; font-size: 0.78rem; color: #666; }
+
+            /* ── Legend ── */
+            .gantt-legend { gap: 0.4rem 0.75rem; margin-top: 0.75rem; }
+            .legend-item  { font-size: 0.75rem; }
+
+            /* ── Stats pills ── */
+            .stats-row { gap: 0.4rem; }
+            .stat-pill { font-size: 0.82rem; padding: 0.45rem 0.75rem; }
+
+            /* ── Map: hide cell-carrier toggles (not useful for guests on mobile) ── */
+            .map-cell-section { display: none !important; }
+
+            /* ── Guest form ── */
+            .result-box { padding: 1rem; }
+        }
+
+        @media (max-width: 390px) {
+            .hero h1   { font-size: 1.5rem; }
+            .fact-value { font-size: 0.75rem; }
+            .quick-facts { grid-template-columns: repeat(2, 1fr); }
         }
     </style>
 </head>
@@ -823,21 +892,23 @@ $difficulty_labels = [
                        cursor:pointer; transition:all 0.2s;">🏔 Zoom to Activation Zone</button>
         <?php endif; ?>
 
-        <span style="color:#ddd; font-size:0.75rem;">|</span>
-        <span style="font-size:0.75rem; color:#888;">Cell Coverage:</span>
-        <button onclick="toggleCarrier('tmobile')" id="btn-tmobile"
-                style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #E91E8C;
-                       background:white; color:#E91E8C; font-weight:700; font-size:0.78rem;
-                       cursor:pointer; transition:all 0.2s;">T-Mobile</button>
-        <button onclick="toggleCarrier('verizon')" id="btn-verizon"
-                style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #CD040B;
-                       background:white; color:#CD040B; font-weight:700; font-size:0.78rem;
-                       cursor:pointer; transition:all 0.2s;">Verizon</button>
-        <button onclick="toggleCarrier('att')" id="btn-att"
-                style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #00A8E0;
-                       background:white; color:#00A8E0; font-weight:700; font-size:0.78rem;
-                       cursor:pointer; transition:all 0.2s;">AT&T</button>
-        <span style="font-size:0.72rem; color:#999; margin-left:0.1rem;">Cell data may be optimistic in mountainous terrain</span>
+        <span class="map-cell-section" style="display:contents;">
+            <span style="color:#ddd; font-size:0.75rem;">|</span>
+            <span style="font-size:0.75rem; color:#888;">Cell Coverage:</span>
+            <button onclick="toggleCarrier('tmobile')" id="btn-tmobile"
+                    style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #E91E8C;
+                           background:white; color:#E91E8C; font-weight:700; font-size:0.78rem;
+                           cursor:pointer; transition:all 0.2s;">T-Mobile</button>
+            <button onclick="toggleCarrier('verizon')" id="btn-verizon"
+                    style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #CD040B;
+                           background:white; color:#CD040B; font-weight:700; font-size:0.78rem;
+                           cursor:pointer; transition:all 0.2s;">Verizon</button>
+            <button onclick="toggleCarrier('att')" id="btn-att"
+                    style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #00A8E0;
+                           background:white; color:#00A8E0; font-weight:700; font-size:0.78rem;
+                           cursor:pointer; transition:all 0.2s;">AT&T</button>
+            <span style="font-size:0.72rem; color:#999; margin-left:0.1rem;">Cell data may be optimistic in mountainous terrain</span>
+        </span>
 
         <?php if ($gpx): ?>
         <span style="color:#ddd; font-size:0.75rem;">|</span>

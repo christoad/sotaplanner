@@ -39,8 +39,29 @@
 <div class="container">
     <a href="index.php" class="back">← Back to Planner</a>
 
-    <!-- v1.0.2 -->
+    <!-- v1.0.3 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.0.3</span>
+            <span class="version-date">April 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Mobile UX overhaul across all major pages.</p>
+        <ul>
+            <li><span class="tag tag-improve">Improve</span> Summit list on mobile now renders as tap-friendly cards instead of a wide scrolling table — shows name, difficulty, status, total time, and a hike/drive/distance/gain stats strip</li>
+            <li><span class="tag tag-fix">Fix</span> Header title no longer clips the left edge on mobile — negative-margin bleed now matches container padding correctly</li>
+            <li><span class="tag tag-improve">Improve</span> Gantt chart milestones on summit detail and invitation pages now render as a clean vertical event list on mobile instead of overlapping absolute-positioned dots</li>
+            <li><span class="tag tag-improve">Improve</span> Invitation page quick-facts row switches to a responsive grid on mobile instead of a cramped no-wrap horizontal scroll</li>
+            <li><span class="tag tag-improve">Improve</span> Planned activation forms stack to single-column on mobile (date/time/radio fields no longer squeezed into a 3-column grid)</li>
+            <li><span class="tag tag-fix">Fix</span> Planned activation action buttons (View Invite, Copy Link, Edit, ×) stay compact and inline on mobile instead of going full-width</li>
+            <li><span class="tag tag-fix">Fix</span> Trailhead geocode input no longer gets crushed to a sliver on mobile — Find button stays compact beside the text field</li>
+            <li><span class="tag tag-improve">Improve</span> Invitation page hides carrier coverage map toggles on mobile where they aren't useful for guests</li>
+            <li><span class="tag tag-improve">Improve</span> Renamed "Use Custom Data" button to "Clear Imported Data" for clarity</li>
+        </ul>
+    </div>
+
+    <!-- v1.0.2 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.0.2</span>
             <span class="version-date">April 2026</span>

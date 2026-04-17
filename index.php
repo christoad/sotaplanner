@@ -639,153 +639,128 @@ $summits = $stmt->fetchAll();
         /* ===========================
            MOBILE RESPONSIVE STYLES
            =========================== */
-        
-        @media (max-width: 768px) {
-            body {
-                padding: 0.5rem;
-            }
 
-            .container {
-                padding: 0.5rem;
-            }
+        @media (max-width: 768px) {
+            body { padding: 0; }
+            .container { padding: 0.75rem; }
 
             header {
                 flex-direction: column;
                 align-items: flex-start;
-                padding: 1rem;
-                gap: 1rem;
+                /* match container padding so header bleeds edge-to-edge without clipping */
+                padding: 1rem 0.75rem;
+                margin: -0.75rem -0.75rem 1rem -0.75rem;
+                gap: 0.6rem;
             }
 
-            header img {
-                height: 60px !important;
-            }
-
-            h1 {
-                font-size: 1.5rem;
-            }
+            header img { height: 56px !important; }
+            h1 { font-size: 1.5rem; }
 
             .subtitle {
                 flex-direction: column;
-                gap: 0.75rem;
+                gap: 0.6rem;
                 align-items: stretch;
                 width: 100%;
             }
 
-            .address-selector {
-                width: 100%;
-            }
+            .address-selector { width: 100%; }
+            .address-selector select { width: 100%; font-size: 0.9rem; }
 
-            .address-selector select {
+            /* Action buttons row: stack below filters, full width */
+            .controls-row .action-btns {
                 width: 100%;
-                font-size: 0.9rem;
+                display: flex;
+                gap: 0.5rem;
             }
-
-            .btn {
+            .controls-row .action-btns form,
+            .controls-row .action-btns a { flex: 1; }
+            .controls-row .action-btns .btn {
                 width: 100%;
                 text-align: center;
-                padding: 0.8rem 1rem;
-                font-size: 0.85rem;
+                padding: 0.55rem 0.5rem;
+                font-size: 0.78rem;
             }
 
-            /* Make table scrollable horizontally */
+            /* ── Summit list: table → cards ── */
             .table-container {
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
-                margin: 0 -0.5rem;
+                overflow-x: visible;
+                background: transparent;
+                box-shadow: none;
+                border-radius: 0;
             }
+            table { display: block; min-width: 0; width: 100%; }
+            thead { display: none; }
+            tbody { display: flex; flex-direction: column; gap: 0.55rem; }
 
-            table {
-                min-width: 800px;
-                font-size: 0.85rem;
-            }
-
-            th, td {
-                padding: 0.6rem 0.4rem;
-                white-space: nowrap;
-            }
-
-            .summit-name {
-                font-size: 0.9rem;
-            }
-
-            .summit-ref {
-                font-size: 0.75rem;
-            }
-
-            /* Stack controls vertically */
-            .controls-bar {
-                flex-direction: column;
-                gap: 0.75rem;
-            }
-
-            .controls-bar form {
-                width: 100%;
-            }
-
-            .controls-bar input[type="number"],
-            .controls-bar select {
-                width: 100%;
-            }
-
-            /* Difficulty badges smaller */
-            .difficulty-badge {
-                font-size: 0.7rem;
-                padding: 0.2rem 0.5rem;
-            }
-
-            /* Status badges smaller */
-            .status-badge {
-                font-size: 0.65rem;
-                padding: 0.25rem 0.6rem;
-            }
-
-            /* Nominate button full width */
-            .nominate-section {
-                text-align: center;
-            }
-
-            .nominate-section a {
-                width: 100%;
-                display: block;
-            }
-
-            /* Better touch targets */
-            .sortable {
+            tbody tr {
+                display: grid !important;
+                grid-template-columns: 1fr auto;
+                background: white;
+                border-radius: 10px;
+                padding: 0.75rem;
+                border: 1px solid #e8e4d8 !important;
+                border-bottom: 1px solid #e8e4d8 !important;
+                box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+                column-gap: 0.5rem;
+                row-gap: 0.15rem;
                 cursor: pointer;
-                -webkit-tap-highlight-color: transparent;
             }
+            tbody tr:hover { background: white; }
+            tbody tr.ready-to-activate {
+                background: #E8F5E9 !important;
+                border-color: #c8e6c9 !important;
+            }
+            tbody tr.activated-this-year {
+                background: #f5f5f5 !important;
+                border-color: #e0e0e0 !important;
+                opacity: 0.65;
+            }
+
+            td.td-summit     { grid-column: 1; grid-row: 1; }
+            td.td-total-time {
+                grid-column: 2; grid-row: 1;
+                text-align: right; align-self: center;
+                font-size: 1.05rem; font-weight: 800;
+                color: var(--navy); white-space: nowrap;
+            }
+            td.td-total-time strong { font-size: inherit; }
+            td.td-difficulty { grid-column: 1; grid-row: 2; align-self: center; }
+            td.td-status     { grid-column: 2; grid-row: 2; text-align: right; align-self: center; }
+
+            /* Stats strip from data attribute */
+            tbody tr:not([data-stats=""])::after {
+                content: attr(data-stats);
+                grid-column: 1 / -1;
+                grid-row: 3;
+                font-size: 0.72rem;
+                color: #888;
+                padding-top: 0.4rem;
+                border-top: 1px solid rgba(0,0,0,0.07);
+                margin-top: 0.1rem;
+                line-height: 1.6;
+            }
+
+            /* Columns hidden in card view */
+            td.td-elevation, td.td-points,
+            td.td-hike-time, td.td-drive-time,
+            td.td-distance,  td.td-gain,
+            td.td-last-activated { display: none; }
+
+            .summit-name { font-size: 0.95rem; }
+            .summit-ref  { font-size: 0.72rem; }
+            .difficulty-badge { font-size: 0.7rem; padding: 0.2rem 0.5rem; }
+            .status-badge { font-size: 0.65rem; padding: 0.25rem 0.6rem; }
         }
 
         /* Extra small screens (iPhone SE, etc) */
         @media (max-width: 375px) {
-            body {
-                padding: 0.25rem;
-            }
-
+            .container { padding: 0.5rem; }
             header {
-                padding: 0.75rem;
+                padding: 0.75rem 0.5rem;
+                margin: -0.5rem -0.5rem 0.75rem -0.5rem;
             }
-
-            h1 {
-                font-size: 1.25rem;
-            }
-
-            header img {
-                height: 50px !important;
-            }
-
-            table {
-                font-size: 0.75rem;
-            }
-
-            th, td {
-                padding: 0.5rem 0.3rem;
-            }
-
-            .btn {
-                font-size: 0.8rem;
-                padding: 0.7rem 0.8rem;
-            }
+            h1 { font-size: 1.25rem; }
+            header img { height: 48px !important; }
         }
 
         .status-badge {
@@ -1046,7 +1021,7 @@ $summits = $stmt->fetchAll();
                 <span style="font-size: 0.78rem; color: #888;">min</span>
 
                 <!-- Push right -->
-                <div style="margin-left: auto; display: flex; align-items: center; gap: 0.5rem;">
+                <div class="action-btns" style="margin-left: auto; display: flex; align-items: center; gap: 0.5rem;">
                     <?php if ($selected_address && GOOGLE_MAPS_API_KEY !== 'YOUR_API_KEY_HERE'): ?>
                         <form method="POST" style="margin: 0;">
                             <button type="submit" name="calculate_drive_times" class="btn" style="padding: 0.35rem 0.8rem; font-size: 0.78rem;">🚗 Recalculate Drive Times</button>
@@ -1174,7 +1149,19 @@ $summits = $stmt->fetchAll();
 
                             $drive_time = $summit['drive_time_min'] ?? 0;
                             $total_time = $hike_time_total + $drive_time + $activation_time;
-                            
+
+                            // Mobile card stats strip
+                            $_ms = [];
+                            if ($hike_time_total) $_ms[] = '🥾 ' . formatTime($hike_time_total);
+                            if ($drive_time)      $_ms[] = '🚗 ' . formatTime($drive_time);
+                            if ($distance_display_mi) {
+                                $_ms[] = '📏 ' . convertDistance($distance_display_mi, $current_group['units']) . ' ' . getDistanceUnit($current_group['units']);
+                            }
+                            if ($elevation_for_display) {
+                                $_ms[] = '↑ ' . number_format(convertElevation($elevation_for_display, $current_group['units'])) . ' ' . getElevationUnit($current_group['units']);
+                            }
+                            $mobile_stats = implode(' · ', $_ms);
+
                             // Check if activated this calendar year (UTC)
                             $activated_this_year = false;
                             if ($summit['last_activated_date']) {
@@ -1196,15 +1183,15 @@ $summits = $stmt->fetchAll();
                                 $row_style = 'background: #E8F5E9;';
                             }
                         ?>
-                        <tr class="status-<?= $summit['status'] ?> <?= $row_class ?>" style="cursor: pointer; <?= $row_style ?>" onclick="window.location='summit_detail.php?id=<?= $summit['id'] ?>&group=<?= $current_group['id'] ?>';">
-                            <td onclick="event.stopPropagation();">
+                        <tr class="status-<?= $summit['status'] ?> <?= $row_class ?>" style="cursor: pointer; <?= $row_style ?>" data-stats="<?= htmlspecialchars($mobile_stats) ?>" onclick="window.location='summit_detail.php?id=<?= $summit['id'] ?>&group=<?= $current_group['id'] ?>';">
+                            <td class="td-summit" onclick="event.stopPropagation();">
                                 <a href="summit_detail.php?id=<?= $summit['id'] ?>&group=<?= $current_group['id'] ?>" style="text-decoration: none; color: inherit;">
                                     <div class="summit-name"><?= htmlspecialchars($summit['name']) ?></div>
                                     <div class="summit-ref"><?= htmlspecialchars($summit['sota_ref']) ?></div>
                                 </a>
                             </td>
-                            <td><?= $summit['points'] ?></td>
-                            <td>
+                            <td class="td-points"><?= $summit['points'] ?></td>
+                            <td class="td-difficulty">
                                 <?php if ($summit['difficulty']): ?>
                                     <span class="difficulty-badge difficulty-<?= strtolower(str_replace('-', '-', $summit['difficulty'])) ?>">
                                         <?= ucfirst($summit['difficulty']) ?>
@@ -1213,14 +1200,14 @@ $summits = $stmt->fetchAll();
                                     —
                                 <?php endif; ?>
                             </td>
-                            <td>
-                                <?php 
+                            <td class="td-elevation">
+                                <?php
                                 $elevation = convertElevation($summit['elevation_ft'], $current_group['units']);
                                 $unit = getElevationUnit($current_group['units']);
                                 echo number_format($elevation) . ' ' . $unit;
                                 ?>
                             </td>
-                            <td>
+                            <td class="td-distance">
                                 <?php
                                 if ($distance_display_mi) {
                                     $distance = convertDistance($distance_display_mi, $current_group['units']);
@@ -1231,8 +1218,8 @@ $summits = $stmt->fetchAll();
                                 }
                                 ?>
                             </td>
-                            <td>
-                                <?php 
+                            <td class="td-gain">
+                                <?php
                                 if ($elevation_for_display) {
                                     $gain = convertElevation($elevation_for_display, $current_group['units']);
                                     $unit = getElevationUnit($current_group['units']);
@@ -1242,10 +1229,10 @@ $summits = $stmt->fetchAll();
                                 }
                                 ?>
                             </td>
-                            <td class="text-right"><?= $hike_time_total ? formatTime($hike_time_total) : '—' ?></td>
-                            <td class="text-right"><?= $drive_time ? formatTime($drive_time) : '—' ?></td>
-                            <td class="text-right"><strong><?= formatTime($total_time) ?></strong></td>
-                            <td>
+                            <td class="text-right td-hike-time"><?= $hike_time_total ? formatTime($hike_time_total) : '—' ?></td>
+                            <td class="text-right td-drive-time"><?= $drive_time ? formatTime($drive_time) : '—' ?></td>
+                            <td class="text-right td-total-time"><strong><?= formatTime($total_time) ?></strong></td>
+                            <td class="td-last-activated">
                                 <?php if ($summit['last_activated_date']): ?>
                                     <div><?= date('M j, Y', strtotime($summit['last_activated_date'])) ?></div>
                                     <?php if (!empty($summit['this_year_callsigns'])): ?>
@@ -1261,7 +1248,7 @@ $summits = $stmt->fetchAll();
                                     —
                                 <?php endif; ?>
                             </td>
-                            <td>
+                            <td class="td-status">
                                 <?php if ($summit['status'] === 'activated'): ?>
                                     <?php if ($activated_this_year): ?>
                                         <span class="status-badge status-activated-this-year">Done This Year</span>

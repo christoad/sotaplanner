@@ -1057,6 +1057,9 @@ if ($tl_show) {
                 margin-bottom: 0.5rem;
             }
 
+            /* Geocode row: keep input+button side-by-side (don't let .btn go full-width here) */
+            .geocode-row .btn { width: auto !important; flex-shrink: 0; }
+
             /* Trailhead coordinates grid */
             .form-group.full-width > div {
                 grid-template-columns: 1fr !important;
@@ -1094,6 +1097,37 @@ if ($tl_show) {
                 font-size: 0.9rem;
                 margin-bottom: 1rem;
             }
+
+            /* ── Timeline Gantt: strip bar labels, convert milestones to vertical list ── */
+            .tl-gantt-bar { height: 32px; }
+            .tl-seg .seg-label { display: none; }
+            .tl-seg .seg-time  { display: none; }
+            .tl-milestones-wrap {
+                position: static;
+                height: auto;
+                margin-top: 0.6rem;
+                display: flex;
+                flex-direction: column;
+                gap: 0.35rem;
+                padding: 0.55rem 0.75rem;
+                background: #f8f9fa;
+                border-radius: 8px;
+            }
+            .tl-milestone {
+                position: static !important;
+                transform: none !important;
+                flex-direction: row;
+                gap: 0.5rem;
+                align-items: center;
+            }
+            .tl-milestone-dot { margin-bottom: 0; flex-shrink: 0; }
+            .tl-milestone-dur { font-size: 0.82rem; white-space: nowrap; min-width: 52px; }
+            .tl-milestone-lbl { font-size: 0.75rem; white-space: nowrap; }
+
+            /* ── Planned activations: stack 3-col grids, keep action buttons inline ── */
+            .pa-grid-3 { grid-template-columns: 1fr !important; }
+            .pa-actions .btn    { width: auto !important; flex-shrink: 0; }
+            .pa-form-btns .btn  { width: auto !important; }
         }
 
         /* Extra small screens */
@@ -1237,7 +1271,7 @@ if ($tl_show) {
                     </div>
                     <form method="POST" style="margin: 0;">
                         <button type="submit" name="use_custom_data" class="btn btn-secondary btn-small">
-                            Use Custom Data
+                            Clear Imported Data
                         </button>
                     </form>
                 </div>
@@ -1448,7 +1482,7 @@ if ($tl_show) {
                     <div class="form-row">
                         <div style="background: #E8F4F8; padding: 0.75rem; border-radius: 6px; border: 2px solid var(--teal);">
                             <div style="font-size: 0.85rem; margin-bottom: 0.5rem; font-weight: 600;">📍 Set Trailhead</div>
-                            <div style="display: flex; gap: 0.5rem;">
+                            <div class="geocode-row" style="display: flex; gap: 0.5rem;">
                                 <input type="text" id="geocode_address"
                                        placeholder="Paste lat,lng or enter an address"
                                        style="flex: 1; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem;">
@@ -2186,7 +2220,7 @@ if ($tl_show) {
                                     </div>
                                 <?php endif; ?>
                             </div>
-                            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                            <div class="pa-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
                                 <a href="<?= htmlspecialchars($invite_url) ?>" target="_blank" class="btn btn-secondary btn-small">🔗 View Invite</a>
                                 <button onclick="copyToClipboard('<?= htmlspecialchars($invite_url, ENT_QUOTES) ?>', this)" class="btn btn-small">📋 Copy Link</button>
                                 <button type="button" onclick="toggleEdit(<?= $pa['id'] ?>)" class="btn btn-secondary btn-small">✏️ Edit</button>
@@ -2201,7 +2235,7 @@ if ($tl_show) {
                         <div id="edit-form-<?= $pa['id'] ?>" style="display:none; margin-top:1rem; padding-top:1rem; border-top:2px solid #ddd;">
                             <form method="POST">
                                 <input type="hidden" name="planned_activation_id" value="<?= $pa['id'] ?>">
-                                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:1rem; margin-bottom:1rem;">
+                                <div class="pa-grid-3" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:1rem; margin-bottom:1rem;">
                                     <div>
                                         <label style="font-size:0.8rem;">Date</label>
                                         <input type="date" name="planned_date" required style="width:100%;"
@@ -2237,7 +2271,7 @@ if ($tl_show) {
                                            value="<?= htmlspecialchars($pa['location_link'] ?? '') ?>"
                                            placeholder="e.g. https://share.garmin.com/… or any live tracking URL">
                                 </div>
-                                <div style="display:flex; gap:0.5rem;">
+                                <div class="pa-form-btns" style="display:flex; gap:0.5rem;">
                                     <button type="submit" name="edit_planned_activation" class="btn btn-small">💾 Save Changes</button>
                                     <button type="button" onclick="toggleEdit(<?= $pa['id'] ?>)" class="btn btn-secondary btn-small">Cancel</button>
                                 </div>
@@ -2252,7 +2286,7 @@ if ($tl_show) {
             <!-- Add Planned Activation Form -->
             <form method="POST" style="background: var(--snow); padding: 1.5rem; border-radius: 8px; margin-top: 0.5rem;">
                 <h3 style="margin-bottom: 1rem; font-size: 1.1rem;">Plan an Upcoming Activation</h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                <div class="pa-grid-3" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
                     <div>
                         <label style="font-size: 0.85rem;">Date</label>
                         <input type="date" name="planned_date" required style="width: 100%;"
