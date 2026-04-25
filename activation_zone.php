@@ -9,6 +9,11 @@
 
 require_once 'config.php';
 session_start();
+if (!isset($_SESSION['sota_callsign'])) {
+    http_response_code(401);
+    echo json_encode(['error' => 'Not authenticated']);
+    exit;
+}
 
 header('Content-Type: application/json');
 

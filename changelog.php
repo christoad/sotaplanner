@@ -39,12 +39,30 @@
 <div class="container">
     <a href="index.php" class="back">← Back to Planner</a>
 
-    <!-- v1.0.3 -->
+    <!-- v1.0.4 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.0.4</span>
+            <span class="version-date">April 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">User authentication and planning group privacy. Users now log in with their callsign — groups are private to their owner and invited members.</p>
+        <ul>
+            <li><span class="tag tag-new">New</span> Login page with callsign-based authentication — SOTA SSO (OAuth) ready, dev login active for testing</li>
+            <li><span class="tag tag-new">New</span> Planning groups are now private — only visible to the owner and invited members</li>
+            <li><span class="tag tag-new">New</span> Group member management — owners can add or remove members by callsign from the Planning Groups page</li>
+            <li><span class="tag tag-new">New</span> Member callsigns field on group creation — invite your activation partners when creating a new group</li>
+            <li><span class="tag tag-new">New</span> Sign Out link and logged-in callsign indicator in the site header</li>
+            <li><span class="tag tag-new">New</span> SOTA SSO OAuth callback handler ready for production credentials (oauth_callback.php)</li>
+            <li><span class="tag tag-improve">Improve</span> Cookie-restored default group now validates membership before restoring</li>
+        </ul>
+    </div>
+
+    <!-- v1.0.3 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.0.3</span>
             <span class="version-date">April 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Mobile UX overhaul across all major pages.</p>
         <ul>

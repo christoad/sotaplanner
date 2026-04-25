@@ -10,6 +10,7 @@ ini_set('display_errors', 1);
 require_once 'config.php';
 require_once 'field_help.php';
 session_start();
+requireLogin();
 
 $db = getDbConnection();
 $summit_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;

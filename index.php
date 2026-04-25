@@ -5,6 +5,7 @@ ini_set('display_errors', 1);
 
 require_once 'config.php';
 session_start();
+requireLogin();
 
 $db = getDbConnection();
 
@@ -13,8 +14,15 @@ $message = '';
 // Restore defaults from cookies if session has no group set yet
 if (!getCurrentPlanningGroup($db) && !empty($_COOKIE['sota_default_group'])) {
     $cookie_group = (int)$_COOKIE['sota_default_group'];
-    $stmt = $db->prepare("SELECT id FROM planning_groups WHERE id = ?");
-    $stmt->execute([$cookie_group]);
+    $callsign = getCurrentCallsign();
+    // Validate the cookie group belongs to this user before restoring
+    $stmt = $db->prepare("
+        SELECT pg.id FROM planning_groups pg
+        LEFT JOIN planning_group_members pgm ON pg.id = pgm.planning_group_id
+        WHERE pg.id = ? AND (pg.owner_callsign = ? OR pgm.callsign = ?)
+        LIMIT 1
+    ");
+    $stmt->execute([$cookie_group, $callsign, $callsign]);
     if ($stmt->fetch()) {
         setCurrentPlanningGroup($cookie_group);
     }
@@ -968,9 +976,18 @@ $summits = $stmt->fetchAll();
                     <a href="planning_groups.php" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; text-decoration: none;">✏️ Manage</a>
                 </div>
             </div>
-            <div style="display: flex; gap: 0.75rem; align-items: flex-start;">
-                <a href="about.php" class="header-link">About</a>
-                <a href="#" onclick="document.getElementById('howItWorksModal').style.display='flex'; return false;" class="header-link">How It Works</a>
+            <div style="display: flex; gap: 0.75rem; align-items: flex-start; flex-direction: column; text-align: right;">
+                <div style="font-size: 0.78rem; color: rgba(255,255,255,0.55); font-weight: 600; letter-spacing: 0.04em;">
+                    <?= htmlspecialchars(getCurrentCallsign()) ?>
+                    <?php if (($_SESSION['sota_login_type'] ?? '') === 'dev'): ?>
+                        <span style="background: #856404; color: #fff3cd; font-size: 0.65rem; padding: 0.05rem 0.35rem; border-radius: 3px; margin-left: 0.3rem; vertical-align: middle;">DEV</span>
+                    <?php endif; ?>
+                </div>
+                <div style="display: flex; gap: 0.75rem;">
+                    <a href="about.php" class="header-link">About</a>
+                    <a href="#" onclick="document.getElementById('howItWorksModal').style.display='flex'; return false;" class="header-link">How It Works</a>
+                    <a href="logout.php" class="header-link" style="opacity: 0.65;">Sign Out</a>
+                </div>
             </div>
         </header>
 

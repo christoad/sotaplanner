@@ -4,8 +4,10 @@ ini_set('display_errors', 1);
 
 require_once 'config.php';
 session_start();
+requireLogin();
 
 $db = getDbConnection();
+$current_callsign = getCurrentCallsign();
 
 $message = '';
 $error = '';
@@ -18,14 +20,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $units = $_POST['units'] ?? 'imperial';
         if (!empty($group_name)) {
             try {
-                $stmt = $db->prepare("INSERT INTO planning_groups (name, units) VALUES (?, ?)");
-                $stmt->execute([$group_name, $units]);
+                $stmt = $db->prepare("INSERT INTO planning_groups (name, units, owner_callsign) VALUES (?, ?, ?)");
+                $stmt->execute([$group_name, $units, $current_callsign]);
                 $new_group_id = $db->lastInsertId();
-                
+
+                // Add creator as owner in members table
+                $stmt = $db->prepare("INSERT IGNORE INTO planning_group_members (planning_group_id, callsign, role) VALUES (?, ?, 'owner')");
+                $stmt->execute([$new_group_id, $current_callsign]);
+
+                // Add invited member callsigns
+                $members_raw = trim($_POST['member_callsigns'] ?? '');
+                if (!empty($members_raw)) {
+                    $ins = $db->prepare("INSERT IGNORE INTO planning_group_members (planning_group_id, callsign, role, invited_by) VALUES (?, ?, 'member', ?)");
+                    foreach (explode(',', $members_raw) as $cs) {
+                        $cs = strtoupper(trim($cs));
+                        if ($cs !== '' && $cs !== $current_callsign) {
+                            $ins->execute([$new_group_id, $cs, $current_callsign]);
+                        }
+                    }
+                }
+
                 // Set as current group
                 setCurrentPlanningGroup($new_group_id);
                 $_SESSION['manage_group_id'] = $new_group_id;
-                
+
                 $message = "Planning group created! Now add a starting location for your group below.";
                 $scroll_to_addresses = true;
             } catch (PDOException $e) {
@@ -115,6 +133,49 @@ if (isset($_POST['select_group'])) {
             $error = "Error deleting address: " . $e->getMessage();
         }
     }
+
+    // Add member callsign to group
+    if (isset($_POST['add_member']) && isset($_SESSION['manage_group_id'])) {
+        $group_id  = (int)$_SESSION['manage_group_id'];
+        $raw       = trim($_POST['new_member_callsign'] ?? '');
+        $stmt = $db->prepare("SELECT owner_callsign FROM planning_groups WHERE id = ?");
+        $stmt->execute([$group_id]);
+        $grp = $stmt->fetch();
+        if ($grp && $grp['owner_callsign'] === $current_callsign && $raw !== '') {
+            try {
+                $ins = $db->prepare("INSERT IGNORE INTO planning_group_members (planning_group_id, callsign, role, invited_by) VALUES (?, ?, 'member', ?)");
+                $added = [];
+                foreach (explode(',', $raw) as $cs) {
+                    $cs = strtoupper(trim($cs));
+                    if ($cs !== '' && $cs !== $current_callsign) {
+                        $ins->execute([$group_id, $cs, $current_callsign]);
+                        $added[] = $cs;
+                    }
+                }
+                $message = count($added) ? 'Added: ' . implode(', ', $added) . '.' : 'No new callsigns to add.';
+            } catch (PDOException $e) {
+                $error = "Error adding member: " . $e->getMessage();
+            }
+        } else {
+            $error = "Only the group owner can add members.";
+        }
+    }
+
+    // Remove member from group
+    if (isset($_POST['remove_member']) && isset($_SESSION['manage_group_id'])) {
+        $group_id   = (int)$_SESSION['manage_group_id'];
+        $remove_cs  = strtoupper(trim($_POST['remove_callsign'] ?? ''));
+        $stmt = $db->prepare("SELECT owner_callsign FROM planning_groups WHERE id = ?");
+        $stmt->execute([$group_id]);
+        $grp = $stmt->fetch();
+        if ($grp && $grp['owner_callsign'] === $current_callsign && $remove_cs !== $current_callsign) {
+            $stmt = $db->prepare("DELETE FROM planning_group_members WHERE planning_group_id = ? AND callsign = ? AND role != 'owner'");
+            $stmt->execute([$group_id, $remove_cs]);
+            $message = "Removed $remove_cs from the group.";
+        } else {
+            $error = "Cannot remove yourself (owner) or you don't have permission.";
+        }
+    }
 }
 
 // Get all planning groups
@@ -125,15 +186,39 @@ $managing_group_id = $_SESSION['manage_group_id'] ?? null;
 $managing_group = null;
 $addresses = [];
 
+$group_members = [];
+$is_group_owner = false;
+
 if ($managing_group_id) {
     $stmt = $db->prepare("SELECT * FROM planning_groups WHERE id = ?");
     $stmt->execute([$managing_group_id]);
     $managing_group = $stmt->fetch();
-    
+
+    if ($managing_group) {
+        // Verify current user has access to this group
+        $stmt = $db->prepare("
+            SELECT pg.id FROM planning_groups pg
+            LEFT JOIN planning_group_members pgm ON pg.id = pgm.planning_group_id
+            WHERE pg.id = ? AND (pg.owner_callsign = ? OR pgm.callsign = ?)
+            LIMIT 1
+        ");
+        $stmt->execute([$managing_group_id, $current_callsign, $current_callsign]);
+        if (!$stmt->fetch()) {
+            $managing_group = null; // No access — treat as unselected
+            $_SESSION['manage_group_id'] = null;
+        }
+    }
+
     if ($managing_group) {
         $stmt = $db->prepare("SELECT * FROM addresses WHERE planning_group_id = ? ORDER BY label, address");
         $stmt->execute([$managing_group_id]);
         $addresses = $stmt->fetchAll();
+
+        $stmt = $db->prepare("SELECT * FROM planning_group_members WHERE planning_group_id = ? ORDER BY role DESC, callsign ASC");
+        $stmt->execute([$managing_group_id]);
+        $group_members = $stmt->fetchAll();
+
+        $is_group_owner = ($managing_group['owner_callsign'] === $current_callsign);
     }
 }
 
@@ -372,10 +457,16 @@ $is_first_visit = !$managing_group_id;
 </head>
 <body>
     <div class="container">
+        <div style="display: flex; justify-content: flex-end; align-items: center; gap: 1rem; margin-bottom: 1rem; font-size: 0.85rem; color: #888;">
+            <span>Signed in as <strong><?= htmlspecialchars($current_callsign) ?></strong></span>
+            <a href="index.php" style="color: var(--teal); text-decoration: none; font-weight: 600;">← Dashboard</a>
+            <a href="logout.php" style="color: #aaa; text-decoration: none;">Sign Out</a>
+        </div>
+
         <div style="text-align: center; margin-bottom: 2rem;">
             <img src="logo.png" alt="SOTA Planner" class="logo">
-            <h1>Planning Groups & Addresses</h1>
-            <p class="subtitle">A <strong>planning group</strong> is you and your activation friends — it holds your summit wishlist, saved addresses, and drive-time calculations.</p>
+            <h1>Planning Groups</h1>
+            <p class="subtitle">A <strong>planning group</strong> can be just you, or your whole activator crew. Either way it holds a shared summit wishlist, starting addresses, and drive-time estimates. Select a group below or create a new one.</p>
         </div>
 
         <?php if ($message): ?>
@@ -394,7 +485,8 @@ $is_first_visit = !$managing_group_id;
                 <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(255,255,255,0.6); margin-bottom: 0.5rem;">
                     <?= count($all_groups) > 0 ? 'Returning?' : 'Have a group?' ?>
                 </div>
-                <h2 style="color: white; font-size: 1.4rem; margin-bottom: 1.25rem;">Join an Existing Group</h2>
+                <h2 style="color: white; font-size: 1.4rem; margin-bottom: 0.5rem;">Join an Existing Group</h2>
+                <p style="color: rgba(255,255,255,0.65); font-size: 0.82rem; margin-bottom: 1.1rem;">Select a group you belong to, then go to the dashboard to plan activations.</p>
                 <?php if (count($all_groups) > 0): ?>
                     <form method="POST" id="groupForm">
                         <select name="group_id" class="big-select" style="font-size: 1.1rem; padding: 1rem;" onchange="this.form.submit()">
@@ -412,7 +504,7 @@ $is_first_visit = !$managing_group_id;
                             <form method="POST">
                                 <input type="hidden" name="group_id" value="<?= $managing_group['id'] ?>">
                                 <button type="submit" name="activate_group" class="btn btn-primary" style="width: 100%; text-align: center;">
-                                    🚀 Plan for "<?= htmlspecialchars($managing_group['name']) ?>"
+                                    Go to Dashboard — <?= htmlspecialchars($managing_group['name']) ?> →
                                 </button>
                             </form>
                         </div>
@@ -430,19 +522,25 @@ $is_first_visit = !$managing_group_id;
             <!-- Option B: Create new -->
             <div class="card" style="margin-bottom: 0; border-radius: 0 12px 12px 0; border-left: 3px solid #e0ddd5;">
                 <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #aaa; margin-bottom: 0.5rem;">New here?</div>
-                <h2 style="color: var(--navy); font-size: 1.4rem; margin-bottom: 1.25rem;">Create a New Group</h2>
+                <h2 style="color: var(--navy); font-size: 1.4rem; margin-bottom: 0.5rem;">Create a New Group</h2>
+                <p style="color: #888; font-size: 0.82rem; margin-bottom: 1.1rem;">Give your group a name, then add your crew's callsigns so they can access it too.</p>
                 <form method="POST">
                     <div class="form-group" style="margin-bottom: 1rem;">
                         <label style="color: var(--navy);">Group Name</label>
-                        <input type="text" name="group_name" placeholder="e.g., K3MGM and Friends, Weekend Warriors" required>
-                        <p class="help-text">Name it after your crew</p>
+                        <input type="text" name="group_name" placeholder="e.g., KI6CR and Friends, Weekend Warriors" required>
+                        <p class="help-text">Your callsign, a group nickname, whatever works</p>
                     </div>
-                    <div class="form-group" style="margin-bottom: 1.25rem;">
+                    <div class="form-group" style="margin-bottom: 1rem;">
                         <label style="color: var(--navy);">Preferred Units</label>
                         <select name="units">
                             <option value="imperial">Imperial (miles, feet)</option>
                             <option value="metric">Metric (km, meters)</option>
                         </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 1.25rem;">
+                        <label style="color: var(--navy);">Your Crew's Callsigns <span style="font-weight:400; color:#999;">(optional)</span></label>
+                        <input type="text" name="member_callsigns" placeholder="e.g. K3MGM, N6ARA, W6CMY, WZ1EEE">
+                        <p class="help-text">Comma-separated. Each callsign will see this group when they log in.</p>
                     </div>
                     <button type="submit" name="create_group" class="btn btn-secondary" style="width: 100%;">
                         ➕ Create Group
@@ -512,7 +610,70 @@ $is_first_visit = !$managing_group_id;
                     💡 Add your home, work, or any starting location. For privacy, you can use nearby cross streets instead of your exact address. Drive times to summits will be calculated from the selected address.
                 </p>
             </div>
+
+            <!-- Group Members Card -->
+            <div class="card" style="margin-top: 1.5rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.5rem;">
+                    <h2 style="color: var(--navy); margin: 0;">Group Members</h2>
+                    <?php if ($is_group_owner): ?>
+                        <button onclick="document.getElementById('memberModal').style.display='flex'" class="btn btn-secondary" style="padding: 0.5rem 1.1rem; font-size: 0.88rem;">
+                            ➕ Add Member
+                        </button>
+                    <?php endif; ?>
+                </div>
+
+                <?php if (count($group_members) > 0): ?>
+                    <ul class="address-list">
+                        <?php foreach ($group_members as $mem): ?>
+                            <li class="address-item">
+                                <div class="address-info">
+                                    <strong><?= htmlspecialchars($mem['callsign']) ?></strong>
+                                    <span style="font-size: 0.82rem; color: #888;">
+                                        <?= $mem['role'] === 'owner' ? 'Owner' : 'Member' ?>
+                                        <?php if ($mem['invited_by']): ?>
+                                            &nbsp;·&nbsp; invited by <?= htmlspecialchars($mem['invited_by']) ?>
+                                        <?php endif; ?>
+                                    </span>
+                                </div>
+                                <?php if ($is_group_owner && $mem['role'] !== 'owner'): ?>
+                                    <form method="POST" style="display: inline;">
+                                        <input type="hidden" name="remove_callsign" value="<?= htmlspecialchars($mem['callsign']) ?>">
+                                        <button type="submit" name="remove_member" class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="return confirm('Remove <?= htmlspecialchars($mem['callsign']) ?> from the group?')">
+                                            Remove
+                                        </button>
+                                    </form>
+                                <?php endif; ?>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php else: ?>
+                    <p style="color: #888; font-size: 0.9rem;">No members yet. Add callsigns to share this group.</p>
+                <?php endif; ?>
+
+                <p class="help-text" style="margin-top: 1rem;">
+                    Members can see this group's summits and addresses when they log in with their callsign.
+                </p>
+            </div>
         <?php endif; ?>
+
+        <!-- Add Member Modal -->
+        <div id="memberModal" class="modal">
+            <div class="modal-content" style="max-width: 440px;">
+                <button class="modal-close" onclick="document.getElementById('memberModal').style.display='none'">×</button>
+                <h2 style="color: var(--navy); margin-bottom: 1.25rem;">Add Group Member</h2>
+                <form method="POST">
+                    <div class="form-group">
+                        <label>Callsign(s)</label>
+                        <input type="text" name="new_member_callsign" placeholder="e.g. K3MGM, N6ARA, W6CMY, WZ1EEE" autocapitalize="characters" required>
+                        <p class="help-text">Separate multiple callsigns with commas. Each person will see this group when they log in.</p>
+                    </div>
+                    <div style="display: flex; gap: 1rem;">
+                        <button type="submit" name="add_member" class="btn btn-secondary">Add Member</button>
+                        <button type="button" onclick="document.getElementById('memberModal').style.display='none'" class="btn" style="background: #ddd; color: #666;">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
 
         <!-- Add Address Modal -->
         <div id="addressModal" class="modal">

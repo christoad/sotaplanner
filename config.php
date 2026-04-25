@@ -1,5 +1,5 @@
 <?php
-define('APP_VERSION', '1.0.3');
+define('APP_VERSION', '1.0.4');
 
 // Enable error reporting for debugging
 error_reporting(E_ALL);
@@ -124,16 +124,36 @@ function getSelectedAddress($db) {
     return null;
 }
 
-// Get current planning group from SESSION
+// Get current planning group from SESSION (validates membership)
 function getCurrentPlanningGroup($db) {
     if (!isset($_SESSION['current_planning_group_id'])) {
         return null;
     }
-    
+
     $group_id = $_SESSION['current_planning_group_id'];
-    $stmt = $db->prepare("SELECT * FROM planning_groups WHERE id = ?");
-    $stmt->execute([$group_id]);
-    return $stmt->fetch();
+    $callsign = getCurrentCallsign();
+
+    if ($callsign && !isGodMode()) {
+        // Verify user has access to this group
+        $stmt = $db->prepare("
+            SELECT pg.* FROM planning_groups pg
+            LEFT JOIN planning_group_members pgm ON pg.id = pgm.planning_group_id
+            WHERE pg.id = ? AND (pg.owner_callsign = ? OR pgm.callsign = ?)
+            LIMIT 1
+        ");
+        $stmt->execute([$group_id, $callsign, $callsign]);
+    } else {
+        $stmt = $db->prepare("SELECT * FROM planning_groups WHERE id = ?");
+        $stmt->execute([$group_id]);
+    }
+
+    $group = $stmt->fetch();
+    if (!$group) {
+        // Group not accessible — clear it from session
+        unset($_SESSION['current_planning_group_id']);
+        return null;
+    }
+    return $group;
 }
 
 // Set current planning group in SESSION
@@ -166,9 +186,48 @@ function getElevationUnit($units) {
     return $units === 'metric' ? 'm' : 'ft';
 }
 
-// Get all planning groups
+// ── Authentication helpers ─────────────────────────────────────────────────
+
+/** Redirect to login if no authenticated callsign in session. */
+function requireLogin() {
+    if (!isset($_SESSION['sota_callsign'])) {
+        $redirect = urlencode(basename($_SERVER['PHP_SELF']));
+        header('Location: login.php?redirect=' . $redirect);
+        exit;
+    }
+}
+
+/** Return the currently authenticated callsign, or null. */
+function getCurrentCallsign() {
+    return $_SESSION['sota_callsign'] ?? null;
+}
+
+/** True if the current user has admin/god-mode access to all groups. */
+function isGodMode() {
+    return getCurrentCallsign() === 'KI6CR';
+}
+
+// ── Planning group helpers ─────────────────────────────────────────────────
+
+/** Return all planning groups the current user owns or is a member of.
+ *  KI6CR sees every group on the site. */
 function getAllPlanningGroups($db) {
-    $stmt = $db->query("SELECT * FROM planning_groups ORDER BY id ASC");
+    $callsign = getCurrentCallsign();
+    if (!$callsign) return [];
+
+    if (isGodMode()) {
+        $stmt = $db->query("SELECT * FROM planning_groups ORDER BY id ASC");
+        return $stmt->fetchAll();
+    }
+
+    $stmt = $db->prepare("
+        SELECT DISTINCT pg.*
+        FROM planning_groups pg
+        LEFT JOIN planning_group_members pgm ON pg.id = pgm.planning_group_id
+        WHERE pg.owner_callsign = :cs OR pgm.callsign = :cs2
+        ORDER BY pg.id ASC
+    ");
+    $stmt->execute([':cs' => $callsign, ':cs2' => $callsign]);
     return $stmt->fetchAll();
 }
 

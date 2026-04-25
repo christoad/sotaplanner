@@ -4,9 +4,10 @@ ini_set('display_errors', 1);
 
 require_once 'config.php';
 session_start();
+requireLogin();
 
 $db = getDbConnection();
-$current_user = $_SESSION['callsign'] ?? 'KI6CR';
+$current_user = getCurrentCallsign();
 
 // Handle group parameter from URL (for shareable links)
 if (isset($_GET['group'])) {
