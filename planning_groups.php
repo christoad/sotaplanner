@@ -40,6 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
 
+
                 // Set as current group
                 setCurrentPlanningGroup($new_group_id);
                 $_SESSION['manage_group_id'] = $new_group_id;
@@ -53,23 +54,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = "Group name is required.";
         }
     }
-    
+
     // Select a planning group
-    
+
 // Handle set current address
 if (isset($_POST['set_current_address'])) {
     $address_id = (int)$_POST['address_id'];
     $current_group = getCurrentPlanningGroup($db);
-    
+
     if ($current_group) {
         $setting_key = 'selected_address_group_' . $current_group['id'];
         $stmt = $db->prepare("
-            INSERT INTO app_settings (setting_key, setting_value) 
+            INSERT INTO app_settings (setting_key, setting_value)
             VALUES (?, ?)
             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
         ");
         $stmt->execute([$setting_key, $address_id]);
-        $message = "✓ Current address updated!";
+        $message = "Current address updated.";
     }
 }
 
@@ -80,11 +81,11 @@ if (isset($_POST['select_group'])) {
             setCurrentPlanningGroup($group_id);
         }
     }
-    
+
     // Activate group (go to dashboard)
     if (isset($_POST['activate_group'])) {
         $group_id = (int)$_POST['group_id'];
-        
+
         if ($group_id > 0) {
             $stmt = $db->prepare("SELECT id FROM planning_groups WHERE id = ?");
             $stmt->execute([$group_id]);
@@ -100,13 +101,13 @@ if (isset($_POST['select_group'])) {
             $error = "Please select a planning group from the dropdown above.";
         }
     }
-    
+
     // Add address
     if (isset($_POST['add_address']) && isset($_SESSION['manage_group_id'])) {
         $label = trim($_POST['label']);
         $address = trim($_POST['address']);
         $group_id = $_SESSION['manage_group_id'];
-        
+
         if (!empty($address)) {
             try {
                 $stmt = $db->prepare("INSERT INTO addresses (planning_group_id, label, address) VALUES (?, ?, ?)");
@@ -119,12 +120,12 @@ if (isset($_POST['select_group'])) {
             $error = "Address is required.";
         }
     }
-    
+
     // Delete address
     if (isset($_POST['delete_address']) && isset($_SESSION['manage_group_id'])) {
         $address_id = (int)$_POST['address_id'];
         $group_id = $_SESSION['manage_group_id'];
-        
+
         try {
             $stmt = $db->prepare("DELETE FROM addresses WHERE id = ? AND planning_group_id = ?");
             $stmt->execute([$address_id, $group_id]);
@@ -181,10 +182,20 @@ if (isset($_POST['select_group'])) {
 // Get all planning groups
 $all_groups = getAllPlanningGroups($db);
 
+// Get summit counts per group
+$group_counts = [];
+try {
+    $stmt = $db->query("SELECT planning_group_id, COUNT(*) as total, SUM(CASE WHEN status='activated' THEN 1 ELSE 0 END) as activated_count FROM summits GROUP BY planning_group_id");
+    foreach ($stmt->fetchAll() as $row) {
+        $group_counts[$row['planning_group_id']] = $row;
+    }
+} catch (PDOException $e) {}
+
 // Get selected group
 $managing_group_id = $_SESSION['manage_group_id'] ?? null;
 $managing_group = null;
 $addresses = [];
+$selected_address_id = null;
 
 $group_members = [];
 $is_group_owner = false;
@@ -219,6 +230,13 @@ if ($managing_group_id) {
         $group_members = $stmt->fetchAll();
 
         $is_group_owner = ($managing_group['owner_callsign'] === $current_callsign);
+
+        // Get selected address for this group
+        $setting_key = 'selected_address_group_' . $managing_group_id;
+        $stmt = $db->prepare("SELECT setting_value FROM app_settings WHERE setting_key = ?");
+        $stmt->execute([$setting_key]);
+        $row = $stmt->fetch();
+        $selected_address_id = $row ? (int)$row['setting_value'] : null;
     }
 }
 
@@ -230,482 +248,648 @@ $is_first_visit = !$managing_group_id;
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Planning Groups & Addresses - SOTA Planner</title>
-    <link href="https://fonts.googleapis.com/css2?family=Overpass:wght@300;600;800&display=swap" rel="stylesheet">
+    <title>Groups & Addresses — SOTA Planner</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --navy: #1E3A5F;
-            --teal: #4A90A4;
-            --gold: #E6B84A;
-            --snow: #F5F5F0;
-        }
+:root {
+    --bg:           #F7F6F3;
+    --bg-2:         #EFEDE8;
+    --bg-3:         #E5E2DA;
+    --ink:          #1C1B19;
+    --ink-2:        #4A4844;
+    --ink-3:        #8C8A86;
+    --ink-4:        #B8B5B0;
+    --accent:       oklch(52% 0.13 50);
+    --accent-2:     oklch(44% 0.13 50);
+    --accent-bg:    oklch(96% 0.04 65);
+    --accent-border:oklch(84% 0.08 65);
+    --green:        oklch(52% 0.13 155);
+    --green-bg:     oklch(95% 0.04 155);
+    --red:          oklch(52% 0.16 22);
+    --red-bg:       oklch(96% 0.04 22);
+    --surface:      #FFFFFF;
+    --border:       #E5E2DA;
+    --border-2:     #D4D0C8;
+    --font-sans:    'DM Sans', system-ui, sans-serif;
+    --font-mono:    'DM Mono', 'Courier New', monospace;
+    --r-sm: 4px;
+    --r-md: 8px;
+    --r-lg: 12px;
+    --r-xl: 16px;
+    --shadow-sm: 0 1px 3px rgba(28,27,25,0.07), 0 1px 2px rgba(28,27,25,0.05);
+    --shadow-md: 0 4px 12px rgba(28,27,25,0.08), 0 2px 4px rgba(28,27,25,0.05);
+    --shadow-lg: 0 8px 24px rgba(28,27,25,0.10), 0 4px 8px rgba(28,27,25,0.06);
+}
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+body { font-family: var(--font-sans); background: var(--bg); color: var(--ink); line-height: 1.5; min-height: 100vh; }
 
-        body {
-            font-family: 'Overpass', sans-serif;
-            background: linear-gradient(135deg, #F5F5F0 0%, #E8E4D8 100%);
-            color: var(--navy);
-            min-height: 100vh;
-            padding: 2rem;
-        }
+h1, h2, h3 { font-weight: 600; line-height: 1.2; }
+p { line-height: 1.65; color: var(--ink-2); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
 
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-        }
+/* Topbar */
+.topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    height: 56px;
+    display: flex;
+    align-items: center;
+    padding: 0 2rem;
+    gap: 1.5rem;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+.topbar-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    text-decoration: none;
+    color: var(--ink);
+    font-weight: 600;
+    font-size: 0.95rem;
+    letter-spacing: -0.01em;
+    flex-shrink: 0;
+}
+.topbar-logo:hover { text-decoration: none; color: var(--ink); }
+.topbar-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+.topbar-nav { display: flex; align-items: center; gap: 0.25rem; flex: 1; }
+.topbar-nav a {
+    color: var(--ink-3);
+    font-size: 0.875rem;
+    font-weight: 500;
+    padding: 0.375rem 0.75rem;
+    border-radius: var(--r-sm);
+    transition: color 0.15s, background 0.15s;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.topbar-nav a:hover { color: var(--ink); background: var(--bg-2); text-decoration: none; }
+.topbar-nav a.active { color: var(--ink); background: var(--bg-2); }
+.topbar-right { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; }
 
-        .logo {
-            height: 80px;
-            margin-bottom: 1.5rem;
-        }
+/* Page */
+.page { padding: 2rem; max-width: 960px; margin: 0 auto; }
+.page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+.page-title { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); }
+.page-subtitle { font-size: 0.875rem; color: var(--ink-3); margin-top: 0.25rem; }
 
-        h1 {
-            font-size: 2.5rem;
-            font-weight: 800;
-            color: var(--navy);
-            margin-bottom: 0.5rem;
-        }
+/* Buttons */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0 1rem;
+    height: 36px;
+    border-radius: var(--r-md);
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+    text-decoration: none;
+    white-space: nowrap;
+    line-height: 1;
+}
+.btn:hover { text-decoration: none; }
+.btn:active { transform: scale(0.98); }
+.btn-primary { background: var(--ink); color: #fff; }
+.btn-primary:hover { background: var(--ink-2); color: #fff; }
+.btn-accent { background: var(--accent); color: #fff; }
+.btn-accent:hover { background: var(--accent-2); color: #fff; }
+.btn-secondary { background: var(--bg-2); color: var(--ink); border: 1px solid var(--border); }
+.btn-secondary:hover { background: var(--bg-3); color: var(--ink); }
+.btn-ghost { background: transparent; color: var(--ink-2); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--bg-2); color: var(--ink); }
+.btn-sm { height: 30px; padding: 0 0.75rem; font-size: 0.8rem; }
 
-        .subtitle {
-            font-size: 1.1rem;
-            color: #666;
-            margin-bottom: 2rem;
-        }
+/* Messages */
+.msg {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    border-radius: var(--r-md);
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 1rem;
+}
+.msg-success { background: var(--green-bg); color: var(--green); border: 1px solid oklch(82% 0.08 155); }
+.msg-error   { background: var(--red-bg);   color: var(--red);   border: 1px solid oklch(82% 0.08 22); }
+.msg-dismiss { background: none; border: none; cursor: pointer; color: inherit; opacity: 0.5; font-size: 1.1rem; padding: 0; line-height: 1; flex-shrink: 0; }
+.msg-dismiss:hover { opacity: 1; }
 
-        .card {
-            background: white;
-            border-radius: 12px;
-            padding: 2.5rem;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-            margin-bottom: 2rem;
-        }
+/* Card */
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-sm);
+}
 
-        .blue-box {
-            background: linear-gradient(135deg, var(--navy) 0%, var(--teal) 100%);
-            padding: 2.5rem;
-            border-radius: 12px;
-            margin-bottom: 2rem;
-        }
+/* Section head */
+.section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+.section-head h2 { font-size: 1rem; font-weight: 600; }
 
-        .message {
-            padding: 1rem;
-            border-radius: 8px;
-            margin-bottom: 1.5rem;
-            font-weight: 600;
-        }
+/* Form */
+.form-group { margin-bottom: 1.25rem; }
+.form-label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--ink-2);
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.form-input, .form-select {
+    display: block;
+    width: 100%;
+    padding: 0.625rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border-2);
+    border-radius: var(--r-md);
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    color: var(--ink);
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: none;
+    -webkit-appearance: none;
+}
+.form-input:focus, .form-select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px oklch(85% 0.07 55 / 0.3);
+}
+.form-input::placeholder { color: var(--ink-4); }
+.form-hint { font-size: 0.8rem; color: var(--ink-3); margin-top: 0.5rem; line-height: 1.5; }
+.form-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238C8A86' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 2rem;
+    cursor: pointer;
+}
 
-        .message.success {
-            background: #E8F5E9;
-            color: #2E7D32;
-        }
+/* Modal */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(28,27,25,0.5);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(2px);
+}
+.modal-overlay.open { display: flex; }
+.modal-box {
+    background: var(--surface);
+    border-radius: var(--r-xl);
+    padding: 2rem;
+    max-width: 520px;
+    width: 92%;
+    position: relative;
+    box-shadow: var(--shadow-lg);
+    max-height: 90vh;
+    overflow-y: auto;
+}
+.modal-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: none;
+    border: none;
+    font-size: 1.25rem;
+    cursor: pointer;
+    color: var(--ink-3);
+    line-height: 1;
+    padding: 0.25rem;
+    border-radius: var(--r-sm);
+    transition: background 0.1s, color 0.1s;
+}
+.modal-close:hover { background: var(--bg-2); color: var(--ink); }
+.modal-title { font-size: 1.15rem; font-weight: 600; margin-bottom: 1.5rem; }
+.modal-subtitle { font-size: 0.875rem; color: var(--ink-3); margin-top: 0.25rem; margin-bottom: 1.5rem; }
 
-        .message.error {
-            background: #FFEBEE;
-            color: #C62828;
-        }
+/* Groups grid */
+.groups-grid {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 1.5rem;
+    align-items: start;
+}
 
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
+/* Group list */
+.group-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    border-radius: var(--r-md);
+    cursor: pointer;
+    transition: background 0.1s;
+    gap: 0.5rem;
+    width: 100%;
+    border: none;
+    background: none;
+    font-family: var(--font-sans);
+    text-align: left;
+}
+.group-list-item:hover { background: var(--bg-2); }
+.group-list-item.active { background: var(--accent-bg); }
+.group-list-item.active .gli-name { color: var(--accent); font-weight: 600; }
+.gli-name { font-size: 0.9rem; font-weight: 500; color: var(--ink); }
+.gli-meta { font-size: 0.72rem; color: var(--ink-3); margin-top: 2px; }
+.gli-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent); flex-shrink: 0;
+}
 
-        label {
-            display: block;
-            font-weight: 700;
-            margin-bottom: 0.5rem;
-            color: white;
-            font-size: 1rem;
-        }
+/* Address rows */
+.address-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--surface);
+    transition: border-color 0.15s;
+}
+.address-row + .address-row { margin-top: 0.5rem; }
+.address-row:hover { border-color: var(--border-2); }
+.address-row.is-current { border-color: var(--accent); background: var(--accent-bg); }
+.addr-icon {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--bg-2); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.8rem; color: var(--ink-3); flex-shrink: 0;
+}
+.addr-icon.current { background: var(--ink); color: #fff; border-color: var(--ink); }
+.addr-label { font-size: 0.875rem; font-weight: 500; color: var(--ink); }
+.addr-text { font-size: 0.78rem; color: var(--ink-3); margin-top: 1px; }
+.addr-actions { margin-left: auto; display: flex; gap: 0.5rem; align-items: center; }
 
-        .card label {
-            color: var(--navy);
-        }
+/* Footer */
+.footer {
+    text-align: center;
+    padding: 2rem 1rem 1.5rem;
+    color: var(--ink-4);
+    font-size: 0.78rem;
+    border-top: 1px solid var(--border);
+    margin-top: 3rem;
+}
+.footer a { color: var(--ink-3); }
+.footer a:hover { color: var(--ink); }
 
-        select, input[type="text"] {
-            width: 100%;
-            padding: 1rem;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-family: 'Overpass', sans-serif;
-        }
-
-        .big-select {
-            font-size: 1.5rem;
-            padding: 1.5rem;
-            font-weight: 700;
-            border: 3px solid rgba(255, 255, 255, 0.3);
-            background: rgba(255, 255, 255, 0.95);
-            color: var(--navy);
-        }
-
-        .btn {
-            padding: 1rem 2rem;
-            border: none;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.3s;
-            font-family: 'Overpass', sans-serif;
-            text-decoration: none;
-            display: inline-block;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #E6B84A 0%, #D4A574 100%);
-            color: white;
-            font-size: 1.3rem;
-            padding: 1.25rem 3rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-        }
-
-        .btn-secondary {
-            background: var(--teal);
-            color: white;
-        }
-
-        .btn-secondary:hover {
-            background: var(--navy);
-        }
-
-        .btn-danger {
-            background: #dc3545;
-            color: white;
-            padding: 0.5rem 1rem;
-            font-size: 0.9rem;
-        }
-
-        .address-list {
-            list-style: none;
-            padding: 0;
-        }
-
-        .address-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem;
-            background: #f9f9f9;
-            border-radius: 8px;
-            margin-bottom: 0.75rem;
-        }
-
-        .address-info strong {
-            color: var(--navy);
-            display: block;
-            margin-bottom: 0.25rem;
-        }
-
-        /* Modal */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            z-index: 9999;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal-content {
-            background: white;
-            padding: 2.5rem;
-            border-radius: 12px;
-            max-width: 700px;
-            width: 90%;
-            max-height: 85vh;
-            overflow-y: auto;
-            position: relative;
-        }
-
-        .modal-close {
-            position: absolute;
-            top: 1rem;
-            right: 1rem;
-            background: none;
-            border: none;
-            font-size: 2rem;
-            cursor: pointer;
-            color: #666;
-            line-height: 1;
-        }
-
-        .modal-close:hover {
-            color: #000;
-        }
-
-        .help-text {
-            font-size: 0.9rem;
-            color: #666;
-            margin-top: 0.5rem;
-        }
+@media (max-width: 640px) {
+    .topbar { padding: 0 1rem; }
+    .topbar-nav { display: none; }
+    .page { padding: 1rem; }
+    .groups-grid { grid-template-columns: 1fr; }
+    .addr-actions { flex-direction: column; align-items: flex-end; gap: 0.25rem; }
+}
     </style>
 </head>
 <body>
-    <div class="container">
-        <div style="display: flex; justify-content: flex-end; align-items: center; gap: 1rem; margin-bottom: 1rem; font-size: 0.85rem; color: #888;">
-            <span>Signed in as <strong><?= htmlspecialchars($current_callsign) ?></strong></span>
-            <a href="index.php" style="color: var(--teal); text-decoration: none; font-weight: 600;">← Dashboard</a>
-            <a href="logout.php" style="color: #aaa; text-decoration: none;">Sign Out</a>
+
+<nav class="topbar">
+    <a href="index.php" class="topbar-logo">
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+            <rect width="28" height="28" rx="4" fill="#1C1B19"/>
+            <polyline points="4,20 10,10 15,15 20,7 24,7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <circle cx="20" cy="7" r="2" fill="white"/>
+        </svg>
+        <span>SOTAplanner</span>
+    </a>
+    <div class="topbar-divider"></div>
+    <div class="topbar-nav">
+        <a href="index.php">Dashboard</a>
+        <a href="planning_groups.php" class="active">Groups &amp; Addresses</a>
+    </div>
+    <div class="topbar-right">
+        <span style="font-size:0.8rem; color:var(--ink-3); font-weight:500;"><?= htmlspecialchars($current_callsign) ?></span>
+        <a href="logout.php" class="btn btn-ghost btn-sm">Sign Out</a>
+    </div>
+</nav>
+
+<div class="page">
+    <div class="page-header">
+        <div>
+            <div class="page-title">Groups &amp; Addresses</div>
+            <div class="page-subtitle">Manage planning groups and their starting addresses for drive-time calculations.</div>
         </div>
+        <button class="btn btn-primary" onclick="document.getElementById('createGroupModal').classList.add('open')">+ New Group</button>
+    </div>
 
-        <div style="text-align: center; margin-bottom: 2rem;">
-            <img src="logo.png" alt="SOTA Planner" class="logo">
-            <h1>Planning Groups</h1>
-            <p class="subtitle">A <strong>planning group</strong> can be just you, or your whole activator crew. Either way it holds a shared summit wishlist, starting addresses, and drive-time estimates. Select a group below or create a new one.</p>
+    <?php if ($message): ?>
+        <div class="msg msg-success">
+            <span><?= htmlspecialchars($message) ?></span>
+            <button class="msg-dismiss" onclick="this.parentElement.remove()">×</button>
         </div>
+    <?php endif; ?>
 
-        <?php if ($message): ?>
-            <div class="message success"><?= htmlspecialchars($message) ?></div>
-        <?php endif; ?>
+    <?php if ($error): ?>
+        <div class="msg msg-error">
+            <span><?= htmlspecialchars($error) ?></span>
+            <button class="msg-dismiss" onclick="this.parentElement.remove()">×</button>
+        </div>
+    <?php endif; ?>
 
-        <?php if ($error): ?>
-            <div class="message error"><?= htmlspecialchars($error) ?></div>
-        <?php endif; ?>
+    <div class="groups-grid">
 
-        <!-- Step 1: Two-path layout -->
-        <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 0; align-items: stretch; margin-bottom: 2rem;">
+        <!-- Sidebar: Group list -->
+        <div class="card" style="padding: 0.5rem;">
+            <div style="padding: 0.5rem 0.75rem 0.375rem; margin-bottom: 0.25rem;">
+                <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3);">Planning Groups</div>
+            </div>
 
-            <!-- Option A: Select existing -->
-            <div class="blue-box" style="margin-bottom: 0; border-radius: 12px 0 0 12px;">
-                <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(255,255,255,0.6); margin-bottom: 0.5rem;">
-                    <?= count($all_groups) > 0 ? 'Returning?' : 'Have a group?' ?>
-                </div>
-                <h2 style="color: white; font-size: 1.4rem; margin-bottom: 0.5rem;">Join an Existing Group</h2>
-                <p style="color: rgba(255,255,255,0.65); font-size: 0.82rem; margin-bottom: 1.1rem;">Select a group you belong to, then go to the dashboard to plan activations.</p>
-                <?php if (count($all_groups) > 0): ?>
-                    <form method="POST" id="groupForm">
-                        <select name="group_id" class="big-select" style="font-size: 1.1rem; padding: 1rem;" onchange="this.form.submit()">
-                            <option value="">Choose a group...</option>
-                            <?php foreach ($all_groups as $group): ?>
-                                <option value="<?= $group['id'] ?>" <?= ($managing_group && $managing_group['id'] == $group['id']) ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($group['name']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
+            <?php if (count($all_groups) > 0): ?>
+                <?php foreach ($all_groups as $group): ?>
+                    <form method="POST" style="margin: 0;">
+                        <input type="hidden" name="group_id" value="<?= $group['id'] ?>">
                         <input type="hidden" name="select_group" value="1">
+                        <button type="submit" class="group-list-item<?= ($managing_group_id == $group['id']) ? ' active' : '' ?>">
+                            <div style="min-width: 0;">
+                                <div class="gli-name"><?= htmlspecialchars($group['name']) ?></div>
+                                <?php
+                                    $counts = $group_counts[$group['id']] ?? null;
+                                    $total = $counts ? (int)$counts['total'] : 0;
+                                    $activated = $counts ? (int)$counts['activated_count'] : 0;
+                                ?>
+                                <div class="gli-meta"><?= $total ?> summit<?= $total !== 1 ? 's' : '' ?> · <?= $activated ?> activated</div>
+                            </div>
+                            <?php if ($managing_group_id == $group['id']): ?>
+                                <div class="gli-dot"></div>
+                            <?php endif; ?>
+                        </button>
                     </form>
-                    <?php if ($managing_group): ?>
-                        <div style="margin-top: 1.25rem;">
-                            <form method="POST">
-                                <input type="hidden" name="group_id" value="<?= $managing_group['id'] ?>">
-                                <button type="submit" name="activate_group" class="btn btn-primary" style="width: 100%; text-align: center;">
-                                    Go to Dashboard — <?= htmlspecialchars($managing_group['name']) ?> →
-                                </button>
-                            </form>
-                        </div>
-                    <?php endif; ?>
-                <?php else: ?>
-                    <p style="color: rgba(255,255,255,0.7); font-size: 0.95rem;">No groups yet — create one to get started.</p>
-                <?php endif; ?>
-            </div>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <div style="padding: 1.25rem 1rem; text-align: center; color: var(--ink-3); font-size: 0.875rem;">
+                    No groups yet
+                </div>
+            <?php endif; ?>
 
-            <!-- OR divider -->
-            <div style="display: flex; align-items: center; justify-content: center; background: #c8c4ba; padding: 0 1.25rem; min-width: 70px;">
-                <span style="font-weight: 800; font-size: 1.1rem; color: #5a5650; letter-spacing: 0.12em;">OR</span>
-            </div>
-
-            <!-- Option B: Create new -->
-            <div class="card" style="margin-bottom: 0; border-radius: 0 12px 12px 0; border-left: 3px solid #e0ddd5;">
-                <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #aaa; margin-bottom: 0.5rem;">New here?</div>
-                <h2 style="color: var(--navy); font-size: 1.4rem; margin-bottom: 0.5rem;">Create a New Group</h2>
-                <p style="color: #888; font-size: 0.82rem; margin-bottom: 1.1rem;">Give your group a name, then add your crew's callsigns so they can access it too.</p>
-                <form method="POST">
-                    <div class="form-group" style="margin-bottom: 1rem;">
-                        <label style="color: var(--navy);">Group Name</label>
-                        <input type="text" name="group_name" placeholder="e.g., KI6CR and Friends, Weekend Warriors" required>
-                        <p class="help-text">Your callsign, a group nickname, whatever works</p>
-                    </div>
-                    <div class="form-group" style="margin-bottom: 1rem;">
-                        <label style="color: var(--navy);">Preferred Units</label>
-                        <select name="units">
-                            <option value="imperial">Imperial (miles, feet)</option>
-                            <option value="metric">Metric (km, meters)</option>
-                        </select>
-                    </div>
-                    <div class="form-group" style="margin-bottom: 1.25rem;">
-                        <label style="color: var(--navy);">Your Crew's Callsigns <span style="font-weight:400; color:#999;">(optional)</span></label>
-                        <input type="text" name="member_callsigns" placeholder="e.g. K3MGM, N6ARA, W6CMY, WZ1EEE">
-                        <p class="help-text">Comma-separated. Each callsign will see this group when they log in.</p>
-                    </div>
-                    <button type="submit" name="create_group" class="btn btn-secondary" style="width: 100%;">
-                        ➕ Create Group
-                    </button>
-                </form>
+            <div style="border-top: 1px solid var(--border); margin: 0.5rem 0 0;">
+                <button
+                    class="group-list-item"
+                    style="color: var(--accent); font-size: 0.85rem; font-weight: 500;"
+                    onclick="document.getElementById('createGroupModal').classList.add('open')"
+                >
+                    <span>+ New group</span>
+                </button>
             </div>
         </div>
 
-        <!-- Manage Addresses (only show if group selected) -->
+        <!-- Detail panel -->
         <?php if ($managing_group): ?>
+        <div>
+            <!-- Group info card -->
+            <div class="card" style="margin-bottom: 1.25rem;">
+                <div class="section-head">
+                    <h2><?= htmlspecialchars($managing_group['name']) ?></h2>
+                    <form method="POST" style="margin: 0;">
+                        <input type="hidden" name="group_id" value="<?= $managing_group['id'] ?>">
+                        <button type="submit" name="activate_group" class="btn btn-accent btn-sm">Open Dashboard →</button>
+                    </form>
+                </div>
+                <div style="display: flex; gap: 2rem; flex-wrap: wrap; padding-top: 0.75rem; border-top: 1px solid var(--border);">
+                    <div>
+                        <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3); margin-bottom: 3px;">Units</div>
+                        <div style="font-size: 0.875rem; color: var(--ink); text-transform: capitalize;"><?= htmlspecialchars($managing_group['units']) ?></div>
+                    </div>
+                    <?php $counts = $group_counts[$managing_group['id']] ?? null; ?>
+                    <div>
+                        <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3); margin-bottom: 3px;">Summits</div>
+                        <div style="font-size: 0.875rem; color: var(--ink);"><?= $counts ? (int)$counts['total'] : 0 ?></div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3); margin-bottom: 3px;">Activated</div>
+                        <div style="font-size: 0.875rem; color: var(--ink);"><?= $counts ? (int)$counts['activated_count'] : 0 ?></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Addresses card -->
             <div class="card" id="addresses">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                    <h2 style="color: var(--navy); margin: 0;">
-                        Addresses for "<?= htmlspecialchars($managing_group['name']) ?>"
-                    </h2>
-                    <button onclick="document.getElementById('addressModal').style.display='flex'" class="btn btn-secondary">
-                        ➕ Add Address
-                    </button>
+                <div class="section-head">
+                    <div>
+                        <h2>Starting Addresses</h2>
+                        <p style="font-size: 0.8rem; color: var(--ink-3); margin-top: 3px;">Drive times are calculated from the current address.</p>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('addressModal').classList.add('open')">+ Add Address</button>
                 </div>
 
-                <?php if (count($addresses) > 0): ?>
-                    <ul class="address-list">
+                <?php if (count($addresses) === 0): ?>
+                    <div style="text-align: center; padding: 2rem 1rem; background: var(--bg-2); border-radius: var(--r-md); border: 1px dashed var(--border-2);">
+                        <div style="font-size: 1.5rem; margin-bottom: 0.75rem; opacity: 0.3;">📍</div>
+                        <div style="font-weight: 500; font-size: 0.9rem; margin-bottom: 0.4rem; color: var(--ink);">No addresses yet</div>
+                        <div style="font-size: 0.8rem; color: var(--ink-3); margin-bottom: 1rem; max-width: 34ch; margin-left: auto; margin-right: auto;">Add a home address, cross street, or any starting point to calculate drive times to summits.</div>
+                        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('addressModal').classList.add('open')">Add a Location</button>
+                    </div>
+                <?php else: ?>
+                    <div>
                         <?php foreach ($addresses as $addr): ?>
-                            <li class="address-item">
-                                <div class="address-info">
+                            <div class="address-row<?= ($selected_address_id && $selected_address_id == $addr['id']) ? ' is-current' : '' ?>">
+                                <div class="addr-icon<?= ($selected_address_id && $selected_address_id == $addr['id']) ? ' current' : '' ?>">
+                                    <?= ($selected_address_id && $selected_address_id == $addr['id']) ? '★' : '○' ?>
+                                </div>
+                                <div style="flex: 1; min-width: 0;">
                                     <?php if ($addr['label']): ?>
-                                        <strong><?= htmlspecialchars($addr['label']) ?></strong>
-                                    <?php endif; ?>
-                                    <span><?= htmlspecialchars($addr['address']) ?></span>
-                                    <?php if (isset($selected_address_id) && $selected_address_id == $addr['id']): ?>
-                                        <span style="display: inline-block; margin-left: 0.5rem; padding: 0.25rem 0.75rem; background: var(--trail-green); color: white; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">
-                                            ✓ Current
-                                        </span>
+                                        <div class="addr-label"><?= htmlspecialchars($addr['label']) ?></div>
+                                        <div class="addr-text"><?= htmlspecialchars($addr['address']) ?></div>
+                                    <?php else: ?>
+                                        <div class="addr-label"><?= htmlspecialchars($addr['address']) ?></div>
                                     <?php endif; ?>
                                 </div>
-                                <div style="display: flex; gap: 0.5rem;">
-                                    <?php if (!isset($selected_address_id) || $selected_address_id != $addr['id']): ?>
+                                <div class="addr-actions">
+                                    <?php if (!$selected_address_id || $selected_address_id != $addr['id']): ?>
                                         <form method="POST" style="display: inline;">
                                             <input type="hidden" name="address_id" value="<?= $addr['id'] ?>">
-                                            <button type="submit" name="set_current_address" class="btn btn-secondary" style="background: var(--teal); color: white;">
-                                                📍 Set as Current
-                                            </button>
+                                            <button type="submit" name="set_current_address" class="btn btn-secondary btn-sm">Set Current</button>
                                         </form>
+                                    <?php else: ?>
+                                        <span style="font-size: 0.72rem; color: var(--accent); font-weight: 600;">Current</span>
                                     <?php endif; ?>
                                     <form method="POST" style="display: inline;">
                                         <input type="hidden" name="address_id" value="<?= $addr['id'] ?>">
-                                        <button type="submit" name="delete_address" class="btn btn-danger" onclick="return confirm('Delete this address?')">
-                                            🗑️ Delete
-                                        </button>
+                                        <button type="submit" name="delete_address" class="btn btn-ghost btn-sm"
+                                                style="color: var(--red); border-color: oklch(85% 0.06 22);"
+                                                onclick="return confirm('Delete this address?')">Delete</button>
                                     </form>
                                 </div>
-                            </li>
+                            </div>
                         <?php endforeach; ?>
-                    </ul>
-                <?php else: ?>
-                    <div style="text-align: center; padding: 2rem; background: #f0f7f4; border-radius: 8px; border: 2px dashed #4A7C59;">
-                        <div style="font-size: 2rem; margin-bottom: 0.75rem;">📍</div>
-                        <p style="font-weight: 700; color: #2C4A3E; margin-bottom: 0.5rem;">Add your first starting location</p>
-                        <p style="color: #666; font-size: 0.9rem; margin-bottom: 1.25rem;">This can be a home address, a park-and-ride, or any place your group typically drives from. Drive times to summits will be calculated from this location.</p>
-                        <button onclick="document.getElementById('addressModal').style.display='flex'" class="btn btn-secondary">
-                            ➕ Add a Location
-                        </button>
+                        <p class="form-hint" style="margin-top: 0.75rem;">
+                            Tip: use nearby cross streets instead of your exact address for privacy.
+                        </p>
                     </div>
                 <?php endif; ?>
 
-                <p class="help-text" style="margin-top: 1.5rem;">
-                    💡 Add your home, work, or any starting location. For privacy, you can use nearby cross streets instead of your exact address. Drive times to summits will be calculated from the selected address.
-                </p>
-            </div>
-
             <!-- Group Members Card -->
-            <div class="card" style="margin-top: 1.5rem;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.5rem;">
-                    <h2 style="color: var(--navy); margin: 0;">Group Members</h2>
+            <div class="card" style="margin-top: 1.25rem;">
+                <div class="section-head">
+                    <div>
+                        <h2>Group Members</h2>
+                        <p style="font-size: 0.8rem; color: var(--ink-3); margin-top: 3px;">Members can see this group's summits and addresses when they log in.</p>
+                    </div>
                     <?php if ($is_group_owner): ?>
-                        <button onclick="document.getElementById('memberModal').style.display='flex'" class="btn btn-secondary" style="padding: 0.5rem 1.1rem; font-size: 0.88rem;">
-                            ➕ Add Member
-                        </button>
+                        <button onclick="document.getElementById('memberModal').classList.add('open')" class="btn btn-secondary btn-sm">+ Add Member</button>
                     <?php endif; ?>
                 </div>
 
                 <?php if (count($group_members) > 0): ?>
-                    <ul class="address-list">
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                         <?php foreach ($group_members as $mem): ?>
-                            <li class="address-item">
-                                <div class="address-info">
-                                    <strong><?= htmlspecialchars($mem['callsign']) ?></strong>
-                                    <span style="font-size: 0.82rem; color: #888;">
+                            <div class="address-row">
+                                <div class="addr-icon"><?= strtoupper(substr($mem['callsign'], 0, 2)) ?></div>
+                                <div style="flex: 1; min-width: 0;">
+                                    <div class="addr-label"><?= htmlspecialchars($mem['callsign']) ?></div>
+                                    <div class="addr-text">
                                         <?= $mem['role'] === 'owner' ? 'Owner' : 'Member' ?>
-                                        <?php if ($mem['invited_by']): ?>
-                                            &nbsp;·&nbsp; invited by <?= htmlspecialchars($mem['invited_by']) ?>
-                                        <?php endif; ?>
-                                    </span>
+                                        <?php if ($mem['invited_by']): ?> · invited by <?= htmlspecialchars($mem['invited_by']) ?><?php endif; ?>
+                                    </div>
                                 </div>
                                 <?php if ($is_group_owner && $mem['role'] !== 'owner'): ?>
                                     <form method="POST" style="display: inline;">
                                         <input type="hidden" name="remove_callsign" value="<?= htmlspecialchars($mem['callsign']) ?>">
-                                        <button type="submit" name="remove_member" class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="return confirm('Remove <?= htmlspecialchars($mem['callsign']) ?> from the group?')">
-                                            Remove
-                                        </button>
+                                        <button type="submit" name="remove_member" class="btn btn-ghost btn-sm"
+                                                style="color: var(--red); border-color: oklch(85% 0.06 22);"
+                                                onclick="return confirm('Remove <?= htmlspecialchars($mem['callsign']) ?> from the group?')">Remove</button>
                                     </form>
                                 <?php endif; ?>
-                            </li>
+                            </div>
                         <?php endforeach; ?>
-                    </ul>
+                    </div>
                 <?php else: ?>
-                    <p style="color: #888; font-size: 0.9rem;">No members yet. Add callsigns to share this group.</p>
+                    <p class="form-hint">No members yet. Add callsigns to share this group.</p>
                 <?php endif; ?>
-
-                <p class="help-text" style="margin-top: 1rem;">
-                    Members can see this group's summits and addresses when they log in with their callsign.
-                </p>
             </div>
         <?php endif; ?>
-
-        <!-- Add Member Modal -->
-        <div id="memberModal" class="modal">
-            <div class="modal-content" style="max-width: 440px;">
-                <button class="modal-close" onclick="document.getElementById('memberModal').style.display='none'">×</button>
-                <h2 style="color: var(--navy); margin-bottom: 1.25rem;">Add Group Member</h2>
-                <form method="POST">
-                    <div class="form-group">
-                        <label>Callsign(s)</label>
-                        <input type="text" name="new_member_callsign" placeholder="e.g. K3MGM, N6ARA, W6CMY, WZ1EEE" autocapitalize="characters" required>
-                        <p class="help-text">Separate multiple callsigns with commas. Each person will see this group when they log in.</p>
-                    </div>
-                    <div style="display: flex; gap: 1rem;">
-                        <button type="submit" name="add_member" class="btn btn-secondary">Add Member</button>
-                        <button type="button" onclick="document.getElementById('memberModal').style.display='none'" class="btn" style="background: #ddd; color: #666;">Cancel</button>
-                    </div>
-                </form>
             </div>
         </div>
 
-        <!-- Add Address Modal -->
-        <div id="addressModal" class="modal">
-            <div class="modal-content">
-                <button class="modal-close" onclick="document.getElementById('addressModal').style.display='none'">×</button>
-                <h2 style="color: var(--navy); margin-bottom: 1.5rem;">Add Address</h2>
-                
-                <form method="POST">
-                    <div class="form-group">
-                        <label>Label (optional):</label>
-                        <input type="text" name="label" placeholder="e.g., Home, Work, Cabin">
-                        <p class="help-text">Give this address a friendly name</p>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Address:</label>
-                        <input type="text" name="address" placeholder="123 Main St, City, CA 12345" required>
-                        <p class="help-text">Enter a city, cross streets, or full address that Google Maps can find</p>
-                    </div>
-
-                    <div style="display: flex; gap: 1rem;">
-                        <button type="submit" name="add_address" class="btn btn-secondary">
-                            ➕ Add Address
-                        </button>
-                        <button type="button" onclick="document.getElementById('addressModal').style.display='none'" class="btn" style="background: #ddd; color: #666;">
-                            Cancel
-                        </button>
-                    </div>
-                </form>
+        <?php else: ?>
+        <!-- No group selected -->
+        <div class="card" style="text-align: center; padding: 3rem 2rem; color: var(--ink-3);">
+            <div style="font-size: 1.5rem; margin-bottom: 0.75rem; opacity: 0.25;">⛰</div>
+            <div style="font-weight: 500; font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--ink);">
+                <?= count($all_groups) > 0 ? 'Select a group from the list' : 'Create your first group to get started' ?>
             </div>
+            <p style="font-size: 0.85rem; max-width: 36ch; margin: 0 auto 1.25rem;">
+                A planning group holds your summit wishlist, addresses, and drive-time calculations.
+            </p>
+            <?php if (count($all_groups) === 0): ?>
+                <button class="btn btn-primary" onclick="document.getElementById('createGroupModal').classList.add('open')">Create a Group</button>
+            <?php endif; ?>
         </div>
+        <?php endif; ?>
+
+    </div><!-- .groups-grid -->
+</div><!-- .page -->
+
+<footer class="footer">
+    SOTA Planner &nbsp;·&nbsp; <a href="changelog.php">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com">sotaplanner.com</a>
+</footer>
+
+<!-- Create Group Modal -->
+<div id="createGroupModal" class="modal-overlay" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box">
+        <button class="modal-close" onclick="document.getElementById('createGroupModal').classList.remove('open')">×</button>
+        <div class="modal-title">Create Planning Group</div>
+        <form method="POST">
+            <div class="form-group">
+                <label class="form-label">Group Name</label>
+                <input type="text" name="group_name" class="form-input" placeholder="e.g., KI6CR & Friends, Weekend Warriors" required autofocus>
+                <div class="form-hint">Name it after your crew or callsign</div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Preferred Units</label>
+                <select name="units" class="form-select">
+                    <option value="imperial">Imperial (miles, feet)</option>
+                    <option value="metric">Metric (km, meters)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Crew Callsigns <span style="font-weight:400; color:var(--ink-4);">(optional)</span></label>
+                <input type="text" name="member_callsigns" class="form-input" placeholder="e.g. K3MGM, N6ARA, W6CMY">
+                <div class="form-hint">Comma-separated. Each callsign will see this group when they log in.</div>
+            </div>
+            <div style="display: flex; gap: 0.75rem;">
+                <button type="submit" name="create_group" class="btn btn-primary" style="flex: 1;">Create Group</button>
+                <button type="button" class="btn btn-ghost" onclick="document.getElementById('createGroupModal').classList.remove('open')">Cancel</button>
+            </div>
+        </form>
     </div>
+</div>
+
+<!-- Add Member Modal -->
+<div id="memberModal" class="modal-overlay" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box">
+        <button class="modal-close" onclick="document.getElementById('memberModal').classList.remove('open')">×</button>
+        <div class="modal-title">Add Group Member</div>
+        <?php if ($managing_group): ?>
+            <p class="modal-subtitle">For <strong><?= htmlspecialchars($managing_group['name']) ?></strong></p>
+        <?php endif; ?>
+        <form method="POST">
+            <div class="form-group">
+                <label class="form-label">Callsign(s)</label>
+                <input type="text" name="new_member_callsign" class="form-input" placeholder="e.g. K3MGM, N6ARA, W6CMY" autocapitalize="characters" required>
+                <div class="form-hint">Separate multiple callsigns with commas. Each person will see this group when they log in.</div>
+            </div>
+            <div style="display: flex; gap: 0.75rem;">
+                <button type="submit" name="add_member" class="btn btn-primary" style="flex: 1;">Add Member</button>
+                <button type="button" class="btn btn-ghost" onclick="document.getElementById('memberModal').classList.remove('open')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Add Address Modal -->
+<div id="addressModal" class="modal-overlay" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box">
+        <button class="modal-close" onclick="document.getElementById('addressModal').classList.remove('open')">×</button>
+        <div class="modal-title">Add Address</div>
+        <?php if ($managing_group): ?>
+            <p class="modal-subtitle">For <strong><?= htmlspecialchars($managing_group['name']) ?></strong></p>
+        <?php endif; ?>
+        <form method="POST">
+            <div class="form-group">
+                <label class="form-label">Label (optional)</label>
+                <input type="text" name="label" class="form-input" placeholder="e.g., Home, Work, Cabin">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Address</label>
+                <input type="text" name="address" class="form-input" placeholder="123 Main St, City, CA 12345" required>
+                <div class="form-hint">Enter a city, cross streets, or full address that Google Maps can find.</div>
+            </div>
+            <div style="display: flex; gap: 0.75rem;">
+                <button type="submit" name="add_address" class="btn btn-primary" style="flex: 1;">Add Address</button>
+                <button type="button" class="btn btn-ghost" onclick="document.getElementById('addressModal').classList.remove('open')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <?php if (!empty($scroll_to_addresses) && $managing_group): ?>
 <script>
     window.addEventListener('load', function() {
@@ -714,8 +898,14 @@ $is_first_visit = !$managing_group_id;
     });
 </script>
 <?php endif; ?>
-<footer style="text-align:center; padding:2rem 1rem 1.5rem; color:#aaa; font-size:0.78rem;">
-    SOTA Planner &nbsp;·&nbsp; <a href="changelog.php" style="color:#aaa; text-decoration:none;">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com" style="color:#aaa; text-decoration:none;">sotaplanner.com</a>
-</footer>
+
+<?php if ($is_first_visit && count($all_groups) === 0): ?>
+<script>
+    window.addEventListener('load', function() {
+        document.getElementById('createGroupModal').classList.add('open');
+    });
+</script>
+<?php endif; ?>
+
 </body>
 </html>

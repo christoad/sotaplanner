@@ -8,7 +8,7 @@
     <style>
         :root {
             --navy: #1E3A5F;
-            --teal: #4A90A4;
+            --teal: #9B6328;
             --gold: #E6B84A;
             --snow: #F5F5F0;
         }

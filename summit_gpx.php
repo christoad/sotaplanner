@@ -138,7 +138,7 @@ $gpx_data = $stmt->fetch();
     <style>
         :root {
             --navy: #1E3A5F;
-            --teal: #4A90A4;
+            --teal: #9B6328;
             --gold: #E6B84A;
             --snow: #F5F5F0;
             --peak-brown: #5D4E37;
@@ -449,7 +449,7 @@ $gpx_data = $stmt->fetch();
                     
                     // Draw track
                     L.polyline(coords, {
-                        color: '#4A90A4',
+                        color: '#9B6328',
                         weight: 3,
                         opacity: 0.8
                     }).addTo(map);
