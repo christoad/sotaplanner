@@ -46,12 +46,14 @@
             <span class="version-date">May 2026</span>
             <span class="version-badge">Current</span>
         </div>
-        <p class="version-desc">Visual redesign — Alpine Precision design system across all pages.</p>
+        <p class="version-desc">Visual redesign — Alpine Precision design system across all pages. Minor content updates.</p>
         <ul>
             <li><span class="tag tag-improve">Improve</span> Dashboard and all major pages redesigned with Alpine Precision design system: warm off-white background, DM Sans typography, clean borders and subtle shadows</li>
             <li><span class="tag tag-improve">Improve</span> Planning Groups page rebuilt with sidebar group list and detail panel layout replacing the old two-path form</li>
             <li><span class="tag tag-improve">Improve</span> Replaced teal accent color with warm amber throughout all pages and map polylines</li>
             <li><span class="tag tag-fix">Fix</span> Selected address ID now correctly read from app_settings on the Planning Groups page</li>
+            <li><span class="tag tag-improve">Improve</span> Updated login page tagline to better describe the app's value for activators and teams</li>
+            <li><span class="tag tag-fix">Fix</span> Corrected author name to Christopher Reddick on the About page</li>
         </ul>
     </div>
 

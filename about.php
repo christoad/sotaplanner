@@ -170,7 +170,7 @@
 
             <h2>Who Built This?</h2>
             <p>
-                SOTA Planner was created by <strong>Chris Reddick, KI6CR</strong>, a casual SOTA activator and occasional chaser who wanted a better way to plan time sensitive activation trips.
+                SOTA Planner was created by <strong>Christopher Reddick, KI6CR</strong>, a casual SOTA activator and occasional chaser who wanted a better way to plan time sensitive activation trips.
             </p>
 
             <p>
@@ -193,7 +193,7 @@
 
             <div class="footer">
                 <p>
-                    <strong>SOTA Planner</strong> &copy; <?= date('Y') ?> Chris Reddick, KI6CR<br>
+                    <strong>SOTA Planner</strong> &copy; <?= date('Y') ?> Christopher Reddick, KI6CR<br>
                     Created for the SOTA community with 73s
                 </p>
             </div>
