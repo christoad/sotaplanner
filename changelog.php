@@ -39,12 +39,25 @@
 <div class="container">
     <a href="index.php" class="back">← Back to Planner</a>
 
-    <!-- v1.0.4 -->
+    <!-- v1.0.5 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.0.5</span>
+            <span class="version-date">May 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Minor content updates.</p>
+        <ul>
+            <li><span class="tag tag-improve">Improve</span> Updated login page tagline to better describe the app's value for activators and teams</li>
+            <li><span class="tag tag-fix">Fix</span> Corrected author name to Christopher Reddick on the About page</li>
+        </ul>
+    </div>
+
+    <!-- v1.0.4 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.0.4</span>
             <span class="version-date">April 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">User authentication and planning group privacy. Users now log in with their callsign — groups are private to their owner and invited members.</p>
         <ul>

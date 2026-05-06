@@ -364,7 +364,7 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
         <img src="logo.png" alt="SOTA Planner">
     </div>
     <h1>SOTA Planner</h1>
-    <p class="tagline">Door-to-door activation planning for Summits on the Air — built for activators who want to know the full picture before they leave the driveway.</p>
+    <p class="tagline">Doorstep-to-doorstep planning for busy activators and collaborative teams — understand the full time commitment to getting that summit in your logbook.</p>
 </div>
 
 <!-- Feature highlights -->
