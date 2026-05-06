@@ -12,7 +12,7 @@
         .header h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 0.3rem; }
         .header p { opacity: 0.75; font-size: 0.9rem; }
         .container { max-width: 760px; margin: 2rem auto; padding: 0 1rem 4rem; }
-        .version-block { background: white; border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 1px 4px rgba(0,0,0,0.07); border-left: 5px solid #4A90A4; }
+        .version-block { background: white; border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 1px 4px rgba(0,0,0,0.07); border-left: 5px solid #9B6328; }
         .version-block.current { border-left-color: #2e7d32; }
         .version-header { display: flex; align-items: baseline; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
         .version-number { font-size: 1.15rem; font-weight: 800; color: #1E3A5F; }
@@ -25,7 +25,7 @@
         .tag-new { background: #e8f5e9; color: #2e7d32; }
         .tag-fix { background: #fff3e0; color: #e65100; }
         .tag-improve { background: #e3f2fd; color: #1565c0; }
-        .back { display: inline-block; margin-bottom: 1.5rem; color: #4A90A4; font-size: 0.88rem; text-decoration: none; font-weight: 600; }
+        .back { display: inline-block; margin-bottom: 1.5rem; color: #9B6328; font-size: 0.88rem; text-decoration: none; font-weight: 600; }
         .back:hover { text-decoration: underline; }
     </style>
 </head>
@@ -39,8 +39,24 @@
 <div class="container">
     <a href="index.php" class="back">← Back to Planner</a>
 
-    <!-- v1.0.3 -->
+    <!-- v1.0.5 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.0.5</span>
+            <span class="version-date">May 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Visual redesign — Alpine Precision design system across all pages.</p>
+        <ul>
+            <li><span class="tag tag-improve">Improve</span> Dashboard and all major pages redesigned with Alpine Precision design system: warm off-white background, DM Sans typography, clean borders and subtle shadows</li>
+            <li><span class="tag tag-improve">Improve</span> Planning Groups page rebuilt with sidebar group list and detail panel layout replacing the old two-path form</li>
+            <li><span class="tag tag-improve">Improve</span> Replaced teal accent color with warm amber throughout all pages and map polylines</li>
+            <li><span class="tag tag-fix">Fix</span> Selected address ID now correctly read from app_settings on the Planning Groups page</li>
+        </ul>
+    </div>
+
+    <!-- v1.0.3 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.0.3</span>
             <span class="version-date">April 2026</span>

@@ -615,12 +615,15 @@ $directions_lng = $summit['trailhead_lng'] ?? $summit['longitude'];
 
 // --- Timeline Gantt data ---
 $tl_drive_one = $summit['drive_time_min'] ? intval(round($summit['drive_time_min'] / 2)) : 0;
-if ($summit['hike_time_up_min'] && $summit['hike_time_down_min']) {
-    $tl_hike_up   = $summit['hike_time_up_min'];
-    $tl_hike_down = $summit['hike_time_down_min'];
-} elseif ($hike_time_total) {
+if ($hike_time_total) {
+    // Always use the live $hike_time_total (GPS or Naismith) so the Gantt
+    // matches the stats shown above it and is never stale.
     $tl_hike_up   = intval(round($hike_time_total * 0.6));
     $tl_hike_down = $hike_time_total - $tl_hike_up;
+} elseif ($summit['hike_time_up_min'] && $summit['hike_time_down_min']) {
+    // Fallback: pre-stored leg times (only reached if no distance/elevation data at all)
+    $tl_hike_up   = $summit['hike_time_up_min'];
+    $tl_hike_down = $summit['hike_time_down_min'];
 } else {
     $tl_hike_up = $tl_hike_down = 0;
 }
@@ -653,2103 +656,1236 @@ if ($tl_show) {
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= htmlspecialchars($summit['name']) ?> - SOTA Planner</title>
-    <link href="https://fonts.googleapis.com/css2?family=Overpass:wght@300;600;800&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --navy: #1E3A5F;
-            --teal: #4A90A4;
-            --light-blue: #5BA4B8;
-            --gold: #E6B84A;
-            --tan: #D4A574;
-            --snow: #F5F5F0;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Overpass', sans-serif;
-            background: linear-gradient(135deg, var(--snow) 0%, #E8E4D8 100%);
-            color: var(--navy);
-            padding: 1.5rem;
-        }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-
-        .header-bar {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .logo {
-            height: 50px;
-        }
-
-        .back-link {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            color: white;
-            background: var(--teal);
-            border: 2px solid var(--teal);
-            text-decoration: none;
-            font-weight: 700;
-            font-size: 0.95rem;
-            padding: 0.55rem 1.2rem;
-            border-radius: 8px;
-            transition: opacity 0.2s;
-        }
-        .back-link:hover { opacity: 0.85; }
-
-        .summit-header {
-            background: linear-gradient(135deg, var(--navy) 0%, var(--teal) 100%);
-            color: white;
-            padding: 2rem;
-            border-radius: 12px;
-            margin-bottom: 1.5rem;
-        }
-
-        .summit-header h1 {
-            font-size: 2rem;
-            font-weight: 800;
-            margin-bottom: 0.5rem;
-        }
-
-        .summit-ref {
-            font-size: 1.1rem;
-            opacity: 0.9;
-        }
-        
-        .quick-link {
-            display: inline-block;
-            padding: 0.6rem 1.1rem;
-            background: rgba(255, 255, 255, 0.25);
-            color: white;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 0.9rem;
-            transition: all 0.3s ease;
-            white-space: nowrap;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-        
-        .quick-link:hover {
-            background: rgba(255, 255, 255, 0.35);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-        }
-
-        .message {
-            padding: 1rem;
-            border-radius: 8px;
-            margin-bottom: 1.5rem;
-            font-weight: 600;
-        }
-
-        .message.success {
-            background: #E6F4EA;
-            color: #1E7E34;
-        }
-
-        .message.error {
-            background: #FDECEA;
-            color: #C62828;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-            gap: 0.5rem;
-            margin-bottom: 0.75rem;
-        }
-
-        .stat-card {
-            background: white;
-            padding: 0.55rem 0.8rem;
-            border-radius: 8px;
-            border-left: 3px solid var(--teal);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        }
-
-        .stat-label {
-            font-size: 0.68rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: #888;
-            margin-bottom: 0.15rem;
-            font-weight: 600;
-            line-height: 1.3;
-        }
-
-        .stat-value {
-            font-size: 1.15rem;
-            font-weight: 800;
-            color: var(--navy);
-            line-height: 1.2;
-        }
-
-        .card {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .card h2 {
-            color: var(--navy);
-            margin-bottom: 1rem;
-            font-size: 1.3rem;
-        }
-
-        .form-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem 1.5rem;
-        }
-
-        .form-grid .full-width {
-            grid-column: 1 / -1;
-        }
-
-        .form-row {
-            display: flex;
-            flex-direction: column;
-            gap: 0.65rem;
-        }
-
-        .form-group {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .form-group.compact select {
-            width: auto;
-        }
-
-        .form-group.compact input[type="number"] {
-            width: 100px;
-        }
-
-        label {
-            display: block;
-            font-weight: 600;
-            margin-bottom: 0.4rem;
-            color: var(--navy);
-            text-transform: uppercase;
-            font-size: 0.75rem;
-            letter-spacing: 0.05em;
-        }
-
-        input[type="text"],
-        input[type="number"],
-        input[type="date"],
-        select,
-        textarea {
-            width: 100%;
-            padding: 0.6rem;
-            border: 2px solid var(--tan);
-            border-radius: 6px;
-            font-family: 'Overpass', sans-serif;
-            font-size: 0.95rem;
-        }
-
-        input:focus,
-        select:focus,
-        textarea:focus {
-            outline: none;
-            border-color: var(--teal);
-        }
-
-        textarea {
-            resize: vertical;
-            min-height: 80px;
-        }
-
-        .btn {
-            padding: 0.7rem 1.5rem;
-            background: linear-gradient(135deg, var(--teal) 0%, var(--navy) 100%);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-            text-transform: uppercase;
-            font-size: 0.85rem;
-            letter-spacing: 0.05em;
-            transition: all 0.3s;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-        }
-
-        .btn-small {
-            padding: 0.5rem 1rem;
-            font-size: 0.75rem;
-        }
-
-        .trail-search-btn {
-            display: inline-block;
-            padding: 0.25rem 0.65rem;
-            background: #f0f0f0;
-            color: #333;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            font-size: 0.78rem;
-            font-weight: 600;
-            text-decoration: none;
-            transition: background 0.15s;
-        }
-        .trail-search-btn:hover {
-            background: var(--teal);
-            color: white;
-            border-color: var(--teal);
-        }
-
-        .btn-secondary {
-            background: linear-gradient(135deg, var(--gold) 0%, var(--tan) 100%);
-            color: var(--navy);
-        }
-
-        .btn-danger {
-            background: linear-gradient(135deg, #C62828 0%, #8E0000 100%);
-        }
-
-        .geocode-box {
-            background: #E8F4F8;
-            padding: 1.25rem;
-            border-radius: 8px;
-            border: 2px solid var(--teal);
-        }
-
-        .note-item {
-            background: var(--snow);
-            padding: 1rem;
-            border-radius: 6px;
-            margin-bottom: 1rem;
-            border-left: 3px solid var(--gold);
-        }
-
-        .note-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 0.5rem;
-        }
-
-        .note-meta {
-            font-size: 0.8rem;
-            color: #666;
-            font-weight: 600;
-        }
-
-        .links-list {
-            list-style: none;
-        }
-
-        .links-list li {
-            margin-bottom: 0.75rem;
-        }
-
-        .links-list a {
-            color: var(--teal);
-            text-decoration: none;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        /* ===========================
-           MOBILE RESPONSIVE STYLES
-           =========================== */
-        
-        @media (max-width: 768px) {
-            body {
-                padding: 1rem;
-            }
-
-            .container {
-                padding: 0;
-            }
-
-            header {
-                flex-direction: column;
-                padding: 1rem;
-                gap: 1rem;
-            }
-
-            header img {
-                height: 60px;
-            }
-
-            h1 {
-                font-size: 1.75rem;
-            }
-
-            h2 {
-                font-size: 1.3rem;
-            }
-
-            .form-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .form-group.compact input[type="number"] {
-                width: 100%;
-            }
-            
-            .stats-grid {
-                grid-template-columns: repeat(2, 1fr);
-                gap: 0.75rem;
-            }
-
-            .stat-card {
-                padding: 0.75rem;
-            }
-
-            .stat-value {
-                font-size: 1.5rem;
-            }
-
-            .stat-label {
-                font-size: 0.7rem;
-            }
-
-            .card {
-                padding: 1.5rem;
-                margin-bottom: 1rem;
-            }
-
-            .form-group {
-                margin-bottom: 1.25rem;
-            }
-
-            input[type="text"],
-            input[type="number"],
-            input[type="date"],
-            select,
-            textarea {
-                width: 100%;
-                font-size: 1rem;
-            }
-
-            .btn {
-                width: 100%;
-                padding: 0.9rem 1rem;
-                font-size: 0.9rem;
-                margin-bottom: 0.5rem;
-            }
-
-            /* Geocode row: keep input+button side-by-side (don't let .btn go full-width here) */
-            .geocode-row .btn { width: auto !important; flex-shrink: 0; }
-
-            /* Trailhead coordinates grid */
-            .form-group.full-width > div {
-                grid-template-columns: 1fr !important;
-                gap: 0.75rem !important;
-            }
-
-            /* Activation history table */
-            table {
-                font-size: 0.85rem;
-                display: block;
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
-            }
-
-            th, td {
-                padding: 0.6rem 0.4rem;
-                white-space: nowrap;
-            }
-
-            /* Links grid */
-            .links-grid {
-                grid-template-columns: 1fr;
-            }
-
-            /* Map buttons */
-            .map-buttons {
-                flex-direction: column;
-            }
-
-            .map-buttons .btn {
-                width: 100%;
-            }
-
-            .back-link {
-                font-size: 0.9rem;
-                margin-bottom: 1rem;
-            }
-
-            /* ── Timeline Gantt: strip bar labels, convert milestones to vertical list ── */
-            .tl-gantt-bar { height: 32px; }
-            .tl-seg .seg-label { display: none; }
-            .tl-seg .seg-time  { display: none; }
-            .tl-milestones-wrap {
-                position: static;
-                height: auto;
-                margin-top: 0.6rem;
-                display: flex;
-                flex-direction: column;
-                gap: 0.35rem;
-                padding: 0.55rem 0.75rem;
-                background: #f8f9fa;
-                border-radius: 8px;
-            }
-            .tl-milestone {
-                position: static !important;
-                transform: none !important;
-                flex-direction: row;
-                gap: 0.5rem;
-                align-items: center;
-            }
-            .tl-milestone-dot { margin-bottom: 0; flex-shrink: 0; }
-            .tl-milestone-dur { font-size: 0.82rem; white-space: nowrap; min-width: 52px; }
-            .tl-milestone-lbl { font-size: 0.75rem; white-space: nowrap; }
-
-            /* ── Planned activations: stack 3-col grids, keep action buttons inline ── */
-            .pa-grid-3 { grid-template-columns: 1fr !important; }
-            .pa-actions .btn    { width: auto !important; flex-shrink: 0; }
-            .pa-form-btns .btn  { width: auto !important; }
-        }
-
-        /* Extra small screens */
-        @media (max-width: 375px) {
-            body {
-                padding: 0.5rem;
-            }
-
-            header {
-                padding: 0.75rem;
-            }
-
-            h1 {
-                font-size: 1.5rem;
-            }
-
-            h2 {
-                font-size: 1.15rem;
-            }
-
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .card {
-                padding: 1rem;
-            }
-
-            .btn {
-                padding: 0.8rem;
-                font-size: 0.85rem;
-            }
-
-            .stat-value {
-                font-size: 1.25rem;
-            }
-        }
-
-        /* ── Timeline Gantt ── */
-        .timeline-toggle {
-            background: none; border: 1px solid #ccc; color: #4A90A4;
-            border-radius: 6px; padding: 0.4rem 0.9rem; font-size: 0.8rem;
-            font-weight: 700; cursor: pointer;
-            transition: all 0.2s;
-        }
-        .timeline-toggle:hover { background: #f0f7fa; border-color: #4A90A4; }
-        .timeline-section { margin-top: 0.75rem; }
-        .tl-gantt-bar {
-            display: flex; border-radius: 8px; overflow: hidden;
-            height: 48px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        .tl-seg {
-            display: flex; flex-direction: column; align-items: center;
-            justify-content: center; overflow: hidden; padding: 0 4px; transition: flex 0.3s;
-        }
-        .tl-seg .seg-label { font-size: 0.68rem; font-weight: 700; text-align: center; line-height: 1.2; white-space: nowrap; color: white; }
-        .tl-seg .seg-time  { font-size: 0.62rem; opacity: 0.85; margin-top: 2px; white-space: nowrap; color: white; }
-        .tl-drive     { background: #8D6E63; }
-        .tl-hike-up   { background: #43A047; }
-        .tl-radio     { background: var(--navy); }
-        .tl-hike-down { background: #66BB6A; }
-        .tl-drive-back{ background: #8D6E63; }
-        .tl-milestones-wrap { position: relative; height: 52px; margin-top: 0.25rem; }
-        .tl-milestone {
-            position: absolute; display: flex; flex-direction: column;
-            align-items: center; transform: translateX(-50%);
-        }
-        .tl-milestone-dot { width: 7px; height: 7px; background: var(--navy); border-radius: 50%; margin-bottom: 3px; }
-        .tl-milestone-dur  { font-weight: 700; color: var(--navy); font-size: 0.72rem; white-space: nowrap; }
-        .tl-milestone-lbl  { color: #777; font-size: 0.65rem; text-align: center; white-space: nowrap; }
-        .tl-legend {
-            display: flex; flex-wrap: wrap; gap: 0.5rem 1rem;
-            margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid #eee; font-size: 0.78rem;
-        }
-        .tl-legend-item { display: flex; align-items: center; gap: 0.35rem; }
-        .tl-legend-dot  { width: 11px; height: 11px; border-radius: 3px; flex-shrink: 0; }
-    </style>
-    <!-- Leaflet.js for GPS maps -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><?= htmlspecialchars($summit['name']) ?> — SOTAplanner</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    :root {
+      --bg:         #F7F6F3;
+      --bg-2:       #EFEDE8;
+      --bg-3:       #E5E2DA;
+      --ink:        #1C1B19;
+      --ink-2:      #4A4844;
+      --ink-3:      #8C8A86;
+      --ink-4:      #B8B5B0;
+      --accent:        oklch(52% 0.13 50);
+      --accent-2:      oklch(44% 0.13 50);
+      --accent-bg:     oklch(96% 0.04 65);
+      --accent-border: oklch(84% 0.08 65);
+      --green:      #2D8653;
+      --green-bg:   #EBF5EF;
+      --orange:     #C07020;
+      --orange-bg:  #FDF3E7;
+      --red:        #C03030;
+      --red-bg:     #FBE9E9;
+      --blue:       #2B5CA0;
+      --blue-bg:    #E8EFF9;
+      --gray-badge: #6B7280;
+      --gray-bg:    #F3F4F6;
+      --surface:    #FFFFFF;
+      --border:     #E5E2DA;
+      --border-2:   #D4D0C8;
+      --font-sans:  'DM Sans', system-ui, sans-serif;
+      --font-mono:  'DM Mono', 'Courier New', monospace;
+      --r-sm: 4px; --r-md: 8px; --r-lg: 12px; --r-xl: 16px;
+      --shadow-sm: 0 1px 3px rgba(28,27,25,0.07), 0 1px 2px rgba(28,27,25,0.05);
+      --shadow-md: 0 4px 12px rgba(28,27,25,0.08), 0 2px 4px rgba(28,27,25,0.05);
+      --shadow-lg: 0 8px 24px rgba(28,27,25,0.10), 0 4px 8px rgba(28,27,25,0.06);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+    body { font-family: var(--font-sans); background: var(--bg); color: var(--ink); line-height: 1.5; min-height: 100vh; }
+    h1,h2,h3,h4,h5 { font-family: var(--font-sans); font-weight: 600; line-height: 1.2; }
+    p { line-height: 1.65; color: var(--ink-2); }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Topbar */
+    .topbar { background: var(--surface); border-bottom: 1px solid var(--border); height: 56px; display: flex; align-items: center; padding: 0 2rem; gap: 1.5rem; position: sticky; top: 0; z-index: 100; }
+    .topbar-logo { display: flex; align-items: center; gap: 0.75rem; text-decoration: none; color: var(--ink); font-weight: 600; font-size: 0.95rem; letter-spacing: -0.01em; flex-shrink: 0; }
+    .topbar-logo:hover { text-decoration: none; color: var(--ink); }
+    .logo-mark { width: 28px; height: 28px; background: var(--ink); border-radius: var(--r-sm); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .topbar-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+    .topbar-nav { display: flex; align-items: center; gap: 0.25rem; flex: 1; }
+    .topbar-nav a { color: var(--ink-3); font-size: 0.875rem; font-weight: 500; padding: 0.5rem 0.75rem; border-radius: var(--r-sm); transition: color 0.15s, background 0.15s; text-decoration: none; white-space: nowrap; }
+    .topbar-nav a:hover { color: var(--ink); background: var(--bg-2); text-decoration: none; }
+    .topbar-nav a.active { color: var(--ink); background: var(--bg-2); }
+    .topbar-right { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; }
+
+    /* Page */
+    .page { padding: 2rem; max-width: 1400px; margin: 0 auto; }
+
+    /* Buttons */
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0 1rem; height: 36px; border-radius: var(--r-md); font-family: var(--font-sans); font-size: 0.875rem; font-weight: 500; cursor: pointer; border: none; transition: background 0.15s, box-shadow 0.15s, transform 0.1s; text-decoration: none; white-space: nowrap; line-height: 1; }
+    .btn:hover { text-decoration: none; }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary { background: var(--ink); color: #fff; }
+    .btn-primary:hover { background: var(--ink-2); color: #fff; }
+    .btn-accent { background: var(--accent); color: #fff; }
+    .btn-accent:hover { background: var(--accent-2); color: #fff; }
+    .btn-secondary { background: var(--bg-2); color: var(--ink); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--bg-3); color: var(--ink); }
+    .btn-ghost { background: transparent; color: var(--ink-2); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: var(--bg-2); color: var(--ink); }
+    .btn-danger { background: var(--red-bg); color: var(--red); border: 1px solid #e8baba; }
+    .btn-danger:hover { background: #f5d5d5; }
+    .btn-sm { height: 30px; padding: 0 0.75rem; font-size: 0.8rem; }
+    .btn-lg { height: 44px; padding: 0 1.5rem; font-size: 1rem; }
+    .btn-full { width: 100%; }
+
+    /* Forms */
+    .form-group { margin-bottom: 1.25rem; }
+    .form-label { display: block; font-size: 0.8rem; font-weight: 500; color: var(--ink-2); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    .form-input, .form-select, .form-textarea { display: block; width: 100%; padding: 0.625rem 0.875rem; background: var(--surface); border: 1px solid var(--border-2); border-radius: var(--r-md); font-family: var(--font-sans); font-size: 0.9rem; color: var(--ink); transition: border-color 0.15s, box-shadow 0.15s; outline: none; -webkit-appearance: none; }
+    .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(43,142,142,0.15); }
+    .form-input::placeholder { color: var(--ink-4); }
+    .form-hint { font-size: 0.78rem; color: var(--ink-3); margin-top: 0.4rem; line-height: 1.5; }
+    .form-select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238C8A86' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 2rem; cursor: pointer; }
+
+    /* Cards */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 1.5rem; box-shadow: var(--shadow-sm); }
+
+    /* Badges */
+    .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 100px; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
+    .badge-easy     { background: var(--green-bg); color: var(--green); }
+    .badge-moderate { background: var(--orange-bg); color: var(--orange); }
+    .badge-hard     { background: var(--red-bg); color: var(--red); }
+    .badge-drive-up { background: var(--blue-bg); color: var(--blue); }
+    .badge-nominated  { background: var(--blue-bg); color: var(--blue); }
+    .badge-researched { background: var(--orange-bg); color: var(--orange); }
+    .badge-ready      { background: var(--green-bg); color: var(--green); }
+    .badge-activated  { background: var(--gray-bg); color: var(--gray-badge); }
+
+    /* Messages */
+    .msg { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 1rem; border-radius: var(--r-md); font-size: 0.875rem; font-weight: 500; margin-bottom: 1rem; }
+    .msg-success { background: var(--green-bg); color: var(--green); border: 1px solid #b8d9c9; }
+    .msg-error   { background: var(--red-bg);   color: var(--red);   border: 1px solid #e8baba; }
+    .msg-info    { background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent-border); }
+    .msg-dismiss { background: none; border: none; cursor: pointer; color: inherit; opacity: 0.5; font-size: 1.1rem; padding: 0; line-height: 1; flex-shrink: 0; }
+    .msg-dismiss:hover { opacity: 1; }
+
+    /* Footer */
+    .footer { text-align: center; padding: 2rem 1rem 1.5rem; color: var(--ink-4); font-size: 0.78rem; border-top: 1px solid var(--border); margin-top: 3rem; }
+    .footer a { color: var(--ink-3); }
+    .footer a:hover { color: var(--ink); }
+
+    /* Modal */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(28,27,25,0.5); z-index: 200; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
+    .modal-overlay.open { display: flex; }
+    .modal-box { background: var(--surface); border-radius: var(--r-xl); padding: 2rem; max-width: 520px; width: 92%; position: relative; box-shadow: var(--shadow-lg); max-height: 90vh; overflow-y: auto; }
+    .modal-close { position: absolute; top: 1rem; right: 1rem; background: none; border: none; font-size: 1.25rem; cursor: pointer; color: var(--ink-3); line-height: 1; padding: 0.25rem; border-radius: var(--r-sm); transition: background 0.1s, color 0.1s; }
+    .modal-close:hover { background: var(--bg-2); color: var(--ink); }
+
+    /* Page header */
+    .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
+    .page-title { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); }
+    .page-subtitle { font-size: 0.875rem; color: var(--ink-3); margin-top: 0.25rem; }
+
+    /* Status pipeline */
+    .status-pipeline { display: flex; margin-bottom: 1.25rem; }
+    .pipeline-step { flex: 1; text-align: center; padding: 0.75rem 0.5rem; background: var(--surface); border: 1px solid var(--border); border-right: none; cursor: pointer; transition: background 0.1s; font: inherit; }
+    .pipeline-step:first-child { border-radius: var(--r-md) 0 0 var(--r-md); }
+    .pipeline-step:last-child  { border-radius: 0 var(--r-md) var(--r-md) 0; border-right: 1px solid var(--border); }
+    .pipeline-step.done   { background: var(--green-bg); border-color: #b8d9c9; }
+    .pipeline-step.active { background: var(--accent-bg); border-color: var(--accent-border); }
+    .pipeline-step:hover:not(.active):not(.done) { background: var(--bg-2); }
+    .pipeline-icon  { font-size: 0.8rem; margin-bottom: 2px; color: var(--ink-3); }
+    .pipeline-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); }
+    .pipeline-step.done   .pipeline-icon,  .pipeline-step.done   .pipeline-label  { color: var(--green); }
+    .pipeline-step.active .pipeline-icon,  .pipeline-step.active .pipeline-label  { color: var(--accent); }
+
+    /* Detail layout */
+    .detail-layout { display: grid; grid-template-columns: 1fr 300px; gap: 1.5rem; align-items: start; }
+
+    /* 4-stat grid */
+    .stat-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; margin-bottom: 1.25rem; }
+    .stat-cell { background: var(--surface); padding: 1rem 1.25rem; }
+    .stat-cell-label { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); margin-bottom: 5px; }
+    .stat-cell-val   { font-size: 1.1rem; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.2; }
+    .stat-cell-sub   { font-size: 0.72rem; color: var(--ink-3); margin-top: 3px; }
+
+    /* Time bar */
+    .time-bar { height: 8px; border-radius: 100px; overflow: hidden; display: flex; gap: 2px; margin-bottom: 6px; }
+    .time-legend { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+    .time-legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--ink-3); }
+    .time-legend-dot  { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+    /* Map */
+    #summit-map { height: 280px; border-radius: var(--r-lg); border: 1px solid var(--border); overflow: hidden; margin-bottom: 0.75rem; }
+    .map-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; align-items: center; }
+    .carrier-btn { height: 28px; padding: 0 0.625rem; font-size: 0.75rem; font-weight: 600; border-radius: var(--r-sm); border: 1.5px solid; cursor: pointer; transition: all 0.12s; font-family: var(--font-sans); }
+    .map-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+
+    /* Elevation profile */
+    .elev-wrap { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; margin-bottom: 0.75rem; }
+    #elev-canvas { display: block; width: 100%; height: 120px; cursor: crosshair; }
+    .elev-note { font-size: 0.75rem; color: var(--ink-3); padding: 0.35rem 0.75rem; }
+
+    /* Section divider / head */
+    .section-divider { border: none; border-top: 1px solid var(--border); margin: 1.25rem 0; }
+    .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+    .section-head-title { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); }
+
+    /* Field grid */
+    .field-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+
+    /* Difficulty selector */
+    .diff-btns { display: flex; gap: 0.5rem; }
+    .diff-btn { flex: 1; padding: 0.5rem 0.25rem; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface); color: var(--ink-3); font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.1s; text-transform: capitalize; font-family: var(--font-sans); }
+    .diff-btn:hover { border-color: var(--border-2); color: var(--ink); }
+    .diff-btn.active-easy     { border-color: var(--green); background: var(--green-bg); color: var(--green); }
+    .diff-btn.active-moderate { border-color: var(--orange); background: var(--orange-bg); color: var(--orange); }
+    .diff-btn.active-hard     { border-color: var(--red); background: var(--red-bg); color: var(--red); }
+    .diff-btn.active-drive-up { border-color: var(--blue); background: var(--blue-bg); color: var(--blue); }
+
+    /* GPX drop */
+    .gpx-drop { border: 2px dashed var(--border-2); border-radius: var(--r-lg); padding: 1.5rem; text-align: center; background: var(--bg-2); cursor: pointer; transition: border-color 0.15s, background 0.15s; display: block; }
+    .gpx-drop:hover { border-color: var(--accent); background: var(--accent-bg); }
+
+    /* Info rows */
+    .info-row { display: flex; justify-content: space-between; align-items: baseline; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+    .info-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .info-label { font-size: 0.8rem; color: var(--ink-3); flex-shrink: 0; }
+    .info-val   { font-size: 0.8rem; font-weight: 500; color: var(--ink); text-align: right; }
+
+    /* Trail search links */
+    .trail-search-btn { display: inline-flex; align-items: center; height: 26px; padding: 0 0.625rem; font-size: 0.75rem; font-weight: 500; border-radius: var(--r-sm); background: var(--bg-2); border: 1px solid var(--border-2); color: var(--ink-2); text-decoration: none; transition: all 0.12s; white-space: nowrap; }
+    .trail-search-btn:hover { border-color: var(--accent-border); color: var(--ink); background: var(--accent-bg); text-decoration: none; }
+
+    /* Mini table */
+    .mini-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    .mini-table th { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); background: var(--bg-2); }
+    .mini-table td { padding: 0.625rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .mini-table tr:last-child td { border-bottom: none; }
+
+    /* Section card */
+    .section-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 1.5rem; box-shadow: var(--shadow-sm); margin-bottom: 1rem; }
+    .section-title { font-size: 1rem; font-weight: 600; color: var(--ink); margin-bottom: 1rem; }
+
+    /* Notes */
+    .note-item { padding: 0.625rem 0; border-bottom: 1px solid var(--border); }
+    .note-item:last-child { border-bottom: none; }
+    .note-text { font-size: 0.875rem; color: var(--ink); line-height: 1.5; }
+    .note-meta { font-size: 0.72rem; color: var(--ink-3); margin-top: 3px; }
+
+    /* Geocoder box */
+    .geocoder-box { background: var(--accent-bg); border: 1px solid var(--accent-border); border-radius: var(--r-md); padding: 1rem; margin-bottom: 1rem; }
+
+    /* Shared notice */
+    .shared-notice { background: var(--accent-bg); border: 1px solid var(--accent-border); border-radius: var(--r-md); padding: 1rem; margin-bottom: 1.25rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+
+    /* GPS prefs block */
+    .gps-prefs { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.875rem 1rem; margin-top: 0.75rem; }
+
+    /* Summary expand */
+    details summary { list-style: none; }
+    details summary::-webkit-details-marker { display: none; }
+
+    /* Mobile */
+    @media (max-width: 768px) {
+      .page { padding: 1rem; }
+      .topbar { padding: 0 1rem; }
+      .topbar-nav { display: none; }
+      .detail-layout { grid-template-columns: 1fr; }
+      .stat-grid-4 { grid-template-columns: 1fr 1fr; }
+      .field-row-2 { grid-template-columns: 1fr; }
+      .page-header { flex-direction: column; gap: 0.75rem; }
+      .diff-btns { flex-wrap: wrap; }
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header-bar">
-            <img src="logo.png" alt="SOTA Planner" class="logo">
-            <a href="index.php" class="back-link">← Back to Dashboard</a>
+
+<nav class="topbar">
+  <a href="index.php" class="topbar-logo">
+    <div class="logo-mark">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <polyline points="1,12 5,6 8,9 11,4 15,4" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="11" cy="4" r="1.5" fill="white"/>
+      </svg>
+    </div>
+    <span>SOTAplanner</span>
+  </a>
+  <div class="topbar-divider"></div>
+  <div class="topbar-nav">
+    <a href="index.php">Dashboard</a>
+    <a href="manage_addresses.php">Groups &amp; Addresses</a>
+    <a href="about.php">About</a>
+  </div>
+  <div class="topbar-right">
+    <a href="index.php" class="btn btn-ghost btn-sm">← Dashboard</a>
+  </div>
+</nav>
+
+<div class="page">
+
+  <!-- PAGE HEADER -->
+  <div class="page-header">
+    <div>
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+        <?php if ($summit['difficulty']): ?>
+          <span class="badge badge-<?= htmlspecialchars($summit['difficulty']) ?>"><?= ucfirst($summit['difficulty']) ?></span>
+        <?php endif; ?>
+        <span class="badge badge-<?= htmlspecialchars($summit['status']) ?>"><?= ucfirst($summit['status']) ?></span>
+        <?php if ($summit['sota_ref']): ?>
+          <span style="font-family:var(--font-mono); font-size:0.78rem; color:var(--ink-3);"><?= htmlspecialchars($summit['sota_ref']) ?></span>
+        <?php endif; ?>
+      </div>
+      <div class="page-title"><?= htmlspecialchars($summit['name']) ?></div>
+      <div class="page-subtitle">
+        <?= htmlspecialchars($summit['region']) ?>
+        <?php if ($summit['points']): ?> &middot; <?= $summit['points'] ?> pts<?php endif; ?>
+        <?php if ($selected_address): ?> &middot; From: <?= htmlspecialchars($selected_address['label'] ?: $selected_address['address']) ?><?php endif; ?>
+      </div>
+    </div>
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-start;">
+      <?php if ($summit['sota_ref']): ?>
+        <a href="https://sotl.as/summits/<?= urlencode($summit['sota_ref']) ?>" target="_blank" class="btn btn-ghost btn-sm">SOTLAS ↗</a>
+      <?php endif; ?>
+      <?php if (!empty($planned_activations_list)): ?>
+        <?php
+          $pa0 = $planned_activations_list[0];
+          $peak_slug0 = strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '-', ($summit['sota_ref'] ?? '') . '-' . ($summit['name'] ?? '')), '-'));
+          $invite_url0 = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . rtrim(dirname($_SERVER['REQUEST_URI']), '/') . '/activation_invite.php?id=' . $pa0['id'] . '&peak=' . rawurlencode($peak_slug0);
+        ?>
+        <a href="<?= htmlspecialchars($invite_url0) ?>" target="_blank" class="btn btn-secondary btn-sm">Activation Invite</a>
+      <?php else: ?>
+        <a href="#planned-activations" class="btn btn-secondary btn-sm">Schedule Activation</a>
+      <?php endif; ?>
+      <button class="btn btn-primary btn-sm" type="submit" form="main-edit-form" name="update_summit">Save Changes</button>
+    </div>
+  </div>
+
+  <!-- MESSAGES -->
+  <?php if ($message): ?>
+    <div class="msg msg-success" id="flash-msg">
+      <span><?= htmlspecialchars($message) ?></span>
+      <button class="msg-dismiss" onclick="this.parentElement.style.display='none'" type="button">×</button>
+    </div>
+  <?php endif; ?>
+  <?php if ($error): ?>
+    <div class="msg msg-error">
+      <span><?= htmlspecialchars($error) ?></span>
+      <button class="msg-dismiss" onclick="this.parentElement.style.display='none'" type="button">×</button>
+    </div>
+  <?php endif; ?>
+  <?php if (isset($_GET['shared_data'])): ?>
+    <div class="msg msg-info">
+      <span>Summit data copied from another group — customize it below for your group.</span>
+      <button class="msg-dismiss" onclick="this.parentElement.style.display='none'" type="button">×</button>
+    </div>
+  <?php endif; ?>
+
+  <?php if ($summit['uses_shared_data'] && $summit['source_group_id']): ?>
+    <?php
+      $stmt = $db->prepare("SELECT name FROM planning_groups WHERE id = ?");
+      $stmt->execute([$summit['source_group_id']]);
+      $source_group = $stmt->fetch();
+    ?>
+    <div class="shared-notice">
+      <div>
+        <div style="font-size:0.875rem; font-weight:600; color:var(--ink);">Using shared research</div>
+        <div style="font-size:0.8rem; color:var(--ink-3); margin-top:2px;">Trail data from: <?= htmlspecialchars($source_group['name'] ?? 'Another group') ?></div>
+      </div>
+      <form method="POST" style="margin:0;">
+        <button type="submit" name="use_custom_data" class="btn btn-ghost btn-sm">Clear Imported Data</button>
+      </form>
+    </div>
+  <?php endif; ?>
+
+  <!-- STATUS PIPELINE -->
+  <?php
+    $pipe_steps = ['nominated','researched','ready','activated'];
+    $pipe_idx   = array_search($summit['status'], $pipe_steps);
+    if ($pipe_idx === false) $pipe_idx = 0;
+  ?>
+  <div class="status-pipeline">
+    <?php foreach ($pipe_steps as $i => $step):
+      $cls = $i < $pipe_idx ? 'done' : ($i === $pipe_idx ? 'active' : '');
+      $icon = $i < $pipe_idx ? '✓' : ($i === $pipe_idx ? '●' : '○');
+    ?>
+      <form method="POST" style="flex:1; display:flex; margin:0;">
+        <input type="hidden" name="update_summit" value="1">
+        <input type="hidden" name="status" value="<?= $step ?>">
+        <input type="hidden" name="difficulty" value="<?= htmlspecialchars($summit['difficulty'] ?? '') ?>">
+        <input type="hidden" name="hike_distance_mi" value="<?= htmlspecialchars($summit['hike_distance_mi'] ?? '') ?>">
+        <input type="hidden" name="hike_elevation_gain_ft" value="<?= htmlspecialchars($summit['hike_elevation_gain_ft'] ?? '') ?>">
+        <input type="hidden" name="trail_link" value="<?= htmlspecialchars($summit['trail_link'] ?? '') ?>">
+        <input type="hidden" name="trailhead_lat" value="<?= htmlspecialchars($summit['trailhead_lat'] ?? '') ?>">
+        <input type="hidden" name="trailhead_lng" value="<?= htmlspecialchars($summit['trailhead_lng'] ?? '') ?>">
+        <input type="hidden" name="cell_service" value="<?= htmlspecialchars($summit['cell_service'] ?? '') ?>">
+        <button type="submit" class="pipeline-step <?= $cls ?>" style="flex:1;" title="Set status to <?= ucfirst($step) ?>">
+          <div class="pipeline-icon"><?= $icon ?></div>
+          <div class="pipeline-label"><?= ucfirst($step) ?></div>
+        </button>
+      </form>
+    <?php endforeach; ?>
+  </div>
+
+  <!-- MAIN EDIT FORM -->
+  <form method="POST" id="main-edit-form">
+  <input type="hidden" name="update_summit" value="1">
+  <input type="hidden" name="status" value="<?= htmlspecialchars($summit['status'] ?? '') ?>">
+
+  <div class="detail-layout">
+    <!-- ═══ LEFT COLUMN ═══ -->
+    <div>
+
+      <!-- 4-stat grid -->
+      <?php
+        $total_min = ($summit['drive_time_min'] ?? 0) + ($hike_time_total ?? 0) + $tl_activation;
+        $drive_rt  = (int)($summit['drive_time_min'] ?? 0);
+        $hike_rt   = (int)($hike_time_total ?? 0);
+        $act_time  = $tl_activation;
+      ?>
+      <div class="stat-grid-4">
+        <div class="stat-cell">
+          <div class="stat-cell-label">Drive (RT)</div>
+          <?php if ($drive_rt): ?>
+            <div class="stat-cell-val"><?= floor($drive_rt/60) ?>h <?= $drive_rt%60 ?>m</div>
+            <div class="stat-cell-sub"><?= $selected_address ? htmlspecialchars($selected_address['label'] ?: 'from base') : 'round-trip' ?></div>
+          <?php else: ?>
+            <div class="stat-cell-val" style="color:var(--ink-3); font-size:0.875rem;">—</div>
+            <div class="stat-cell-sub">Not set</div>
+          <?php endif; ?>
         </div>
-        
-        <div class="summit-header">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
-                <div>
-                    <h1><?= htmlspecialchars($summit['name']) ?></h1>
-                    <p class="summit-ref"><?= htmlspecialchars($summit['sota_ref']) ?> • <?= htmlspecialchars($summit['region']) ?></p>
-                    <?php if ($selected_address): ?>
-                        <p style="font-size: 0.9rem; opacity: 0.85; margin-top: 0.5rem;">
-                            📍 Calculating from: <strong><?= htmlspecialchars($selected_address['label'] ?: $selected_address['address']) ?></strong>
-                        </p>
-                    <?php endif; ?>
-                </div>
-                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                    <a href="https://www.google.com/maps/search/?api=1&query=<?= $summit['latitude'] ?>,<?= $summit['longitude'] ?>" target="_blank" class="quick-link" title="View Summit on Google Maps">🗺️ Maps</a>
-                    <?php if ($selected_address && $directions_lat && $directions_lng): ?>
-                        <a href="https://www.google.com/maps/dir/?api=1&origin=<?= urlencode($selected_address['address']) ?>&destination=<?= $directions_lat ?>,<?= $directions_lng ?>&travelmode=driving" target="_blank" class="quick-link" title="Driving Directions to Trailhead">🚗 Directions</a>
-                    <?php endif; ?>
-                    <?php if ($summit['sotlas_link']): ?>
-                        <a href="<?= htmlspecialchars($summit['sotlas_link']) ?>" target="_blank" class="quick-link" title="View on SOTLas">📡 SOTLAS</a>
-                    <?php endif; ?>
-                    <?php if ($summit['trail_link']): ?>
-                        <a href="<?= htmlspecialchars($summit['trail_link']) ?>" target="_blank" class="quick-link" title="Trail Information">🥾 Trail Info</a>
-                    <?php endif; ?>
-                </div>
-            </div>
+        <div class="stat-cell">
+          <div class="stat-cell-label">Hike (RT)</div>
+          <?php if ($hike_rt): ?>
+            <div class="stat-cell-val"><?= floor($hike_rt/60) ?>h <?= $hike_rt%60 ?>m</div>
+            <div class="stat-cell-sub"><?= $hike_time_source ?></div>
+          <?php else: ?>
+            <div class="stat-cell-val" style="color:var(--ink-3); font-size:0.875rem;">—</div>
+            <div class="stat-cell-sub">No data yet</div>
+          <?php endif; ?>
         </div>
+        <div class="stat-cell">
+          <div class="stat-cell-label">Summit Time</div>
+          <div class="stat-cell-val"><?= $act_time ?>m</div>
+          <div class="stat-cell-sub">planned</div>
+        </div>
+        <div class="stat-cell" style="background:var(--ink);">
+          <div class="stat-cell-label" style="color:rgba(255,255,255,0.45);">Total (RT)</div>
+          <?php if ($total_min): ?>
+            <div class="stat-cell-val" style="color:#fff;"><?= floor($total_min/60) ?>h <?= $total_min%60 ?>m</div>
+            <div class="stat-cell-sub" style="color:rgba(255,255,255,0.4);">doorstep to doorstep</div>
+          <?php else: ?>
+            <div class="stat-cell-val" style="color:rgba(255,255,255,0.35); font-size:0.875rem;">—</div>
+            <div class="stat-cell-sub" style="color:rgba(255,255,255,0.3);">add distances first</div>
+          <?php endif; ?>
+        </div>
+      </div>
 
-        <?php if ($message): ?>
-            <div class="message success"><?= htmlspecialchars($message) ?></div>
+      <!-- Time breakdown bar -->
+      <?php if ($tl_show): ?>
+      <div style="margin-bottom:1.25rem;">
+        <div class="time-bar">
+          <?php if ($tl_drive_pct > 0): ?>
+            <div style="flex:<?= $tl_drive_one ?>; background:#8B73A8; border-radius:100px 0 0 100px;"></div>
+          <?php endif; ?>
+          <?php if ($tl_hike_up_pct > 0): ?>
+            <div style="flex:<?= $tl_hike_up ?>; background:var(--accent); <?= $tl_drive_pct == 0 ? 'border-radius:100px 0 0 100px;' : '' ?>"></div>
+          <?php endif; ?>
+          <div style="flex:<?= $tl_activation ?>; background:var(--green);"></div>
+          <?php if ($tl_hike_down_pct > 0): ?>
+            <div style="flex:<?= $tl_hike_down ?>; background:#5BA4B8;"></div>
+          <?php endif; ?>
+          <?php if ($tl_drive_pct > 0): ?>
+            <div style="flex:<?= $tl_drive_one ?>; background:#8B73A8; border-radius:0 100px 100px 0;"></div>
+          <?php endif; ?>
+        </div>
+        <div class="time-legend">
+          <?php if ($tl_drive_pct > 0): ?>
+            <div class="time-legend-item"><span class="time-legend-dot" style="background:#8B73A8;"></span>Drive (<?= $tl_drive_one ?>m each way)</div>
+          <?php endif; ?>
+          <?php if ($tl_hike_up_pct > 0): ?>
+            <div class="time-legend-item"><span class="time-legend-dot" style="background:var(--accent);"></span>Hike Up (<?= formatTime($tl_hike_up) ?>)</div>
+          <?php endif; ?>
+          <div class="time-legend-item"><span class="time-legend-dot" style="background:var(--green);"></span>Radio (<?= formatTime($tl_activation) ?>)</div>
+          <?php if ($tl_hike_down_pct > 0): ?>
+            <div class="time-legend-item"><span class="time-legend-dot" style="background:#5BA4B8;"></span>Hike Down (<?= formatTime($tl_hike_down) ?>)</div>
+          <?php endif; ?>
+          <div class="time-legend-item" style="font-weight:600; color:var(--ink);">Total: <?= formatTime($tl_total) ?></div>
+        </div>
+      </div>
+      <?php endif; ?>
+
+      <!-- Map -->
+      <div id="summit-map"></div>
+      <div class="map-buttons">
+        <button type="button" id="btn-base-street"    class="btn btn-sm btn-primary"    onclick="switchBase('street')">Street</button>
+        <button type="button" id="btn-base-topo"      class="btn btn-sm btn-secondary"  onclick="switchBase('topo')">Topo</button>
+        <button type="button" id="btn-base-satellite" class="btn btn-sm btn-secondary"  onclick="switchBase('satellite')">Satellite</button>
+        <span class="map-divider"></span>
+        <button type="button" id="btn-tmobile" class="carrier-btn" style="border-color:#E91E8C; color:#E91E8C; background:#fff;" onclick="toggleCarrier('tmobile')">T-Mo</button>
+        <button type="button" id="btn-verizon" class="carrier-btn" style="border-color:#CD040B; color:#CD040B; background:#fff;" onclick="toggleCarrier('verizon')">VZW</button>
+        <button type="button" id="btn-att"     class="carrier-btn" style="border-color:#00A8E0; color:#00A8E0; background:#fff;" onclick="toggleCarrier('att')">AT&amp;T</button>
+        <?php if ($gpx_data): ?>
+          <span class="map-divider"></span>
+          <button type="button" id="btn-actzone" class="btn btn-sm btn-secondary" onclick="zoomToActivationZone()" disabled style="opacity:0.4;">Activation Zone</button>
         <?php endif; ?>
-
-        <?php if ($error): ?>
-            <div class="message error"><?= htmlspecialchars($error) ?></div>
+        <span class="map-divider"></span>
+        <a href="https://www.google.com/maps/search/?api=1&query=<?= $summit['latitude'] ?>,<?= $summit['longitude'] ?>" target="_blank" class="btn btn-sm btn-ghost">Maps ↗</a>
+        <?php if ($selected_address && $directions_lat && $directions_lng): ?>
+          <a href="https://www.google.com/maps/dir/?api=1&origin=<?= urlencode($selected_address['address']) ?>&destination=<?= $directions_lat ?>,<?= $directions_lng ?>&travelmode=driving" target="_blank" class="btn btn-sm btn-ghost">Directions ↗</a>
         <?php endif; ?>
+      </div>
 
-        <?php if (isset($_GET['shared_data'])): ?>
-            <div class="message success">
-                ✓ This summit was researched by another group. Their trail data has been copied as a starting point. You can edit and customize it for your group below.
-            </div>
+      <!-- Elevation profile (only if GPX) -->
+      <?php if ($gpx_data): ?>
+      <div class="elev-wrap">
+        <canvas id="elev-canvas"></canvas>
+        <div class="elev-note" id="elev-note">Hover for elevation details</div>
+      </div>
+      <div id="az-methodology" style="font-size:0.75rem; color:var(--ink-3); margin-bottom:1rem; line-height:1.5;"></div>
+      <?php endif; ?>
+
+      <!-- Trail Research -->
+      <hr class="section-divider">
+      <div class="section-head">
+        <span class="section-head-title">Trail Research</span>
+      </div>
+
+      <div class="field-row-2" style="margin-bottom:1rem;">
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">Distance (<?= getDistanceUnit($current_group['units']) ?>, RT)</label>
+          <input type="number" class="form-input" name="hike_distance_mi" step="0.01" min="0"
+                 value="<?= htmlspecialchars($summit['hike_distance_mi'] ?? '') ?>" placeholder="0.0">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">Elevation Gain (<?= getElevationUnit($current_group['units']) ?>)</label>
+          <input type="number" class="form-input" name="hike_elevation_gain_ft" min="0"
+                 value="<?= htmlspecialchars($summit['hike_elevation_gain_ft'] ?? '') ?>" placeholder="0">
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom:1rem;">
+        <label class="form-label">Difficulty</label>
+        <div class="diff-btns">
+          <?php foreach (['drive-up','easy','moderate','hard'] as $d): ?>
+            <button type="button" class="diff-btn<?= ($summit['difficulty'] === $d) ? ' active-'.$d : '' ?>"
+                    onclick="setDifficulty('<?= $d ?>')" data-diff="<?= $d ?>"><?= ucfirst($d) ?></button>
+          <?php endforeach; ?>
+        </div>
+        <input type="hidden" name="difficulty" id="difficulty-input" value="<?= htmlspecialchars($summit['difficulty'] ?? '') ?>">
+      </div>
+
+      <div class="form-group" style="margin-bottom:1rem;">
+        <label class="form-label">Cell Service</label>
+        <select class="form-select" name="cell_service">
+          <option value="">Unknown</option>
+          <option value="full"         <?= ($summit['cell_service'] ?? '') === 'full'         ? 'selected' : '' ?>>Full Coverage</option>
+          <option value="intermittent" <?= ($summit['cell_service'] ?? '') === 'intermittent' ? 'selected' : '' ?>>Intermittent</option>
+          <option value="summit_only"  <?= ($summit['cell_service'] ?? '') === 'summit_only'  ? 'selected' : '' ?>>Summit Only</option>
+          <option value="none"         <?= ($summit['cell_service'] ?? '') === 'none'         ? 'selected' : '' ?>>No Service</option>
+        </select>
+      </div>
+
+      <!-- Trailhead geocoder -->
+      <div class="geocoder-box">
+        <div style="font-size:0.8rem; font-weight:600; color:var(--ink); margin-bottom:0.5rem;">Set Trailhead Location</div>
+        <div style="display:flex; gap:0.5rem; margin-bottom:0.4rem;">
+          <input type="text" class="form-input" id="geocode_address" placeholder="Paste lat,lng or an address" style="flex:1; height:36px; padding:0.5rem 0.75rem;">
+          <button type="button" class="btn btn-accent btn-sm" onclick="geocodeAddress()">Find</button>
+        </div>
+        <div class="form-hint" style="margin:0;">e.g. 34.168, -118.236 or a street address</div>
+      </div>
+
+      <div class="field-row-2" style="margin-bottom:1rem;">
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">Trailhead Lat</label>
+          <input type="number" class="form-input" id="trailhead_lat" name="trailhead_lat" step="0.000001"
+                 value="<?= htmlspecialchars($summit['trailhead_lat'] ?? '') ?>" placeholder="34.168300">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">Trailhead Lng</label>
+          <input type="number" class="form-input" id="trailhead_lng" name="trailhead_lng" step="0.000001"
+                 value="<?= htmlspecialchars($summit['trailhead_lng'] ?? '') ?>" placeholder="-118.236200">
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom:1rem;">
+        <label class="form-label">Trail Reference Link</label>
+        <input type="url" class="form-input" name="trail_link"
+               value="<?= htmlspecialchars($summit['trail_link'] ?? '') ?>" placeholder="https://alltrails.com/...">
+        <?php
+          $search_name = urlencode($summit['name'] ?? '');
+          $search_lat  = $summit['latitude'] ?? '';
+          $search_lng  = $summit['longitude'] ?? '';
+        ?>
+        <div style="display:flex; flex-wrap:wrap; gap:0.4rem; margin-top:0.5rem;">
+          <span style="font-size:0.75rem; color:var(--ink-3); align-self:center;">Search:</span>
+          <a href="https://www.alltrails.com/explore?q=<?= $search_name ?>" target="_blank" class="trail-search-btn">AllTrails</a>
+          <a href="https://www.gaiagps.com/map/?search=<?= $search_name ?>" target="_blank" class="trail-search-btn">Gaia GPS</a>
+          <a href="https://caltopo.com/map.html#ll=<?= $search_lat ?>,<?= $search_lng ?>&z=14&b=t" target="_blank" class="trail-search-btn">CalTopo</a>
+          <a href="https://www.hikingproject.com/directory/search?type=trail&q=<?= $search_name ?>" target="_blank" class="trail-search-btn">Hiking Project</a>
+          <?php if (!empty($summit['sota_ref'])): ?>
+            <a href="https://sotl.as/summits/<?= urlencode($summit['sota_ref']) ?>" target="_blank" class="trail-search-btn">SOTLAS</a>
+          <?php endif; ?>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:0.75rem; padding-top:1rem; border-top:1px solid var(--border);">
+        <button type="submit" name="update_summit" class="btn btn-primary">Save Changes</button>
+        <?php if ($selected_address): ?>
+          <button type="submit" name="calculate_drive_time" class="btn btn-secondary">Calculate Drive Time</button>
         <?php endif; ?>
+      </div>
+    </div>
+  </form><!-- end main-edit-form — must close before right sidebar to avoid nested forms -->
 
-        <?php if ($summit['uses_shared_data'] && $summit['source_group_id']): ?>
+    <!-- ═══ RIGHT SIDEBAR ═══ -->
+    <div>
+      <!-- Summit info -->
+      <div class="card" style="margin-bottom:1rem;">
+        <div style="font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3); margin-bottom:0.875rem;">Summit Info</div>
+        <div class="info-row">
+          <span class="info-label">Elevation</span>
+          <span class="info-val">
             <?php
-                // Get source group name
-                $stmt = $db->prepare("SELECT name FROM planning_groups WHERE id = ?");
-                $stmt->execute([$summit['source_group_id']]);
-                $source_group = $stmt->fetch();
+              $elev_disp = convertElevation($summit['elevation_ft'], $current_group['units']);
+              echo number_format($elev_disp) . ' ' . getElevationUnit($current_group['units']);
             ?>
-            <div style="background: #E8F4F8; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem; border-left: 4px solid var(--teal);">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <strong>ℹ️ Using shared research</strong><br>
-                        <span style="color: #666;">Trail data from: <?= htmlspecialchars($source_group['name'] ?? 'Another group') ?></span>
-                    </div>
-                    <form method="POST" style="margin: 0;">
-                        <button type="submit" name="use_custom_data" class="btn btn-secondary btn-small">
-                            Clear Imported Data
-                        </button>
+          </span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">SOTA Points</span>
+          <span class="info-val"><?= $summit['points'] ?> pts</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Coordinates</span>
+          <span class="info-val" style="font-family:var(--font-mono); font-size:0.72rem;"><?= $summit['latitude'] ?>°N, <?= abs($summit['longitude']) ?>°W</span>
+        </div>
+        <?php if ($distance_display_mi): ?>
+        <div class="info-row">
+          <span class="info-label">Distance (RT)</span>
+          <span class="info-val"><?= number_format($distance_display_mi, 1) ?> <?= getDistanceUnit($current_group['units']) ?> <span style="color:var(--ink-3); font-size:0.72rem;"><?= $distance_source ?></span></span>
+        </div>
+        <?php endif; ?>
+        <?php if ($elevation_gain_display): ?>
+        <div class="info-row">
+          <span class="info-label">Elevation Gain</span>
+          <span class="info-val"><?= number_format(convertElevation($elevation_gain_display, $current_group['units'])) ?> <?= getElevationUnit($current_group['units']) ?> <span style="color:var(--ink-3); font-size:0.72rem;"><?= $elevation_source ?></span></span>
+        </div>
+        <?php endif; ?>
+        <div class="info-row">
+          <span class="info-label">Nominated</span>
+          <span class="info-val"><?= $summit['nominated_date'] ? date('M j, Y', strtotime($summit['nominated_date'])) : '—' ?></span>
+        </div>
+        <div class="info-row" style="border-bottom:none; padding-bottom:0;">
+          <span class="info-label">Last Activated</span>
+          <span class="info-val"><?= $summit['last_activated_date'] ? date('M j, Y', strtotime($summit['last_activated_date'])) : 'Never' ?></span>
+        </div>
+      </div>
+
+      <!-- Quick actions -->
+      <div class="card" style="margin-bottom:1rem;">
+        <div style="font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3); margin-bottom:0.875rem;">Quick Actions</div>
+        <div style="display:flex; flex-direction:column; gap:0.5rem;">
+          <?php if (!in_array($summit['status'], ['ready','activated'])): ?>
+            <form method="POST" style="margin:0;">
+              <input type="hidden" name="update_summit" value="1">
+              <input type="hidden" name="status" value="ready">
+              <input type="hidden" name="difficulty" value="<?= htmlspecialchars($summit['difficulty'] ?? '') ?>">
+              <input type="hidden" name="hike_distance_mi" value="<?= htmlspecialchars($summit['hike_distance_mi'] ?? '') ?>">
+              <input type="hidden" name="hike_elevation_gain_ft" value="<?= htmlspecialchars($summit['hike_elevation_gain_ft'] ?? '') ?>">
+              <input type="hidden" name="trail_link" value="<?= htmlspecialchars($summit['trail_link'] ?? '') ?>">
+              <input type="hidden" name="trailhead_lat" value="<?= htmlspecialchars($summit['trailhead_lat'] ?? '') ?>">
+              <input type="hidden" name="trailhead_lng" value="<?= htmlspecialchars($summit['trailhead_lng'] ?? '') ?>">
+              <input type="hidden" name="cell_service" value="<?= htmlspecialchars($summit['cell_service'] ?? '') ?>">
+              <button type="submit" class="btn btn-primary btn-full">Mark as Ready</button>
+            </form>
+          <?php endif; ?>
+          <a href="#planned-activations" class="btn btn-secondary btn-full">Schedule Activation</a>
+          <?php if ($summit['sota_ref']): ?>
+            <a href="https://sotl.as/summits/<?= urlencode($summit['sota_ref']) ?>" target="_blank" class="btn btn-ghost btn-full">View on SOTLAS</a>
+          <?php endif; ?>
+          <?php if (!empty($summit['trail_link'])): ?>
+            <a href="<?= htmlspecialchars($summit['trail_link']) ?>" target="_blank" class="btn btn-ghost btn-full">View Trail</a>
+          <?php endif; ?>
+          <?php if ($selected_address && $directions_lat && $directions_lng): ?>
+            <a href="https://www.google.com/maps/dir/?api=1&origin=<?= urlencode($selected_address['address']) ?>&destination=<?= $directions_lat ?>,<?= $directions_lng ?>&travelmode=driving" target="_blank" class="btn btn-ghost btn-full">Get Directions</a>
+          <?php endif; ?>
+        </div>
+      </div>
+
+      <!-- GPX Track -->
+      <div class="card" style="margin-bottom:1rem;">
+        <div style="font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3); margin-bottom:0.875rem;">GPX Track</div>
+        <?php if ($gpx_data): ?>
+          <div style="font-size:0.78rem; color:var(--green); font-weight:500; margin-bottom:0.75rem;">
+            Track loaded: <?= htmlspecialchars($gpx_data['filename']) ?>
+          </div>
+          <?php if ($has_timestamps): ?>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-bottom:0.75rem;">
+            <div style="background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-md); padding:0.625rem; text-align:center;">
+              <div style="font-size:0.65rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-3); margin-bottom:3px;">Hiking</div>
+              <div style="font-size:0.95rem; font-weight:600; color:var(--ink);"><?= format_time_duration($gpx_data['hiking_time']) ?></div>
+            </div>
+            <div style="background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-md); padding:0.625rem; text-align:center;">
+              <div style="font-size:0.65rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-3); margin-bottom:3px;">Summit</div>
+              <div style="font-size:0.95rem; font-weight:600; color:var(--ink);"><?= format_time_duration($gpx_data['activation_time']) ?></div>
+            </div>
+          </div>
+          <?php else: ?>
+            <div style="font-size:0.78rem; color:var(--ink-3); margin-bottom:0.75rem;">Route-only GPX (no timestamps) — map &amp; elevation data loaded.</div>
+          <?php endif; ?>
+          <form method="POST" class="gps-prefs">
+            <input type="hidden" name="update_gpx_preferences" value="1">
+            <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; font-size:0.82rem; font-weight:500; color:var(--ink); margin-bottom:0.625rem;">
+              <input type="checkbox" name="use_gps_data" value="1" <?= ($gpx_data['use_for_hike_time']) ? 'checked' : '' ?> style="width:14px; height:14px;">
+              Use GPS data for planning
+            </label>
+            <label class="form-label" style="margin-bottom:0.3rem; font-size:0.72rem;">Track type</label>
+            <select name="track_type" class="form-select" style="height:32px; padding:0.25rem 0.625rem; font-size:0.8rem; margin-bottom:0.625rem;">
+              <option value="round-trip" <?= $track_type === 'round-trip' ? 'selected' : '' ?>>Round-trip</option>
+              <option value="ascent"     <?= $track_type === 'ascent'     ? 'selected' : '' ?>>Ascent only</option>
+              <option value="descent"    <?= $track_type === 'descent'    ? 'selected' : '' ?>>Descent only</option>
+            </select>
+            <div style="display:flex; gap:0.5rem;">
+              <button type="submit" class="btn btn-secondary btn-sm">Save Prefs</button>
+              <a href="load_gpx.php?id=<?= $gpx_data['id'] ?>" download="<?= htmlspecialchars($gpx_download_name) ?>" class="btn btn-ghost btn-sm">Download GPX</a>
+            </div>
+          </form>
+          <div style="margin-top:0.875rem; padding-top:0.875rem; border-top:1px solid var(--border);">
+            <div style="font-size:0.75rem; color:var(--ink-3); margin-bottom:0.5rem;">Replace track:</div>
+            <?php if (!empty($summit['sota_ref'])): ?>
+            <div style="margin-bottom:0.625rem;">
+              <button type="button" class="btn btn-secondary btn-sm btn-full" onclick="fetchSotaMaps(this)" id="sotamaps-fetch-btn">Import from SOTA Maps</button>
+              <div id="sotamaps-result" style="margin-top:0.5rem; display:none;"></div>
+            </div>
+            <?php endif; ?>
+            <form method="POST" enctype="multipart/form-data">
+              <input type="file" name="gpx_file" accept=".gpx" style="font-size:0.8rem; color:var(--ink-2); width:100%; margin-bottom:0.5rem;">
+              <button type="submit" class="btn btn-secondary btn-sm btn-full">Upload New GPX</button>
+            </form>
+          </div>
+        <?php else: ?>
+          <?php if (!empty($summit['sota_ref'])): ?>
+          <div style="background:var(--green-bg); border:1px solid #b8d9c9; border-radius:var(--r-md); padding:0.75rem 1rem; margin-bottom:0.875rem;">
+            <div style="font-size:0.82rem; font-weight:600; color:var(--green); margin-bottom:4px;">Import from SOTA Maps</div>
+            <div style="font-size:0.78rem; color:var(--ink-2); margin-bottom:0.625rem;">Community route tracks from sotamaps.org</div>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="fetchSotaMaps(this)" id="sotamaps-fetch-btn">Check for Tracks</button>
+            <div id="sotamaps-result" style="margin-top:0.625rem; display:none;"></div>
+          </div>
+          <?php endif; ?>
+          <form method="POST" enctype="multipart/form-data">
+            <label class="gpx-drop" for="gpx-file-input">
+              <div style="font-size:1.5rem; opacity:0.3; margin-bottom:0.5rem;">&#128196;</div>
+              <div style="font-size:0.875rem; font-weight:500; color:var(--ink-2);">Drop a GPX file here</div>
+              <div style="font-size:0.78rem; color:var(--ink-3); margin-top:3px;">or click to browse</div>
+              <input type="file" name="gpx_file" id="gpx-file-input" accept=".gpx" style="display:none;" onchange="this.form.submit()">
+            </label>
+            <p class="form-hint" style="margin-top:0.625rem;">Upload a recorded hike or route. Recorded tracks (with timestamps) give precise timing; route-only files use Naismith's rule.</p>
+          </form>
+        <?php endif; ?>
+      </div>
+
+      <!-- Notes -->
+      <div class="card">
+        <div style="font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3); margin-bottom:0.875rem;">Notes</div>
+        <?php if (!empty($notes)): ?>
+          <div style="margin-bottom:0.875rem;">
+            <?php foreach ($notes as $note): ?>
+              <div class="note-item">
+                <div class="note-text"><?= htmlspecialchars($note['note']) ?></div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+                  <span class="note-meta"><?= date('M j, Y', strtotime($note['created_at'])) ?></span>
+                  <form method="POST" style="margin:0;" onsubmit="return confirm('Delete this note?');">
+                    <input type="hidden" name="note_id" value="<?= $note['id'] ?>">
+                    <button type="submit" name="delete_note" class="btn btn-danger btn-sm" style="height:24px; padding:0 8px; font-size:0.72rem;">Delete</button>
+                  </form>
+                </div>
+              </div>
+            <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
+        <form method="POST">
+          <textarea class="form-textarea" name="note" rows="3" placeholder="Add notes about access, parking, trail conditions..." style="font-size:0.875rem; resize:vertical;"></textarea>
+          <button type="submit" name="add_note" class="btn btn-secondary btn-sm btn-full" style="margin-top:0.5rem;">Add Note</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- PLANNED ACTIVATIONS -->
+  <div id="planned-activations" style="margin-top:1.5rem;">
+    <div class="section-card">
+      <div class="section-title">Planned Activations</div>
+
+      <?php if (!empty($planned_activations_list)): ?>
+        <?php foreach ($planned_activations_list as $pa):
+          $peak_slug = strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '-', ($summit['sota_ref'] ?? '') . '-' . ($summit['name'] ?? '')), '-'));
+          $invite_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . rtrim(dirname($_SERVER['REQUEST_URI']), '/') . '/activation_invite.php?id=' . $pa['id'] . '&peak=' . rawurlencode($peak_slug);
+        ?>
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; padding:0.875rem; background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-md); margin-bottom:0.625rem; gap:1rem; flex-wrap:wrap;">
+            <div>
+              <div style="font-size:0.9rem; font-weight:600; color:var(--ink);"><?= date('D, M j, Y', strtotime($pa['planned_date'])) ?></div>
+              <div style="font-size:0.8rem; color:var(--ink-3); margin-top:3px;">
+                Hike: <?= date('g:i A', strtotime($pa['hike_start_time'])) ?>
+                &middot; <?= $pa['activation_duration_min'] ?>m radio
+                &middot; <span style="font-family:var(--font-mono);"><?= htmlspecialchars($pa['callsigns']) ?></span>
+              </div>
+              <?php if ($pa['invitation_message']): ?>
+                <div style="font-size:0.78rem; color:var(--ink-2); margin-top:4px; font-style:italic;">"<?= htmlspecialchars(substr($pa['invitation_message'], 0, 100)) ?><?= strlen($pa['invitation_message']) > 100 ? '…' : '' ?>"</div>
+              <?php endif; ?>
+              <div style="display:flex; gap:0.5rem; margin-top:0.625rem; flex-wrap:wrap;">
+                <a href="<?= htmlspecialchars($invite_url) ?>" target="_blank" class="btn btn-accent btn-sm">View Invite</a>
+                <button type="button" onclick="copyInviteLink('<?= htmlspecialchars($invite_url, ENT_QUOTES) ?>')" class="btn btn-ghost btn-sm">Copy Link</button>
+              </div>
+            </div>
+            <form method="POST" style="margin:0; flex-shrink:0;" onsubmit="return confirm('Remove this planned activation?');">
+              <input type="hidden" name="planned_activation_id" value="<?= $pa['id'] ?>">
+              <button type="submit" name="delete_planned_activation" class="btn btn-danger btn-sm">×</button>
+            </form>
+          </div>
+        <?php endforeach; ?>
+        <div style="height:0.75rem;"></div>
+      <?php endif; ?>
+
+      <details <?= empty($planned_activations_list) ? 'open' : '' ?>>
+        <summary style="cursor:pointer; font-size:0.875rem; font-weight:600; color:var(--accent); margin-bottom:0.875rem; display:inline-flex; align-items:center; gap:0.4rem;">
+          + Schedule a New Activation
+        </summary>
+        <form method="POST" style="margin-top:0.875rem;">
+          <div class="field-row-2" style="margin-bottom:1rem;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">Date</label>
+              <input type="date" name="planned_date" class="form-input" required value="<?= date('Y-m-d', strtotime('+7 days')) ?>">
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">Hike Start Time</label>
+              <input type="time" name="hike_start_time" class="form-input" value="07:00">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Callsigns</label>
+            <input type="text" name="planned_callsigns" class="form-input" placeholder="KI6CR/P, W6XX" required>
+          </div>
+          <div class="field-row-2" style="margin-bottom:1rem;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">Activation Duration (min)</label>
+              <input type="number" name="activation_duration_min" class="form-input" value="60" min="15" max="480" required>
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">Location Link (optional)</label>
+              <input type="url" name="location_link" class="form-input" placeholder="https://...">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Message for Guests (optional)</label>
+            <textarea name="invitation_message" class="form-textarea" rows="3" placeholder="Join us for a SOTA activation!"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Parking &amp; Travel Notes (optional)</label>
+            <textarea name="travel_notes" class="form-textarea" rows="2" placeholder="Parking details, carpooling info..."></textarea>
+          </div>
+          <button type="submit" name="add_planned_activation" class="btn btn-primary">Schedule Activation</button>
+        </form>
+      </details>
+    </div>
+  </div>
+
+  <!-- ACTIVATION HISTORY -->
+  <div style="margin-top:1rem;">
+    <div class="section-card">
+      <div class="section-title">Activation History</div>
+      <?php
+        $stmt = $db->prepare("SELECT * FROM activations WHERE summit_id = ? AND planning_group_id = ? ORDER BY activation_date DESC");
+        $stmt->execute([$summit_id, $current_group['id']]);
+        $activations = $stmt->fetchAll();
+      ?>
+      <?php if (!empty($activations)): ?>
+        <div style="overflow-x:auto; margin-bottom:1.25rem;">
+          <table class="mini-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Callsigns</th>
+                <th>Notes</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php foreach ($activations as $activation): ?>
+                <tr>
+                  <td style="white-space:nowrap; font-weight:500; color:var(--ink);"><?= date('M j, Y', strtotime($activation['activation_date'])) ?></td>
+                  <td style="font-family:var(--font-mono); font-size:0.78rem; color:var(--ink);"><?= htmlspecialchars($activation['callsigns']) ?></td>
+                  <td style="color:var(--ink-2);"><?= htmlspecialchars($activation['notes'] ?? '') ?></td>
+                  <td style="text-align:right; white-space:nowrap;">
+                    <form method="POST" style="margin:0;" onsubmit="return confirm('Delete this activation?');">
+                      <input type="hidden" name="activation_id" value="<?= $activation['id'] ?>">
+                      <button type="submit" name="delete_activation" class="btn btn-danger btn-sm" style="height:24px; padding:0 8px; font-size:0.72rem;">×</button>
                     </form>
-                </div>
-            </div>
-        <?php endif; ?>
-
-        <!-- Stats Grid - Full Width -->
-        <div style="display:flex; align-items:center; gap:0.4rem; margin-bottom:0.4rem;">
-            <span style="font-size:0.7rem; text-transform:uppercase; letter-spacing:0.06em; color:#aaa; font-weight:600;">Planning Summary</span>
-            <button onclick="document.getElementById('statsModal').style.display='flex'" style="background:none;border:1px solid #b0c4d0;color:#4A90A4;border-radius:50%;width:18px;height:18px;font-size:0.65rem;cursor:pointer;font-weight:700;padding:0;line-height:1;" title="About these tiles">ℹ</button>
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
         </div>
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-label">SOTA Points</div>
-                <div class="stat-value"><?= $summit['points'] ?></div>
+      <?php else: ?>
+        <p style="color:var(--ink-3); font-size:0.875rem; margin-bottom:1.25rem;">No activations recorded yet.</p>
+      <?php endif; ?>
+
+      <details>
+        <summary style="cursor:pointer; font-size:0.875rem; font-weight:600; color:var(--accent); display:inline-flex; align-items:center; gap:0.4rem;">
+          + Record an Activation
+        </summary>
+        <form method="POST" style="margin-top:0.875rem;">
+          <div class="field-row-2" style="margin-bottom:1rem;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">Date</label>
+              <input type="date" name="activation_date" class="form-input" required value="<?= date('Y-m-d') ?>">
             </div>
-            <div class="stat-card">
-                <div class="stat-label">Elevation</div>
-                <div class="stat-value">
-                    <?php
-                    $elevation = convertElevation($summit['elevation_ft'], $current_group['units']);
-                    $unit = getElevationUnit($current_group['units']);
-                    echo number_format($elevation) . ' ' . $unit;
-                    ?>
-                </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">Callsigns</label>
+              <input type="text" name="activation_callsigns" class="form-input" placeholder="KI6CR/P" required>
             </div>
-            <div class="stat-card">
-                <div class="stat-label">Distance
-                    <?php if ($distance_source === 'GPS'): ?>
-                        <span style="color: var(--trail-green); font-size: 0.7rem;">(GPS recorded)</span>
-                    <?php elseif ($distance_source === 'Route'): ?>
-                        <span style="color: #E6A020; font-size: 0.7rem;">(route file)</span>
-                    <?php endif; ?>
-                </div>
-                <div class="stat-value">
-                    <?php
-                    if ($distance_display_mi) {
-                        $distance = convertDistance($distance_display_mi, $current_group['units']);
-                        $unit = getDistanceUnit($current_group['units']);
-                        echo $distance . ' ' . $unit;
-                    } else {
-                        echo '—';
-                    }
-                    ?>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Gain
-                    <?php if ($elevation_source === 'GPS'): ?>
-                        <span style="color: var(--trail-green); font-size: 0.7rem;">(GPS)</span>
-                    <?php endif; ?>
-                </div>
-                <div class="stat-value">
-                    <?php
-                    if ($elevation_gain_display) {
-                        $gain = convertElevation($elevation_gain_display, $current_group['units']);
-                        $unit = getElevationUnit($current_group['units']);
-                        echo number_format($gain) . ' ' . $unit;
-                    } else {
-                        echo '—';
-                    }
-                    ?>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Hike Time (RT)
-                    <?php if ($hike_time_source === 'GPS'): ?>
-                        <span style="color: var(--trail-green); font-size: 0.7rem;">(GPS recorded)</span>
-                    <?php elseif ($hike_time_source === 'Estimated'): ?>
-                        <span style="color: #E6A020; font-size: 0.7rem;">*estimated</span>
-                    <?php endif; ?>
-                </div>
-                <div class="stat-value"><?= $hike_time_total ? formatTime($hike_time_total) : '—' ?></div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Drive Time (RT)</div>
-                <div class="stat-value"><?= $summit['drive_time_min'] ? formatTime($summit['drive_time_min']) : '—' ?></div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Last Activated</div>
-                <div class="stat-value" style="font-size: 1.1rem;">
-                    <?= $summit['last_activated_date'] ? date('M j, Y', strtotime($summit['last_activated_date'])) : '—' ?>
-                </div>
-            </div>
-        </div>
-
-        <?php if ($tl_show): ?>
-        <button class="timeline-toggle" onclick="
-            var s = document.getElementById('activation-timeline');
-            var expanded = s.style.display !== 'none';
-            s.style.display = expanded ? 'none' : 'block';
-            this.textContent = expanded ? '📅 Show Activation Timeline' : '📅 Hide Activation Timeline';
-        ">📅 Show Activation Timeline</button>
-
-        <div id="activation-timeline" style="display:none;">
-            <div class="timeline-section">
-                <div class="tl-gantt-bar">
-                    <?php if ($tl_drive_pct > 0): ?>
-                    <div class="tl-seg tl-drive" style="flex:<?= $tl_drive_pct ?>;">
-                        <span class="seg-label">🚗 Drive</span>
-                        <span class="seg-time"><?= $tl_drive_one ?>m</span>
-                    </div>
-                    <?php endif; ?>
-                    <?php if ($tl_hike_up_pct > 0): ?>
-                    <div class="tl-seg tl-hike-up" style="flex:<?= $tl_hike_up_pct ?>;">
-                        <span class="seg-label">🥾 Hike Up</span>
-                        <span class="seg-time"><?= $tl_hike_up ?>m</span>
-                    </div>
-                    <?php endif; ?>
-                    <div class="tl-seg tl-radio" style="flex:<?= $tl_activation_pct ?>;">
-                        <span class="seg-label">📻 Radio</span>
-                        <span class="seg-time"><?= $tl_activation ?>m</span>
-                    </div>
-                    <?php if ($tl_hike_down_pct > 0): ?>
-                    <div class="tl-seg tl-hike-down" style="flex:<?= $tl_hike_down_pct ?>;">
-                        <span class="seg-label">🥾 Hike Down</span>
-                        <span class="seg-time"><?= $tl_hike_down ?>m</span>
-                    </div>
-                    <?php endif; ?>
-                    <?php if ($tl_drive_pct > 0): ?>
-                    <div class="tl-seg tl-drive-back" style="flex:<?= $tl_drive_pct ?>;">
-                        <span class="seg-label">🚗 Drive</span>
-                        <span class="seg-time"><?= $tl_drive_one ?>m</span>
-                    </div>
-                    <?php endif; ?>
-                </div>
-
-                <div class="tl-milestones-wrap">
-                    <?php foreach ($tl_m as [$pct, $label, $mins]): ?>
-                    <div class="tl-milestone" style="left:<?= min($pct, 98) ?>%;">
-                        <div class="tl-milestone-dot"></div>
-                        <div class="tl-milestone-dur"><?= $mins === 0 ? 'Start' : '+' . formatTime($mins) ?></div>
-                        <div class="tl-milestone-lbl"><?= $label ?></div>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-
-                <div class="tl-legend">
-                    <?php if ($tl_drive_pct > 0): ?>
-                    <div class="tl-legend-item"><div class="tl-legend-dot" style="background:#8D6E63;"></div> Drive (<?= $tl_drive_one ?> min each way)</div>
-                    <?php endif; ?>
-                    <?php if ($tl_hike_up_pct > 0): ?>
-                    <div class="tl-legend-item"><div class="tl-legend-dot" style="background:#43A047;"></div> Hike Up (<?= formatTime($tl_hike_up) ?>)</div>
-                    <?php endif; ?>
-                    <div class="tl-legend-item"><div class="tl-legend-dot" style="background:var(--navy);"></div> Radio / Activation (<?= formatTime($tl_activation) ?>)</div>
-                    <?php if ($tl_hike_down_pct > 0): ?>
-                    <div class="tl-legend-item"><div class="tl-legend-dot" style="background:#66BB6A;"></div> Hike Down (<?= formatTime($tl_hike_down) ?>)</div>
-                    <?php endif; ?>
-                    <div class="tl-legend-item" style="font-weight:700; color:var(--navy);">Total Day: ~<?= formatTime($tl_total) ?></div>
-                </div>
-            </div>
-        </div>
-        <?php endif; ?>
-
-        <!-- Edit Form - Compact Grid -->
-        <div class="card">
-            <h2>Edit Summit Details <button onclick="document.getElementById('editModal').style.display='flex'" style="background:none;border:1px solid #b0c4d0;color:#4A90A4;border-radius:50%;width:22px;height:22px;font-size:0.75rem;cursor:pointer;font-weight:700;padding:0;line-height:1;vertical-align:middle;margin-left:0.4rem;" title="About these fields">ℹ</button></h2>
-            <form method="POST">
-                <div class="form-grid">
-
-                    <!-- Left column: compact fields -->
-                    <div class="form-row">
-                        <div class="form-group compact">
-                            <label for="status">Status</label>
-                            <select id="status" name="status" required>
-                                <option value="nominated" <?= $summit['status'] === 'nominated' ? 'selected' : '' ?>>Nominated</option>
-                                <option value="researched" <?= $summit['status'] === 'researched' ? 'selected' : '' ?>>Researched</option>
-                                <option value="ready" <?= $summit['status'] === 'ready' ? 'selected' : '' ?>>Ready</option>
-                                <option value="activated" <?= $summit['status'] === 'activated' ? 'selected' : '' ?>>Activated</option>
-                            </select>
-                        </div>
-
-                        <div class="form-group compact">
-                            <label for="difficulty">Difficulty</label>
-                            <select id="difficulty" name="difficulty">
-                                <option value="">Not Set</option>
-                                <option value="drive-up" <?= $summit['difficulty'] === 'drive-up' ? 'selected' : '' ?>>Drive-Up</option>
-                                <option value="easy" <?= $summit['difficulty'] === 'easy' ? 'selected' : '' ?>>Easy</option>
-                                <option value="moderate" <?= $summit['difficulty'] === 'moderate' ? 'selected' : '' ?>>Moderate</option>
-                                <option value="hard" <?= $summit['difficulty'] === 'hard' ? 'selected' : '' ?>>Hard</option>
-                            </select>
-                        </div>
-
-                        <div class="form-group compact">
-                            <label for="cell_service">Cell Service</label>
-                            <select id="cell_service" name="cell_service">
-                                <option value="">Unknown</option>
-                                <option value="full" <?= ($summit['cell_service'] ?? '') === 'full' ? 'selected' : '' ?>>Full Coverage</option>
-                                <option value="intermittent" <?= ($summit['cell_service'] ?? '') === 'intermittent' ? 'selected' : '' ?>>Intermittent</option>
-                                <option value="summit_only" <?= ($summit['cell_service'] ?? '') === 'summit_only' ? 'selected' : '' ?>>Summit Only</option>
-                                <option value="none" <?= ($summit['cell_service'] ?? '') === 'none' ? 'selected' : '' ?>>No Service</option>
-                            </select>
-                        </div>
-
-                        <div style="display: flex; gap: 0.75rem; align-items: flex-end;">
-                            <div class="form-group compact">
-                                <label for="hike_distance_mi">Distance (<?= getDistanceUnit($current_group['units']) ?>)</label>
-                                <input type="number" id="hike_distance_mi" name="hike_distance_mi" step="0.01" value="<?= $summit['hike_distance_mi'] ?>">
-                            </div>
-                            <div class="form-group compact">
-                                <label for="hike_elevation_gain_ft">Gain (<?= getElevationUnit($current_group['units']) ?>)</label>
-                                <input type="number" id="hike_elevation_gain_ft" name="hike_elevation_gain_ft" value="<?= $summit['hike_elevation_gain_ft'] ?>">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Right column: trailhead geocoder + lat/lng -->
-                    <div class="form-row">
-                        <div style="background: #E8F4F8; padding: 0.75rem; border-radius: 6px; border: 2px solid var(--teal);">
-                            <div style="font-size: 0.85rem; margin-bottom: 0.5rem; font-weight: 600;">📍 Set Trailhead</div>
-                            <div class="geocode-row" style="display: flex; gap: 0.5rem;">
-                                <input type="text" id="geocode_address"
-                                       placeholder="Paste lat,lng or enter an address"
-                                       style="flex: 1; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem;">
-                                <button type="button" onclick="geocodeAddress()" class="btn btn-small" style="white-space: nowrap;">Find</button>
-                            </div>
-                            <small style="color: #666; font-size: 0.75rem; display: block; margin-top: 0.4rem;">
-                                💡 e.g. 34.168, -118.236 or a street address
-                            </small>
-                        </div>
-
-                        <div style="display: flex; gap: 0.75rem;">
-                            <div class="form-group" style="flex: 1;">
-                                <label for="trailhead_lat">Trailhead Lat</label>
-                                <input type="number" id="trailhead_lat" name="trailhead_lat" step="0.000001"
-                                       value="<?= $summit['trailhead_lat'] ?>" placeholder="34.168300">
-                            </div>
-                            <div class="form-group" style="flex: 1;">
-                                <label for="trailhead_lng">Trailhead Lng</label>
-                                <input type="number" id="trailhead_lng" name="trailhead_lng" step="0.000001"
-                                       value="<?= $summit['trailhead_lng'] ?>" placeholder="-118.236200">
-                            </div>
-                        </div>
-                    </div>
-
-                    <script>
-                    function geocodeAddress() {
-                        const address = document.getElementById('geocode_address').value;
-                        if (!address) {
-                            alert('Please enter an address');
-                            return;
-                        }
-                        
-                        // Get the main form (the parent form element)
-                        const mainForm = document.querySelector('form[method="POST"]');
-                        
-                        // Create hidden input for geocode flag
-                        const geocodeInput = document.createElement('input');
-                        geocodeInput.type = 'hidden';
-                        geocodeInput.name = 'geocode_address';
-                        geocodeInput.value = '1';
-                        mainForm.appendChild(geocodeInput);
-                        
-                        // Create hidden input for trailhead address
-                        const addressInput = document.createElement('input');
-                        addressInput.type = 'hidden';
-                        addressInput.name = 'trailhead_address';
-                        addressInput.value = address;
-                        mainForm.appendChild(addressInput);
-                        
-                        // Submit the main form (includes all other fields!)
-                        mainForm.submit();
-                    }
-                    </script>
-
-                    <div class="form-group full-width">
-                        <label for="trail_link">Trail Link</label>
-                        <input type="text" id="trail_link" name="trail_link" value="<?= htmlspecialchars($summit['trail_link'] ?? '') ?>">
-                        <?php
-                            $search_name = urlencode($summit['name'] ?? '');
-                            $search_lat  = $summit['latitude'] ?? '';
-                            $search_lng  = $summit['longitude'] ?? '';
-                        ?>
-                        <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.5rem;">
-                            <span style="font-size:0.8rem;color:#888;align-self:center;">Search:</span>
-                            <a href="https://www.alltrails.com/explore?q=<?= $search_name ?>" target="_blank" class="trail-search-btn">AllTrails</a>
-                            <a href="https://www.gaiagps.com/map/?search=<?= $search_name ?>" target="_blank" class="trail-search-btn">Gaia GPS</a>
-                            <a href="https://caltopo.com/map.html#ll=<?= $search_lat ?>,<?= $search_lng ?>&z=14&b=t" target="_blank" class="trail-search-btn">CalTopo</a>
-                            <a href="https://www.hikingproject.com/directory/search?type=trail&q=<?= $search_name ?>" target="_blank" class="trail-search-btn">Hiking Project</a>
-                            <?php if (!empty($summit['sota_ref'])): ?>
-                            <a href="https://sotl.as/summits/<?= urlencode($summit['sota_ref']) ?>" target="_blank" class="trail-search-btn">SOTLAS</a>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-
-                </div>
-
-                <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
-                    <button type="submit" name="update_summit" class="btn">💾 Save Changes</button>
-                    <?php if ($selected_address): ?>
-                        <button type="submit" name="calculate_drive_time" class="btn btn-secondary">🚗 Calculate Drive Time</button>
-                    <?php endif; ?>
-                </div>
-            </form>
-        </div>
-
-
-        <!-- GPS Track Analysis -->
-        <div class="card">
-            <h2>📊 GPS Track Analysis <button onclick="document.getElementById('gpxInfoModal').style.display='flex'" style="background:none;border:1px solid #b0c4d0;color:#4A90A4;border-radius:50%;width:22px;height:22px;font-size:0.75rem;cursor:pointer;font-weight:700;padding:0;line-height:1;vertical-align:middle;margin-left:0.4rem;" title="About GPS data &amp; planning">ℹ</button></h2>
-            
-            <?php if ($gpx_data): ?>
-                <!-- Existing GPX -->
-                <div style="background: #E8F5E9; padding: 1rem; border-radius: 6px; margin-bottom: 1.5rem; border-left: 4px solid var(--trail-green);">
-                    <strong>✓ GPS Track Loaded:</strong> <?= htmlspecialchars($gpx_data['filename']) ?>
-                    <small style="display: block; color: #666; margin-top: 0.5rem;">
-                        Uploaded: <?= date('M j, Y g:i A', strtotime($gpx_data['uploaded_date'])) ?>
-                    </small>
-                </div>
-
-                <!-- Stats Grid -->
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
-                    <?php if ($has_timestamps): ?>
-                    <div style="background: #f9f9f9; padding: 1rem; border-radius: 8px; text-align: center; border: 1px solid #e0e0e0;">
-                        <div style="font-size: 1.5rem;">🚶</div>
-                        <div style="font-size: 1.5rem; font-weight: 700; color: var(--teal); margin: 0.5rem 0;">
-                            <?= format_time_duration($gpx_data['hiking_time']) ?>
-                        </div>
-                        <div style="font-size: 0.8rem; color: #666; font-weight: 600;">Hiking Time</div>
-                        <small style="color: #999; font-size: 0.7rem;">Excludes activation zone</small>
-                    </div>
-
-                    <div style="background: #f9f9f9; padding: 1rem; border-radius: 8px; text-align: center; border: 1px solid #e0e0e0;">
-                        <div style="font-size: 1.5rem;">📻</div>
-                        <div style="font-size: 1.5rem; font-weight: 700; color: var(--navy); margin: 0.5rem 0;">
-                            <?= format_time_duration($gpx_data['activation_time']) ?>
-                        </div>
-                        <div style="font-size: 0.8rem; color: #666; font-weight: 600;">Activation Time</div>
-                        <small style="color: #999; font-size: 0.7rem;">Time in zone</small>
-                    </div>
-                    <?php endif; ?>
-
-                    <div style="background: #f9f9f9; padding: 1rem; border-radius: 8px; text-align: center; border: 1px solid #e0e0e0;">
-                        <div style="font-size: 1.5rem;">📏</div>
-                        <div style="font-size: 1.5rem; font-weight: 700; color: var(--forest-dark); margin: 0.5rem 0;">
-                            <?php
-                            $dist = convertDistance($gpx_data['total_distance'] * 0.621371, $current_group['units']);
-                            echo number_format($dist, 2) . ' ' . getDistanceUnit($current_group['units']);
-                            ?>
-                        </div>
-                        <div style="font-size: 0.8rem; color: #666; font-weight: 600;">Total Distance</div>
-                        <small style="color: #999; font-size: 0.7rem;">Round trip</small>
-                    </div>
-
-                    <div style="background: #f9f9f9; padding: 1rem; border-radius: 8px; text-align: center; border: 1px solid #e0e0e0;">
-                        <div style="font-size: 1.5rem;">⛰️</div>
-                        <div style="font-size: 1.5rem; font-weight: 700; color: var(--gold); margin: 0.5rem 0;">
-                            <?php
-                            $gain = convertElevation($gpx_data['elevation_gain'] * 3.28084, $current_group['units']);
-                            echo number_format($gain) . ' ' . getElevationUnit($current_group['units']);
-                            ?>
-                        </div>
-                        <div style="font-size: 0.8rem; color: #666; font-weight: 600;">Elevation Gain</div>
-                        <small style="color: #999; font-size: 0.7rem;">From GPS</small>
-                    </div>
-
-                    <?php if ($has_timestamps): ?>
-                    <div style="background: #f9f9f9; padding: 1rem; border-radius: 8px; text-align: center; border: 1px solid #e0e0e0;">
-                        <div style="font-size: 1.5rem;">⚡</div>
-                        <div style="font-size: 1.5rem; font-weight: 700; color: var(--teal); margin: 0.5rem 0;">
-                            <?php
-                            $spd = $current_group['units'] === 'metric' ? $gpx_data['hiking_speed'] : $gpx_data['hiking_speed'] * 0.621371;
-                            echo number_format($spd, 1) . ' ' . ($current_group['units'] === 'metric' ? 'km/h' : 'mph');
-                            ?>
-                        </div>
-                        <div style="font-size: 0.8rem; color: #666; font-weight: 600;">Hiking Speed</div>
-                        <small style="color: #999; font-size: 0.7rem;">Average</small>
-                    </div>
-
-                    <div style="background: #f9f9f9; padding: 1rem; border-radius: 8px; text-align: center; border: 1px solid #e0e0e0;">
-                        <div style="font-size: 1.5rem;">☕</div>
-                        <div style="font-size: 1.5rem; font-weight: 700; color: var(--peak-brown); margin: 0.5rem 0;">
-                            <?= format_time_duration($gpx_data['rest_break_time']) ?>
-                        </div>
-                        <div style="font-size: 0.8rem; color: #666; font-weight: 600;">Rest Breaks</div>
-                        <small style="color: #999; font-size: 0.7rem;">Stops >3 min</small>
-                    </div>
-                    <?php else: ?>
-                    <div style="background: #FFF8E1; padding: 1rem; border-radius: 8px; text-align: center; border: 1px dashed #E6B84A; grid-column: span 2;">
-                        <div style="font-size: 1.5rem;">📡</div>
-                        <div style="font-size: 0.85rem; font-weight: 700; color: #7a5c00; margin: 0.5rem 0;">Want more stats? Upload your hike recording!</div>
-                        <small style="color: #9a7a20; font-size: 0.75rem;">The current file is a route without timestamps. After your activation, upload the GPX recorded by your GPS watch or device to unlock hiking time, activation time, speed, and rest break stats.</small>
-                    </div>
-                    <?php endif; ?>
-                </div>
-
-
-                <!-- Elevation Profile Chart -->
-                <div style="background: #f8f9fa; border-radius: 8px; padding: 0.6rem 0.75rem 0.4rem; margin-bottom: 1rem; border: 1px solid #e8e8e8;">
-                    <div style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: #aaa; font-weight: 600; margin-bottom: 0.3rem;">Elevation Profile</div>
-                    <canvas id="elev-canvas" style="width: 100%; height: 120px; display: block;"></canvas>
-                    <div id="elev-note" style="font-size: 0.72rem; color: #bbb; margin-top: 0.25rem; text-align: center;">Loading profile…</div>
-                </div>
-
-                <!-- Use for Planning -->
-                <form method="POST" style="background: #E8F4F8; padding: 0.85rem 1rem; border-radius: 8px; margin-bottom: 1.5rem; border-left: 4px solid var(--teal);">
-                    <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
-                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin: 0;">
-                            <input type="checkbox" name="use_gps_data" value="1"
-                                   <?= $gpx_data['use_for_hike_time'] ? 'checked' : '' ?>
-                                   style="width: 18px; height: 18px; cursor: pointer;">
-                            <span style="font-weight: 600; font-size: 0.95rem;">Use GPS data for planning</span>
-                            <button onclick="document.getElementById('gpxInfoModal').style.display='flex'" type="button" style="background:none;border:1px solid #6aabbc;color:#4A90A4;border-radius:50%;width:18px;height:18px;font-size:0.65rem;cursor:pointer;font-weight:700;padding:0;line-height:1;flex-shrink:0;" title="How GPS planning works">ℹ</button>
-                        </label>
-
-                        <div style="display: flex; align-items: center; gap: 0.4rem;">
-                            <span style="font-size: 0.82rem; font-weight: 600; color: #2c5f7a;">Track type:</span>
-                            <select name="track_type" style="width: auto; padding: 0.3rem 0.5rem; font-size: 0.85rem; border-radius: 4px; border: 1px solid #b2dcc0;">
-                                <option value="round-trip" <?= ($track_type ?? 'round-trip') === 'round-trip' ? 'selected' : '' ?>>Round-Trip</option>
-                                <option value="ascent"     <?= ($track_type ?? '') === 'ascent'     ? 'selected' : '' ?>>Ascent Only</option>
-                                <option value="descent"    <?= ($track_type ?? '') === 'descent'    ? 'selected' : '' ?>>Descent Only</option>
-                            </select>
-                        </div>
-
-                        <button type="submit" name="update_gpx_preferences" class="btn btn-small" style="margin: 0; padding: 0.4rem 0.8rem; font-size: 0.85rem;">
-                            Save
-                        </button>
-                    </div>
-                    <div style="margin-top: 0.5rem; font-size: 0.75rem; color: #5a8a9f;">
-                        <?php if ($track_type === 'ascent'): ?>
-                            ↑ Ascent-only track — distance and time doubled for round-trip planning
-                        <?php elseif ($track_type === 'descent'): ?>
-                            ↓ Descent-only track — direction reversed; elevation gain derived from track's descent
-                        <?php else: ?>
-                            Round-trip track — GPS values used as-is
-                        <?php endif; ?>
-                    </div>
-                </form>
-
-                <!-- Map -->
-                <!-- Map layer toggles -->
-                <div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.6rem; align-items:center;">
-
-                    <!-- Base map selector -->
-                    <span style="font-size:0.75rem; color:#888;">Map:</span>
-                    <button onclick="switchBase('street')" id="btn-base-street"
-                            style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #1E3A5F;
-                                   background:#1E3A5F; color:white; font-weight:700; font-size:0.78rem;
-                                   cursor:pointer; transition:all 0.2s;">Street</button>
-                    <button onclick="switchBase('topo')" id="btn-base-topo"
-                            style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #1E3A5F;
-                                   background:white; color:#1E3A5F; font-weight:700; font-size:0.78rem;
-                                   cursor:pointer; transition:all 0.2s;">Topo</button>
-                    <button onclick="switchBase('satellite')" id="btn-base-satellite"
-                            style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #1E3A5F;
-                                   background:white; color:#1E3A5F; font-weight:700; font-size:0.78rem;
-                                   cursor:pointer; transition:all 0.2s;">Satellite</button>
-
-                    <span style="color:#ddd; font-size:0.75rem;">|</span>
-                    <span style="font-size:0.8rem; font-weight:700; color:#555; margin-right:0.1rem;">Overlays:</span>
-
-                    <!-- Activation Zone zoom button -->
-                    <button onclick="zoomToActivationZone()" id="btn-actzone" disabled
-                            style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #CC2200;
-                                   background:#CC2200; color:white; font-weight:700; font-size:0.78rem;
-                                   cursor:pointer; transition:all 0.2s; opacity:0.5;">🏔 Zoom to Activation Zone</button>
-
-                    <span style="color:#ddd; font-size:0.75rem;">|</span>
-                    <span style="font-size:0.75rem; color:#888;">Cell Coverage:</span>
-
-                    <button onclick="toggleCarrier('tmobile')" id="btn-tmobile"
-                            style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #E91E8C;
-                                   background:white; color:#E91E8C; font-weight:700; font-size:0.78rem;
-                                   cursor:pointer; transition:all 0.2s;">T-Mobile</button>
-                    <button onclick="toggleCarrier('verizon')" id="btn-verizon"
-                            style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #CD040B;
-                                   background:white; color:#CD040B; font-weight:700; font-size:0.78rem;
-                                   cursor:pointer; transition:all 0.2s;">Verizon</button>
-                    <button onclick="toggleCarrier('att')" id="btn-att"
-                            style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #00A8E0;
-                                   background:white; color:#00A8E0; font-weight:700; font-size:0.78rem;
-                                   cursor:pointer; transition:all 0.2s;">AT&T</button>
-                    <span style="font-size:0.72rem; color:#999; margin-left:0.1rem;">Cell data may be optimistic in mountainous terrain</span>
-
-                    <span style="color:#ddd; font-size:0.75rem;">|</span>
-                    <a href="load_gpx.php?id=<?= $gpx_data['id'] ?>" download="<?= htmlspecialchars($gpx_download_name) ?>"
-                       style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #4A7C59;
-                              background:#4A7C59; color:white; font-weight:700; font-size:0.78rem;
-                              text-decoration:none; display:inline-block; line-height:1.4;">⬇ Download GPX</a>
-                </div>
-                <div id="gpx-map" style="height: 450px; border-radius: 8px; border: 2px solid #ddd; margin-bottom: 0.5rem;"></div>
-                <p style="font-size:0.72rem; color:#aaa; margin-bottom:1rem;">Coverage data: FCC Form 477 filings (2021), via ArcGIS public tile service. Carrier-reported estimates — actual signal in mountainous terrain may differ.</p>
-
-                <!-- Methodology — updated by JS once activation zone result is known -->
-                <div id="az-methodology" style="padding: 1rem; background: #f9f9f9; border-radius: 6px; font-size: 0.85rem; margin-bottom: 1rem;">
-                    <strong>Activation Zone:</strong>
-                    <?php if ($gpx_data['using_api'] && $gpx_data['activation_zone_polygon']): ?>
-                        <span style="color: var(--trail-green);">✓ Precise terrain-based boundary</span> from
-                        <a href="https://activation.zone" target="_blank" style="color: var(--teal);">Activation.Zone</a>
-                        by <strong>N6ARA</strong>.
-                    <?php else: ?>
-                        <span style="color: #aaa;">⏳ Fetching boundary from Activation.Zone…</span>
-                    <?php endif; ?>
-                </div>
-
-                <!-- Replace GPX -->
-                <details style="margin-top: 1rem;">
-                    <summary style="cursor: pointer; font-weight: 600; color: var(--teal); padding: 0.5rem;">
-                        Replace GPS Track
-                    </summary>
-                    <div style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
-                        <?php if (!empty($summit['sota_ref'])): ?>
-                        <div style="padding: 0.75rem 1rem; background: #EEF6F0; border: 1px solid #B2DCC0; border-radius: 6px;">
-                            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
-                                <span style="font-size: 0.9rem; color: #1a5c2e; font-weight: 600;">Import from SOTA Maps</span>
-                                <button class="btn btn-small" onclick="fetchSotaMaps(this)">🗺 Check for Tracks</button>
-                            </div>
-                            <div id="sotamaps-result" style="margin-top: 0.75rem; display: none;"></div>
-                        </div>
-                        <?php endif; ?>
-                        <form method="POST" enctype="multipart/form-data">
-                            <div style="font-size: 0.85rem; color: #666; margin-bottom: 0.4rem;">Upload your own GPX file:</div>
-                            <input type="file" name="gpx_file" accept=".gpx" required style="margin-bottom: 0.5rem; display: block;">
-                            <button type="submit" class="btn btn-small">Upload & Analyze</button>
-                        </form>
-                    </div>
-                </details>
-
-                <script>
-                const map = L.map('gpx-map').setView([<?= $gpx_data['summit_lat'] ?>, <?= $gpx_data['summit_lon'] ?>], 14);
-
-                // Base layers
-                const baseLayers = {
-                    street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                        attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>',
-                        maxZoom: 19
-                    }),
-                    topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-                        attribution: '© <a href="https://opentopomap.org">OpenTopoMap</a> | © <a href="https://openstreetmap.org">OpenStreetMap</a>',
-                        maxZoom: 17
-                    }),
-                    satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                        attribution: '© Esri / USGS / USDA',
-                        maxZoom: 19
-                    })
-                };
-
-                let activeBase = 'street';
-                let gpxPolyline = null;
-                baseLayers.street.addTo(map);
-
-                function switchBase(name) {
-                    if (name === activeBase) return;
-                    map.removeLayer(baseLayers[activeBase]);
-                    baseLayers[name].addTo(map);
-                    // Bring vector overlays to front after new tile layer loads
-                    if (gpxPolyline) gpxPolyline.bringToFront();
-                    if (activationZoneLayer) activationZoneLayer.bringToFront();
-                    activeBase = name;
-                    ['street','topo','satellite'].forEach(n => {
-                        const b = document.getElementById('btn-base-' + n);
-                        b.style.background = n === name ? '#1E3A5F' : 'white';
-                        b.style.color      = n === name ? 'white'   : '#1E3A5F';
-                    });
-                }
-
-                // FCC Form 477 carrier LTE coverage tiles (LOD 3-13, stretched via maxNativeZoom)
-                const tileOpts = { opacity: 0.5, maxNativeZoom: 13, maxZoom: 20, crossOrigin: true, attribution: 'FCC Form 477 / ArcGIS' };
-                const carrierLayers = {
-                    tmobile: L.tileLayer('https://tiles.arcgis.com/tiles/YnOQrIGdN9JGtBh4/arcgis/rest/services/TMobile_LTE_Data/MapServer/tile/{z}/{y}/{x}', tileOpts),
-                    verizon: L.tileLayer('https://tiles.arcgis.com/tiles/YnOQrIGdN9JGtBh4/arcgis/rest/services/Verizon_LTE_Data/MapServer/tile/{z}/{y}/{x}', tileOpts),
-                    att:     L.tileLayer('https://tiles.arcgis.com/tiles/YnOQrIGdN9JGtBh4/arcgis/rest/services/ATT_Mobility_LTE_Data/MapServer/tile/{z}/{y}/{x}', tileOpts),
-                };
-                const carrierActive = { tmobile: false, verizon: false, att: false };
-                const carrierColors = { tmobile: '#E91E8C', verizon: '#CD040B', att: '#00A8E0' };
-                function toggleCarrier(name) {
-                    const btn = document.getElementById('btn-' + name);
-                    if (carrierActive[name]) {
-                        map.removeLayer(carrierLayers[name]);
-                        carrierActive[name] = false;
-                        btn.style.background = 'white';
-                        btn.style.color = carrierColors[name];
-                    } else {
-                        carrierLayers[name].addTo(map);
-                        carrierActive[name] = true;
-                        btn.style.background = carrierColors[name];
-                        btn.style.color = 'white';
-                    }
-                }
-
-                // Activation Zone — always-visible red polygon
-                let activationZoneLayer = null;
-
-                function initActivationZone(poly) {
-                    let coords;
-                    if (Array.isArray(poly[0]) && Array.isArray(poly[0][0]) && Array.isArray(poly[0][0][0])) {
-                        coords = poly[0][0].map(c => [c[1], c[0]]);
-                    } else if (Array.isArray(poly[0]) && Array.isArray(poly[0][0])) {
-                        coords = poly[0].map(c => [c[1], c[0]]);
-                    } else {
-                        coords = poly.map(c => [c[1], c[0]]);
-                    }
-                    activationZoneLayer = L.polygon(coords, {
-                        color: '#CC2200',
-                        fillColor: '#CC2200',
-                        fillOpacity: 0.18,
-                        weight: 2,
-                        dashArray: '5, 4'
-                    }).bindPopup('<strong>SOTA Activation Zone</strong><br>Must operate within this boundary.<br><small>Source: Activation.Zone by N6ARA</small>');
-                    activationZoneLayer.addTo(map);
-                    // Enable the zoom button
-                    const zBtn = document.getElementById('btn-actzone');
-                    if (zBtn) { zBtn.disabled = false; zBtn.style.opacity = '1'; }
-                    // Update methodology note
-                    const az = document.getElementById('az-methodology');
-                    if (az) az.innerHTML = '<strong>Activation Zone:</strong> <span style="color:#4A7C59;">✓ Precise terrain-based boundary</span> from <a href="https://activation.zone" target="_blank" style="color:#4A90A4;">Activation.Zone</a> by <strong>N6ARA</strong>.';
-                }
-
-                function setActivationZoneFallback() {
-                    const az = document.getElementById('az-methodology');
-                    if (az) az.innerHTML = '<strong>Activation Zone:</strong> <span style="color:#E6A020;">⚠ Activation.Zone API unavailable</span> — showing estimated 50 m radius from highest GPS point instead.';
-                }
-
-                function zoomToActivationZone() {
-                    if (!activationZoneLayer) return;
-                    map.fitBounds(activationZoneLayer.getBounds(), {padding: [40, 40]});
-                }
-                
-                fetch('load_gpx.php?id=<?= $gpx_data['id'] ?>')
-                    .then(r => r.text())
-                    .then(gpxText => {
-                        const parser = new DOMParser();
-                        const gpx = parser.parseFromString(gpxText, 'text/xml');
-                        // Support both track points (trkpt) and route points (rtept)
-                        const pts = gpx.querySelectorAll('trkpt, rtept');
-                        const coords = [];
-                        const elevPts = []; // [lat, lon, ele_m]
-
-                        pts.forEach(pt => {
-                            const lat = parseFloat(pt.getAttribute('lat'));
-                            const lon = parseFloat(pt.getAttribute('lon'));
-                            coords.push([lat, lon]);
-                            const ele = pt.querySelector('ele');
-                            if (ele) elevPts.push([lat, lon, parseFloat(ele.textContent)]);
-                        });
-
-                        gpxPolyline = L.polyline(coords, {color: '#4A90A4', weight: 3, opacity: 0.8}).addTo(map);
-                        const elevState = drawElevationProfile(elevPts);
-                        if (elevState) setupElevMapHover(elevState, map);
-                        map.fitBounds(L.polyline(coords).getBounds(), {padding: [50, 50]});
-
-                        // Try to load activation zone from cached DB data, else fetch from API
-                        <?php if ($gpx_data['using_api'] && $gpx_data['activation_zone_polygon']): ?>
-                        initActivationZone(<?= $gpx_data['activation_zone_polygon'] ?>);
-                        <?php elseif (!empty($summit['sota_ref'])): ?>
-                        fetch('activation_zone.php?sota_ref=<?= urlencode($summit['sota_ref']) ?>')
-                            .then(r => r.json())
-                            .then(data => {
-                                if (data.polygon) initActivationZone(data.polygon);
-                                else setActivationZoneFallback();
-                            })
-                            .catch(() => setActivationZoneFallback());
-                        <?php endif; ?>
-                    });
-
-                function drawElevationProfile(elevPts) {
-                    const canvas = document.getElementById('elev-canvas');
-                    const note = document.getElementById('elev-note');
-                    if (!canvas) return null;
-                    if (elevPts.length < 2) {
-                        if (note) note.textContent = 'No elevation data in this track.';
-                        return null;
-                    }
-
-                    const rect = canvas.getBoundingClientRect();
-                    const W = Math.floor(rect.width) || 600;
-                    const H = 120;
-                    const dpr = window.devicePixelRatio || 1;
-                    canvas.width = W * dpr;
-                    canvas.height = H * dpr;
-                    const ctx = canvas.getContext('2d');
-                    ctx.scale(dpr, dpr);
-
-                    // Downsample for performance
-                    let pts = elevPts;
-                    if (pts.length > 500) {
-                        const step = Math.ceil(pts.length / 500);
-                        pts = pts.filter((_, i) => i % step === 0 || i === pts.length - 1);
-                    }
-
-                    // Cumulative distance
-                    function hDist(lat1, lon1, lat2, lon2) {
-                        const R = 6371, r = Math.PI / 180;
-                        const dLat = (lat2 - lat1) * r, dLon = (lon2 - lon1) * r;
-                        const a = Math.sin(dLat/2)**2 + Math.cos(lat1*r)*Math.cos(lat2*r)*Math.sin(dLon/2)**2;
-                        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-                    }
-
-                    const useMetric = <?= $current_group['units'] === 'metric' ? 'true' : 'false' ?>;
-                    const eleConv = useMetric ? 1 : 3.28084;
-                    const distConv = useMetric ? 1 : 0.621371;
-                    const eleUnit = useMetric ? 'm' : 'ft';
-                    const distUnit = useMetric ? 'km' : 'mi';
-
-                    const data = [];
-                    let cumD = 0;
-                    for (let i = 0; i < pts.length; i++) {
-                        if (i > 0) cumD += hDist(pts[i-1][0], pts[i-1][1], pts[i][0], pts[i][1]);
-                        // Store lat/lon alongside elevation+distance for crosshair sync
-                        data.push({ d: cumD * distConv, e: pts[i][2] * eleConv, lat: pts[i][0], lon: pts[i][1] });
-                    }
-
-                    const eles = data.map(p => p.e);
-                    const minE = Math.min(...eles), maxE = Math.max(...eles);
-                    const maxD = data[data.length - 1].d;
-
-                    const pad = {top: 8, right: 12, bottom: 24, left: 46};
-                    const plotW = W - pad.left - pad.right;
-                    const plotH = H - pad.top - pad.bottom;
-
-                    const xS = d => pad.left + (d / maxD) * plotW;
-                    const yS = e => pad.top + (1 - (e - minE) / ((maxE - minE) || 1)) * plotH;
-
-                    // Gradient fill
-                    const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + plotH);
-                    grad.addColorStop(0, 'rgba(74,144,164,0.5)');
-                    grad.addColorStop(1, 'rgba(74,144,164,0.04)');
-
-                    ctx.beginPath();
-                    ctx.moveTo(xS(data[0].d), pad.top + plotH);
-                    for (const p of data) ctx.lineTo(xS(p.d), yS(p.e));
-                    ctx.lineTo(xS(maxD), pad.top + plotH);
-                    ctx.closePath();
-                    ctx.fillStyle = grad;
-                    ctx.fill();
-
-                    // Profile line
-                    ctx.beginPath();
-                    ctx.moveTo(xS(data[0].d), yS(data[0].e));
-                    for (let i = 1; i < data.length; i++) ctx.lineTo(xS(data[i].d), yS(data[i].e));
-                    ctx.strokeStyle = '#4A90A4';
-                    ctx.lineWidth = 1.5;
-                    ctx.stroke();
-
-                    // Gridlines + Y labels
-                    ctx.font = '10px sans-serif';
-                    ctx.textAlign = 'right';
-                    for (let i = 0; i <= 3; i++) {
-                        const e = minE + (maxE - minE) * i / 3;
-                        const y = yS(e);
-                        ctx.strokeStyle = '#efefef';
-                        ctx.lineWidth = 1;
-                        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + plotW, y); ctx.stroke();
-                        ctx.fillStyle = '#aaa';
-                        ctx.fillText(Math.round(e), pad.left - 3, y + 3);
-                    }
-
-                    // X axis labels
-                    ctx.textAlign = 'center';
-                    ctx.fillStyle = '#aaa';
-                    const nX = Math.min(5, Math.floor(maxD) || 1);
-                    for (let i = 0; i <= nX; i++) {
-                        const d = maxD * i / nX;
-                        ctx.fillText(d.toFixed(1), xS(d), H - 5);
-                    }
-
-                    // Axis unit labels
-                    ctx.fillStyle = '#ccc';
-                    ctx.textAlign = 'left';
-                    ctx.fillText(eleUnit, 2, pad.top + 8);
-                    ctx.textAlign = 'right';
-                    ctx.fillText(distUnit, W - 2, H - 5);
-
-                    if (note) note.style.display = 'none';
-
-                    // Snapshot the finished render so hover can restore it without a full redraw
-                    const baseImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                    return { data, pad, plotW, plotH, W, H, dpr, maxD, minE, maxE,
-                             baseImage, canvas, ctx, xS, yS, eleUnit, distUnit };
-                }
-
-                function setupElevMapHover(state, gpxMap) {
-                    const { data, pad, plotW, plotH, dpr, maxD,
-                            baseImage, canvas, ctx, xS, yS, eleUnit, distUnit } = state;
-                    const note = document.getElementById('elev-note');
-                    let hoverMarker = null;
-
-                    function drawCrosshair(idx) {
-                        const p = data[idx];
-                        ctx.putImageData(baseImage, 0, 0);
-                        const cx = xS(p.d), cy = yS(p.e);
-
-                        // Dashed vertical line
-                        ctx.save();
-                        ctx.setLineDash([3, 3]);
-                        ctx.strokeStyle = 'rgba(230,160,32,0.9)';
-                        ctx.lineWidth = 1.5;
-                        ctx.beginPath();
-                        ctx.moveTo(cx, pad.top);
-                        ctx.lineTo(cx, pad.top + plotH);
-                        ctx.stroke();
-                        ctx.restore();
-
-                        // Dot on the profile line
-                        ctx.beginPath();
-                        ctx.arc(cx, cy, 4, 0, Math.PI * 2);
-                        ctx.fillStyle = '#E6A020';
-                        ctx.fill();
-                        ctx.strokeStyle = 'white';
-                        ctx.lineWidth = 1.5;
-                        ctx.stroke();
-
-                        // Readout in the note div below the chart
-                        if (note) {
-                            note.style.display = '';
-                            note.style.color = '#555';
-                            note.textContent = '\u2191 ' + Math.round(p.e) + '\u202f' + eleUnit
-                                             + '   \u21a6 ' + p.d.toFixed(2) + '\u202f' + distUnit;
-                        }
-                    }
-
-                    function clearCrosshair() {
-                        ctx.putImageData(baseImage, 0, 0);
-                        if (note) note.style.display = 'none';
-                    }
-
-                    function nearestByDist(targetD) {
-                        let best = 0, bestDiff = Infinity;
-                        for (let i = 0; i < data.length; i++) {
-                            const dd = Math.abs(data[i].d - targetD);
-                            if (dd < bestDiff) { bestDiff = dd; best = i; }
-                        }
-                        return best;
-                    }
-
-                    function nearestByLatLon(lat, lon) {
-                        let best = 0, bestD2 = Infinity;
-                        for (let i = 0; i < data.length; i++) {
-                            const dlat = data[i].lat - lat, dlng = data[i].lon - lon;
-                            const d2 = dlat*dlat + dlng*dlng;
-                            if (d2 < bestD2) { bestD2 = d2; best = i; }
-                        }
-                        return best;
-                    }
-
-                    // ── Canvas hover → crosshair + map marker ───────────────
-                    canvas.style.cursor = 'crosshair';
-                    canvas.addEventListener('mousemove', e => {
-                        const rect = canvas.getBoundingClientRect();
-                        const mx = (e.clientX - rect.left) * (canvas.width / rect.width) / dpr;
-                        const frac = Math.max(0, Math.min(1, (mx - pad.left) / plotW));
-                        const idx = nearestByDist(frac * maxD);
-                        drawCrosshair(idx);
-                        const p = data[idx];
-                        if (!hoverMarker) {
-                            hoverMarker = L.circleMarker([p.lat, p.lon], {
-                                radius: 6, color: '#E6A020', fillColor: '#E6A020',
-                                fillOpacity: 0.9, weight: 2
-                            }).addTo(gpxMap);
-                        } else {
-                            hoverMarker.setLatLng([p.lat, p.lon]);
-                        }
-                    });
-                    canvas.addEventListener('mouseleave', () => {
-                        clearCrosshair();
-                        if (hoverMarker) { gpxMap.removeLayer(hoverMarker); hoverMarker = null; }
-                    });
-
-                    // ── Map hover → crosshair on elevation chart ─────────────
-                    gpxMap.on('mousemove', e => {
-                        const idx = nearestByLatLon(e.latlng.lat, e.latlng.lng);
-                        // Convert nearest track point to screen pixels to check proximity
-                        const nearPx = gpxMap.latLngToContainerPoint([data[idx].lat, data[idx].lon]);
-                        const pixDist = Math.hypot(nearPx.x - e.containerPoint.x, nearPx.y - e.containerPoint.y);
-                        if (pixDist < 40) {
-                            drawCrosshair(idx);
-                        } else {
-                            clearCrosshair();
-                        }
-                    });
-                    gpxMap.on('mouseout', () => clearCrosshair());
-                }
-                </script>
-
-            <?php else: ?>
-                <!-- No GPX - Import or Upload -->
-                <?php if (!empty($summit['sota_ref'])): ?>
-                <div style="margin-bottom: 1.5rem; padding: 1rem 1.25rem; background: #EEF6F0; border: 1px solid #B2DCC0; border-radius: 8px;">
-                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
-                        <div>
-                            <strong style="color: #1a5c2e;">Import from SOTA Maps</strong>
-                            <div style="font-size: 0.85rem; color: #555; margin-top: 0.2rem;">Community-submitted route tracks from sotamaps.org</div>
-                        </div>
-                        <button class="btn" onclick="fetchSotaMaps(this)" id="sotamaps-fetch-btn">
-                            🗺 Check for Tracks
-                        </button>
-                    </div>
-                    <div id="sotamaps-result" style="margin-top: 1rem; display: none;"></div>
-                </div>
-                <?php endif; ?>
-
-                <p style="margin-bottom: 1rem; color: #666;">
-                    Or upload your own GPS track for precise time calculations and activation zone detection.
-                </p>
-
-                <form method="POST" enctype="multipart/form-data">
-                    <div style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem;">
-                        <input type="file" name="gpx_file" accept=".gpx" required
-                               style="flex: 1; padding: 0.5rem; border: 2px solid #ddd; border-radius: 4px;">
-                        <button type="submit" class="btn">Upload & Analyze</button>
-                    </div>
-                    <small style="color: #666;">Export from: Garmin, Gaia GPS, CalTopo, AllTrails</small>
-                </form>
-
-                <div style="margin-top: 1.5rem; padding: 1rem; background: #E8F4F8; border-radius: 6px;">
-                    <strong>What We'll Calculate:</strong>
-                    <ul style="margin: 0.5rem 0 0 1.5rem; line-height: 1.8;">
-                        <li>Actual hiking time (excluding activation zone)</li>
-                        <li>Time spent in activation zone</li>
-                        <li>True distance and elevation gain</li>
-                        <li>Hiking speed and rest breaks</li>
-                        <li>Precise activation zone boundaries</li>
-                    </ul>
-                </div>
-            <?php endif; ?>
-        </div>
-
-        <!-- Planned Activations -->
-        <div class="card">
-            <h2>📅 Planned Activations <button onclick="document.getElementById('plannedModal').style.display='flex'" style="background:none;border:1px solid #b0c4d0;color:#4A90A4;border-radius:50%;width:22px;height:22px;font-size:0.75rem;cursor:pointer;font-weight:700;padding:0;line-height:1;vertical-align:middle;margin-left:0.4rem;" title="About planned activations">ℹ</button></h2>
-
-            <?php if (!empty($planned_activations_list)): ?>
-                <?php foreach ($planned_activations_list as $pa): ?>
-                    <?php
-                        $peak_slug = preg_replace('/[^a-zA-Z0-9]+/', '-', trim(($summit['sota_ref'] ?? '') . '-' . ($summit['name'] ?? '')));
-                        $peak_slug = strtolower(trim($peak_slug, '-'));
-                        $invite_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') .
-                                      '://' . $_SERVER['HTTP_HOST'] .
-                                      rtrim(dirname($_SERVER['REQUEST_URI']), '/') . '/activation_invite.php?id=' . $pa['id'] .
-                                      '&peak=' . rawurlencode($peak_slug);
-                    ?>
-                    <div style="background: var(--snow); border-left: 4px solid var(--gold); border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem;">
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
-                            <div>
-                                <div style="font-size: 1.15rem; font-weight: 700; color: var(--navy);">
-                                    <?= date('l, F j, Y', strtotime($pa['planned_date'])) ?>
-                                </div>
-                                <div style="color: #555; margin-top: 0.4rem; font-size: 0.95rem;">
-                                    🥾 Hike start: <strong><?= date('g:i A', strtotime($pa['hike_start_time'])) ?></strong>
-                                    &nbsp;•&nbsp; 📻 <strong><?= $pa['activation_duration_min'] ?> min</strong> radio time
-                                    &nbsp;•&nbsp; 👥 <strong><?= htmlspecialchars($pa['callsigns']) ?></strong>
-                                </div>
-                                <?php if ($pa['invitation_message']): ?>
-                                    <div style="color: #666; font-size: 0.85rem; margin-top: 0.5rem; font-style: italic;">
-                                        "<?= htmlspecialchars(substr($pa['invitation_message'], 0, 120)) ?><?= strlen($pa['invitation_message']) > 120 ? '…' : '' ?>"
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                            <div class="pa-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
-                                <a href="<?= htmlspecialchars($invite_url) ?>" target="_blank" class="btn btn-secondary btn-small">🔗 View Invite</a>
-                                <button onclick="copyToClipboard('<?= htmlspecialchars($invite_url, ENT_QUOTES) ?>', this)" class="btn btn-small">📋 Copy Link</button>
-                                <button type="button" onclick="toggleEdit(<?= $pa['id'] ?>)" class="btn btn-secondary btn-small">✏️ Edit</button>
-                                <form method="POST" style="margin: 0;" onsubmit="return confirm('Remove this planned activation?');">
-                                    <input type="hidden" name="planned_activation_id" value="<?= $pa['id'] ?>">
-                                    <button type="submit" name="delete_planned_activation" class="btn btn-danger btn-small">×</button>
-                                </form>
-                            </div>
-                        </div>
-
-                        <!-- Inline edit form (hidden by default) -->
-                        <div id="edit-form-<?= $pa['id'] ?>" style="display:none; margin-top:1rem; padding-top:1rem; border-top:2px solid #ddd;">
-                            <form method="POST">
-                                <input type="hidden" name="planned_activation_id" value="<?= $pa['id'] ?>">
-                                <div class="pa-grid-3" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:1rem; margin-bottom:1rem;">
-                                    <div>
-                                        <label style="font-size:0.8rem;">Date</label>
-                                        <input type="date" name="planned_date" required style="width:100%;"
-                                               value="<?= htmlspecialchars($pa['planned_date']) ?>">
-                                    </div>
-                                    <div>
-                                        <label style="font-size:0.8rem;">Hike Start Time <span style="font-weight:400;color:#888;">(local time)</span></label>
-                                        <input type="time" name="hike_start_time" required style="width:100%;"
-                                               value="<?= htmlspecialchars($pa['hike_start_time']) ?>">
-                                    </div>
-                                    <div>
-                                        <label style="font-size:0.8rem;">Radio Time (minutes)</label>
-                                        <input type="number" name="activation_duration_min" required style="width:100%;"
-                                               value="<?= (int)$pa['activation_duration_min'] ?>" min="15" max="480">
-                                    </div>
-                                </div>
-                                <div style="margin-bottom:1rem;">
-                                    <label style="font-size:0.8rem;">Callsigns</label>
-                                    <input type="text" name="planned_callsigns" required style="width:100%;"
-                                           value="<?= htmlspecialchars($pa['callsigns']) ?>">
-                                </div>
-                                <div style="margin-bottom:1rem;">
-                                    <label style="font-size:0.8rem;">Message for Guests</label>
-                                    <textarea name="invitation_message" style="width:100%;"><?= htmlspecialchars($pa['invitation_message'] ?? '') ?></textarea>
-                                </div>
-                                <div style="margin-bottom:1rem;">
-                                    <label style="font-size:0.8rem;">Parking & Travel Notes</label>
-                                    <textarea name="travel_notes" style="width:100%;"><?= htmlspecialchars($pa['travel_notes'] ?? '') ?></textarea>
-                                </div>
-                                <div style="margin-bottom:1rem;">
-                                    <label style="font-size:0.8rem;">Real-Time Location Sharing Link (optional)</label>
-                                    <input type="url" name="location_link" style="width:100%;"
-                                           value="<?= htmlspecialchars($pa['location_link'] ?? '') ?>"
-                                           placeholder="e.g. https://share.garmin.com/… or any live tracking URL">
-                                </div>
-                                <div class="pa-form-btns" style="display:flex; gap:0.5rem;">
-                                    <button type="submit" name="edit_planned_activation" class="btn btn-small">💾 Save Changes</button>
-                                    <button type="button" onclick="toggleEdit(<?= $pa['id'] ?>)" class="btn btn-secondary btn-small">Cancel</button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            <?php else: ?>
-                <p style="color: #666; font-style: italic; margin-bottom: 1.5rem;">No upcoming activations planned yet.</p>
-            <?php endif; ?>
-
-            <!-- Add Planned Activation Form -->
-            <form method="POST" style="background: var(--snow); padding: 1.5rem; border-radius: 8px; margin-top: 0.5rem;">
-                <h3 style="margin-bottom: 1rem; font-size: 1.1rem;">Plan an Upcoming Activation</h3>
-                <div class="pa-grid-3" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-                    <div>
-                        <label style="font-size: 0.85rem;">Date</label>
-                        <input type="date" name="planned_date" required style="width: 100%;"
-                               min="<?= date('Y-m-d', strtotime('+1 day')) ?>">
-                    </div>
-                    <div>
-                        <label style="font-size: 0.85rem;">Hike Start Time (Local time, at trailhead)</label>
-                        <input type="time" name="hike_start_time" required style="width: 100%;" value="08:00">
-                    </div>
-                    <div>
-                        <label style="font-size: 0.85rem;">Planned Radio Time (minutes)</label>
-                        <input type="number" name="activation_duration_min" required style="width: 100%;"
-                               value="90" min="15" max="480">
-                    </div>
-                </div>
-                <div style="margin-bottom: 1rem;">
-                    <label style="font-size: 0.85rem;">Activating Callsigns</label>
-                    <input type="text" name="planned_callsigns" required placeholder="KI6CR, W6ABC" style="width: 100%;">
-                </div>
-                <div style="margin-bottom: 1rem;">
-                    <label style="font-size: 0.85rem;">Message for Guests (optional)</label>
-                    <textarea name="invitation_message" style="width: 100%;"
-                              placeholder="Add any details guests should know — meeting spot, gear suggestions, etc."></textarea>
-                </div>
-                <div style="margin-bottom: 1rem;">
-                    <label style="font-size: 0.85rem;">Parking & Travel Notes (optional)</label>
-                    <textarea name="travel_notes" style="width: 100%;"
-                              placeholder="Where to park, trailhead directions, carpooling info, etc."></textarea>
-                </div>
-                <div style="margin-bottom: 1rem;">
-                    <label style="font-size: 0.85rem;">Real-Time Location Sharing Link (optional)</label>
-                    <input type="url" name="location_link" style="width: 100%;"
-                           placeholder="e.g. https://share.garmin.com/… or any live tracking URL">
-                    <div style="font-size: 0.75rem; color: #888; margin-top: 0.25rem;">If provided, guests on the invitation page will see a link to follow the group's live location.</div>
-                </div>
-                <button type="submit" name="add_planned_activation" class="btn btn-small">📅 Schedule Activation</button>
-            </form>
-
-            <script>
-            function copyToClipboard(text, btn) {
-                navigator.clipboard.writeText(text).then(() => {
-                    const orig = btn.textContent;
-                    btn.textContent = '✓ Copied!';
-                    setTimeout(() => btn.textContent = orig, 2000);
-                });
-            }
-            function toggleEdit(id) {
-                const el = document.getElementById('edit-form-' + id);
-                el.style.display = el.style.display === 'none' ? 'block' : 'none';
-            }
-            </script>
-        </div>
-
-        <!-- Activation History -->
-        <div class="card">
-            <h2>Activation History <button onclick="document.getElementById('historyModal').style.display='flex'" style="background:none;border:1px solid #b0c4d0;color:#4A90A4;border-radius:50%;width:22px;height:22px;font-size:0.75rem;cursor:pointer;font-weight:700;padding:0;line-height:1;vertical-align:middle;margin-left:0.4rem;" title="About activation history">ℹ</button></h2>
-            
-            <?php
-            // Get activations for this summit and planning group
-            $current_group = getCurrentPlanningGroup($db);
-            $stmt = $db->prepare("
-                SELECT * FROM activations 
-                WHERE summit_id = ? AND planning_group_id = ?
-                ORDER BY activation_date DESC
-            ");
-            $stmt->execute([$summit_id, $current_group['id']]);
-            $activations = $stmt->fetchAll();
-            ?>
-            
-            <?php if (!empty($activations)): ?>
-                <table style="width: 100%; margin-bottom: 1.5rem;">
-                    <thead style="background: var(--snow);">
-                        <tr>
-                            <th style="padding: 0.75rem; text-align: left;">Date</th>
-                            <th style="padding: 0.75rem; text-align: left;">Callsigns</th>
-                            <th style="padding: 0.75rem; text-align: left;">Notes</th>
-                            <th style="padding: 0.75rem; width: 80px;"></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($activations as $activation): ?>
-                            <tr>
-                                <td style="padding: 0.75rem;"><?= date('M j, Y', strtotime($activation['activation_date'])) ?></td>
-                                <td style="padding: 0.75rem; font-family: 'Courier New', monospace;"><?= htmlspecialchars($activation['callsigns']) ?></td>
-                                <td style="padding: 0.75rem;"><?= htmlspecialchars($activation['notes']) ?></td>
-                                <td style="padding: 0.75rem;">
-                                    <form method="POST" style="margin: 0;">
-                                        <input type="hidden" name="activation_id" value="<?= $activation['id'] ?>">
-                                        <button type="submit" name="delete_activation" class="btn btn-danger btn-small">×</button>
-                                    </form>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            <?php else: ?>
-                <p style="color: #666; font-style: italic; margin-bottom: 1.5rem;">No activations recorded yet.</p>
-            <?php endif; ?>
-            
-            <!-- Add Activation Form -->
-            <form method="POST" style="background: var(--snow); padding: 1.5rem; border-radius: 8px;">
-                <h3 style="margin-bottom: 1rem; font-size: 1.1rem;">Add Activation</h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 1rem; margin-bottom: 1rem;">
-                    <div>
-                        <label for="activation_date" style="font-size: 0.85rem;">Date</label>
-                        <input type="date" id="activation_date" name="activation_date" required 
-                               value="<?= date('Y-m-d') ?>" style="width: 100%;">
-                    </div>
-                    <div>
-                        <label for="activation_callsigns" style="font-size: 0.85rem;">Callsigns</label>
-                        <input type="text" id="activation_callsigns" name="activation_callsigns" 
-                               placeholder="KI6CR, W6ABC" required style="width: 100%;">
-                    </div>
-                    <div>
-                        <label for="activation_notes" style="font-size: 0.85rem;">Notes (optional)</label>
-                        <input type="text" id="activation_notes" name="activation_notes" 
-                               placeholder="Weather, conditions, etc." style="width: 100%;">
-                    </div>
-                </div>
-                <button type="submit" name="add_activation" class="btn btn-small">Add Activation</button>
-            </form>
-        </div>
-
-                <!-- Notes -->
-        <div class="card">
-            <h2>Notes & Comments <button onclick="document.getElementById('notesModal').style.display='flex'" style="background:none;border:1px solid #b0c4d0;color:#4A90A4;border-radius:50%;width:22px;height:22px;font-size:0.75rem;cursor:pointer;font-weight:700;padding:0;line-height:1;vertical-align:middle;margin-left:0.4rem;" title="About notes">ℹ</button></h2>
-            <form method="POST" style="margin-bottom: 1.5rem;">
-                <div class="form-group">
-                    <textarea name="note" placeholder="Add notes about access, parking, trail conditions..." required></textarea>
-                </div>
-                <button type="submit" name="add_note" class="btn btn-small">Add Note</button>
-            </form>
-
-            <?php if (!empty($notes)): ?>
-                <?php foreach ($notes as $note): ?>
-                    <div class="note-item">
-                        <div class="note-header">
-                            <span class="note-meta"><?= date('M j, Y g:i A', strtotime($note['created_at'])) ?></span>
-                            <form method="POST" style="margin: 0;">
-                                <input type="hidden" name="note_id" value="<?= $note['id'] ?>">
-                                <button type="submit" name="delete_note" class="btn btn-small btn-danger">Delete</button>
-                            </form>
-                        </div>
-                        <div><?= nl2br(htmlspecialchars($note['note'])) ?></div>
-                    </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        </div>
-
-        <!-- Remove Nomination -->
-        <div class="card">
-            <form method="POST" onsubmit="return confirm('Remove this summit nomination from your planning group?');">
-                <button type="submit" name="delete_summit" class="btn btn-danger" style="width: 100%;">Remove Nomination</button>
-            </form>
-        </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Notes (optional)</label>
+            <input type="text" name="activation_notes" class="form-input" placeholder="Conditions, gear notes...">
+          </div>
+          <button type="submit" name="add_activation" class="btn btn-primary">Record Activation</button>
+        </form>
+      </details>
     </div>
+  </div>
 
-    <!-- GPS Info Modal -->
-    <!-- ── Stats Modal ─────────────────────────────────────────────────────── -->
-    <div id="statsModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center; padding:1rem;">
-        <div style="background:white; border-radius:12px; max-width:600px; width:100%; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
-            <div style="padding:1.5rem 1.5rem 0; display:flex; justify-content:space-between; align-items:center;">
-                <h2 style="font-size:1.2rem; color:#1E3A5F; margin:0;">📋 Planning Summary — How Tiles Are Calculated</h2>
-                <button onclick="document.getElementById('statsModal').style.display='none'"
-                        style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:#999;line-height:1;">×</button>
-            </div>
-            <div style="padding:1.25rem 1.5rem 1.5rem; font-size:0.9rem; line-height:1.65; color:#333;">
+  <!-- DANGER ZONE -->
+  <div style="margin-top:1rem; margin-bottom:1rem;">
+    <details>
+      <summary style="cursor:pointer; font-size:0.78rem; color:var(--ink-4); display:inline-flex; align-items:center; gap:0.35rem;">
+        Danger zone
+      </summary>
+      <div style="margin-top:0.75rem; padding:1rem; background:var(--red-bg); border:1px solid #e8baba; border-radius:var(--r-md);">
+        <div style="font-size:0.875rem; color:var(--red); font-weight:500; margin-bottom:0.75rem;">This will permanently remove this summit from your planning list.</div>
+        <form method="POST" onsubmit="return confirm('Remove this summit? This cannot be undone.');">
+          <button type="submit" name="delete_summit" class="btn btn-danger">Remove Summit</button>
+        </form>
+      </div>
+    </details>
+  </div>
 
-                <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.06em; color:#4A90A4; margin:0 0 0.5rem;">Individual Tiles</h3>
-                <ul style="margin:0 0 1rem 1.25rem; font-size:0.85rem;">
-                    <li style="margin-bottom:0.35rem;"><strong>SOTA Points</strong> — fixed value from the SOTA database for this summit's association and region.</li>
-                    <li style="margin-bottom:0.35rem;"><strong>Elevation</strong> — summit altitude from the SOTA database, shown in your group's preferred units.</li>
-                    <li style="margin-bottom:0.35rem;"><strong>Distance</strong> — round-trip hiking distance. Comes from a GPS track or route file if one is loaded and "Use GPS data for planning" is checked; otherwise from the value entered in Edit Summit Details.</li>
-                    <li style="margin-bottom:0.35rem;"><strong>Gain</strong> — total elevation gained on the approach. Same source priority as Distance. For descent-only GPS tracks, the gain is derived from the track's descent (since you'd be going the other way).</li>
-                    <li style="margin-bottom:0.35rem;"><strong>Hike Time (RT)</strong> — round-trip hiking time. If a GPS track with real timestamps is loaded and enabled for planning, this comes from actual recorded movement time (excluding time in the activation zone). Otherwise it is estimated using Naismith's rule: roughly 1 hour per 5 km plus 1 hour per 600 m of gain. Shown in green if from GPS, amber if estimated.</li>
-                    <li style="margin-bottom:0.35rem;"><strong>Drive Time (RT)</strong> — round-trip drive time from your group's selected home base to the trailhead, calculated via Google Maps. Use the Recalculate Drive Times button on the dashboard to refresh it.</li>
-                    <li style="margin-bottom:0.35rem;"><strong>Last Activated</strong> — the most recent activation date recorded in the Activation History section below.</li>
-                </ul>
+</div><!-- .page -->
 
-            </div>
-        </div>
-    </div>
-
-    <!-- ── Edit Summit Details Modal ────────────────────────────────────────── -->
-    <div id="editModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center; padding:1rem;">
-        <div style="background:white; border-radius:12px; max-width:600px; width:100%; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
-            <div style="padding:1.5rem 1.5rem 0; display:flex; justify-content:space-between; align-items:center;">
-                <h2 style="font-size:1.2rem; color:#1E3A5F; margin:0;">✏️ Edit Summit Details — Field Guide</h2>
-                <button onclick="document.getElementById('editModal').style.display='none'"
-                        style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:#999;line-height:1;">×</button>
-            </div>
-            <div style="padding:1.25rem 1.5rem 1.5rem; font-size:0.9rem; line-height:1.65; color:#333;">
-
-                <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.06em; color:#4A90A4; margin:0 0 0.5rem;">Status &amp; Difficulty</h3>
-                <ul style="margin:0 0 1rem 1.25rem; font-size:0.85rem;">
-                    <li style="margin-bottom:0.35rem;"><strong>Status</strong> — tracks where this summit is in your planning workflow: Nominated → Researched → Ready → Activated. Controls visibility and sorting on the dashboard.</li>
-                    <li style="margin-bottom:0.35rem;"><strong>Difficulty</strong> — your group's subjective rating (Drive-Up, Easy, Moderate, Hard). Doesn't affect any calculations.</li>
-                    <li style="margin-bottom:0.35rem;"><strong>Cell Service</strong> — what to expect at the summit for spotting via phone. Options: Unknown, Full Coverage, Intermittent, Summit Only, No Service.</li>
-                </ul>
-
-                <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.06em; color:#4A90A4; margin:0 0 0.5rem;">Hike Distance &amp; Gain</h3>
-                <p style="margin:0 0 0.75rem;">These are the fallback values used for planning when no GPS track is loaded (or when "Use GPS data for planning" is unchecked). Hike time is always calculated from these using Naismith's rule — there is no manual time entry. Set the values here and the formula does the rest.</p>
-
-                <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.06em; color:#4A90A4; margin:0 0 0.5rem;">Set Trailhead</h3>
-                <p style="margin:0 0 0.75rem;">The trailhead location determines where drive time is measured to. Paste a latitude/longitude pair (e.g. <em>34.168, -118.236</em>) or type a street address into the box and click Find — the coordinates will be looked up via Google and saved automatically. You can also type the lat/lng directly into the Trailhead Lat and Lng fields and save.</p>
-
-                <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.06em; color:#4A90A4; margin:0 0 0.5rem;">Trail Link</h3>
-                <p style="margin:0 0 0.5rem;">Paste a URL to any trail description — AllTrails, Gaia GPS, CalTopo, Hiking Project, or SOTLAS. Quick-search buttons below the field will open each site pre-populated with the summit name or coordinates so you can find the right page and copy the link back.</p>
-
-                <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.06em; color:#4A90A4; margin:0 0 0.5rem;">Calculate Drive Time</h3>
-                <p style="margin:0;">After setting the trailhead, use the Calculate Drive Time button (below the Save button) to query Google Maps and store the round-trip drive time. This only appears when a home base address is selected on the dashboard.</p>
-
-            </div>
-        </div>
-    </div>
-
-    <!-- ── Planned Activations Modal ────────────────────────────────────────── -->
-    <div id="plannedModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center; padding:1rem;">
-        <div style="background:white; border-radius:12px; max-width:560px; width:100%; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
-            <div style="padding:1.5rem 1.5rem 0; display:flex; justify-content:space-between; align-items:center;">
-                <h2 style="font-size:1.2rem; color:#1E3A5F; margin:0;">📅 Planned Activations — How This Works</h2>
-                <button onclick="document.getElementById('plannedModal').style.display='none'"
-                        style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:#999;line-height:1;">×</button>
-            </div>
-            <div style="padding:1.25rem 1.5rem 1.5rem; font-size:0.9rem; line-height:1.65; color:#333;">
-
-                <p style="margin:0 0 0.75rem;">Use this section to schedule an upcoming activation and share the details with other operators. Each plan generates a shareable invite link.</p>
-
-                <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.06em; color:#4A90A4; margin:0 0 0.5rem;">Fields</h3>
-                <ul style="margin:0 0 1rem 1.25rem; font-size:0.85rem;">
-                    <li style="margin-bottom:0.35rem;"><strong>Date</strong> — the day of the activation.</li>
-                    <li style="margin-bottom:0.35rem;"><strong>Hike Start Time</strong> — when you plan to leave the trailhead (local time). Helps chasers know when you might be on the air.</li>
-                    <li style="margin-bottom:0.35rem;"><strong>Planned Radio Time</strong> — how long you expect to operate from the summit, in minutes.</li>
-                    <li style="margin-bottom:0.35rem;"><strong>Activating Callsigns</strong> — who's going. Comma-separate multiple operators.</li>
-                    <li style="margin-bottom:0.35rem;"><strong>Message for Guests</strong> — optional text included in the invite, visible to anyone you share the link with.</li>
-                    <li style="margin-bottom:0.35rem;"><strong>Parking &amp; Travel Notes</strong> — directions, parking tips, carpooling info — also visible on the invite page.</li>
-                </ul>
-
-                <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.06em; color:#4A90A4; margin:0 0 0.5rem;">Invite Link</h3>
-                <p style="margin:0 0 0.75rem;">After saving, use the View Invite or Copy Link buttons to share the activation details. The invite page shows the summit, timing, and your notes — no login required for guests.</p>
-
-                <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.06em; color:#4A90A4; margin:0 0 0.5rem;">After the Activation</h3>
-                <p style="margin:0;">Once done, add a record in the Activation History section below. Don't forget to also submit your log at <strong>sotadata.org.uk</strong> for official SOTA credit.</p>
-
-            </div>
-        </div>
-    </div>
-
-    <!-- ── Activation History Modal ─────────────────────────────────────────── -->
-    <div id="historyModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center; padding:1rem;">
-        <div style="background:white; border-radius:12px; max-width:560px; width:100%; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
-            <div style="padding:1.5rem 1.5rem 0; display:flex; justify-content:space-between; align-items:center;">
-                <h2 style="font-size:1.2rem; color:#1E3A5F; margin:0;">🏔 Activation History — How This Works</h2>
-                <button onclick="document.getElementById('historyModal').style.display='none'"
-                        style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:#999;line-height:1;">×</button>
-            </div>
-            <div style="padding:1.25rem 1.5rem 1.5rem; font-size:0.9rem; line-height:1.65; color:#333;">
-
-                <p style="margin:0 0 0.75rem;">This is your group's local log of completed activations — separate from the official SOTA database. The most recent date recorded here also appears in the <strong>Last Activated</strong> tile in the Planning Summary above.</p>
-
-                <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.06em; color:#4A90A4; margin:0 0 0.5rem;">Logging an Activation</h3>
-                <ul style="margin:0 0 1rem 1.25rem; font-size:0.85rem;">
-                    <li style="margin-bottom:0.35rem;"><strong>Date</strong> — the date the summit was activated.</li>
-                    <li style="margin-bottom:0.35rem;"><strong>Callsigns</strong> — the activating operator(s). Comma-separate multiple callsigns.</li>
-                    <li style="margin-bottom:0.35rem;"><strong>Notes</strong> — optional. Conditions, gear notes, anything worth remembering.</li>
-                </ul>
-
-                <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.06em; color:#4A90A4; margin:0 0 0.5rem;">Official SOTA Records</h3>
-                <p style="margin:0;">This log is for your group's reference only. For official SOTA credit, submit your activation log at <strong>sotadata.org.uk</strong>.</p>
-
-            </div>
-        </div>
-    </div>
-
-    <!-- ── Notes & Comments Modal ───────────────────────────────────────────── -->
-    <div id="notesModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center; padding:1rem;">
-        <div style="background:white; border-radius:12px; max-width:560px; width:100%; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
-            <div style="padding:1.5rem 1.5rem 0; display:flex; justify-content:space-between; align-items:center;">
-                <h2 style="font-size:1.2rem; color:#1E3A5F; margin:0;">💬 Notes &amp; Comments — How This Works</h2>
-                <button onclick="document.getElementById('notesModal').style.display='none'"
-                        style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:#999;line-height:1;">×</button>
-            </div>
-            <div style="padding:1.25rem 1.5rem 1.5rem; font-size:0.9rem; line-height:1.65; color:#333;">
-
-                <p style="margin:0 0 0.75rem;">Free-form notes visible to everyone in your planning group. Use them to capture anything useful that isn't covered by the structured fields above.</p>
-
-                <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.06em; color:#4A90A4; margin:0 0 0.5rem;">What to Note</h3>
-                <ul style="margin:0 0 1rem 1.25rem; font-size:0.85rem;">
-                    <li style="margin-bottom:0.35rem;">Trailhead details — parking, permit requirements, gate hours, road conditions</li>
-                    <li style="margin-bottom:0.35rem;">Trail conditions — seasonal closures, brush, scrambling, water crossings</li>
-                    <li style="margin-bottom:0.35rem;">Operating tips — best antenna spots, spotting cell coverage, summit layout</li>
-                    <li style="margin-bottom:0.35rem;">Anything from a past activation that would be useful next time</li>
-                </ul>
-
-                <p style="margin:0; font-size:0.85rem; color:#666;">Notes can be deleted with the Delete button but not edited — if something needs correcting, delete it and add a new one.</p>
-
-            </div>
-        </div>
-    </div>
-
-    <div id="gpxInfoModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center; padding:1rem;">
-        <div style="background:white; border-radius:12px; max-width:640px; width:100%; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
-            <div style="padding:1.5rem 1.5rem 0; display:flex; justify-content:space-between; align-items:center;">
-                <h2 style="font-size:1.2rem; color:#1E3A5F; margin:0;">📊 GPS Track & Planning — How It Works</h2>
-                <button onclick="document.getElementById('gpxInfoModal').style.display='none'"
-                        style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:#999;line-height:1;">×</button>
-            </div>
-            <div style="padding:1.25rem 1.5rem 1.5rem; font-size:0.9rem; line-height:1.65; color:#333;">
-
-                <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.06em; color:#4A90A4; margin:0 0 0.5rem;">Track Types: Route vs. Recorded</h3>
-                <p style="margin:0 0 0.75rem;">Not all GPX files are the same. There are two fundamentally different kinds:</p>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:1rem;">
-                    <div style="background:#EEF6F0; border-radius:8px; padding:0.85rem; border-left:3px solid #4A7C59;">
-                        <div style="font-weight:700; color:#2a5c38; margin-bottom:0.3rem;">✅ Recorded Track (with timestamps)</div>
-                        <div style="font-size:0.82rem; color:#444;">Captured live during an actual hike. Contains timestamps on every point, giving us real hiking speed, rest breaks, and time spent in the activation zone. This is the most accurate data.</div>
-                        <div style="font-size:0.78rem; margin-top:0.5rem; color:#2a5c38; font-weight:600;">Labels shown: <span style="color:var(--trail-green);">(GPS recorded)</span></div>
-                    </div>
-                    <div style="background:#FFF8EE; border-radius:8px; padding:0.85rem; border-left:3px solid #E6A020;">
-                        <div style="font-weight:700; color:#8a5c00; margin-bottom:0.3rem;">🗺 Route File (no timestamps)</div>
-                        <div style="font-size:0.82rem; color:#444;">A planned route drawn on a map, or a community-submitted track (like from SOTA Maps). Has accurate distance and elevation — but no time data. Hike time is estimated from distance &amp; elevation using Naismith's rule.</div>
-                        <div style="font-size:0.78rem; margin-top:0.5rem; color:#8a5c00; font-weight:600;">Labels shown: <span style="color:#E6A020;">(route file)</span> · <span style="color:#E6A020;">*estimated</span></div>
-                    </div>
-                </div>
-
-                <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.06em; color:#4A90A4; margin:0 0 0.5rem;">Track Direction</h3>
-                <p style="margin:0 0 0.5rem;">Some tracks only cover part of the hike. Set the direction so round-trip totals are calculated correctly:</p>
-                <ul style="margin:0 0 1rem 1.25rem; font-size:0.85rem;">
-                    <li style="margin-bottom:0.3rem;"><strong>Round-Trip</strong> — track covers both up and down (most common for recorded hikes). Values used as-is.</li>
-                    <li style="margin-bottom:0.3rem;"><strong>Ascent Only</strong> — track is one-way going up. Distance and time are doubled for planning. Elevation gain is unchanged.</li>
-                    <li style="margin-bottom:0.3rem;"><strong>Descent Only</strong> — track is one-way going down. Distance and time are doubled. Elevation <em>gain</em> for planning is derived from the track's descent (you'll be going the other direction).</li>
-                </ul>
-
-                <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.06em; color:#4A90A4; margin:0 0 0.5rem;">The "Use GPS Data for Planning" Checkbox</h3>
-                <p style="margin:0 0 0.75rem;">This controls whether GPS values override your manually-entered data on the planning tiles. When unchecked, all planning uses whatever is in the Edit Summit Details form.</p>
-                <p style="margin:0 0 1rem;">When checked, GPS provides: distance (always), elevation gain (always), and hike time <em>only if the track has timestamps</em>. A route-only file will supply distance and elevation but let the formula estimate the time.</p>
-
-                <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.06em; color:#4A90A4; margin:0 0 0.5rem;">What the GPX Analysis Tiles Show</h3>
-                <ul style="margin:0 0 0 1.25rem; font-size:0.85rem;">
-                    <li style="margin-bottom:0.3rem;"><strong>Hiking Time</strong> — time moving on trail, excluding activation zone time and rest stops &gt;3 min. Only available with timestamps.</li>
-                    <li style="margin-bottom:0.3rem;"><strong>Activation Time</strong> — time spent within the summit's activation zone boundary (sourced from activation.zone when available, otherwise 50m radius).</li>
-                    <li style="margin-bottom:0.3rem;"><strong>Rest Breaks</strong> — stationary time outside the activation zone for more than 3 minutes.</li>
-                    <li style="margin-bottom:0.3rem;"><strong>Hiking Speed</strong> — average moving speed, useful for estimating future hikes on similar terrain.</li>
-                </ul>
-
-            </div>
-        </div>
-    </div>
+<footer class="footer">
+  SOTAplanner &middot; <a href="about.php">About</a> &middot; <a href="https://sotaplanner.com">sotaplanner.com</a>
+</footer>
 
 <script>
-// ── SOTA Maps GPX Import ──────────────────────────────────────────────────────
+// ── Difficulty selector ─────────────────────────────────────────────────────
+function setDifficulty(val) {
+  document.getElementById('difficulty-input').value = val;
+  document.querySelectorAll('.diff-btn').forEach(btn => {
+    const d = btn.getAttribute('data-diff');
+    btn.className = 'diff-btn' + (d === val ? ' active-' + d : '');
+  });
+}
+
+// ── Geocoder ────────────────────────────────────────────────────────────────
+function geocodeAddress() {
+  const address = document.getElementById('geocode_address').value.trim();
+  if (!address) { alert('Please enter an address or coordinates'); return; }
+  const form = document.getElementById('main-edit-form');
+  const g = document.createElement('input'); g.type = 'hidden'; g.name = 'geocode_address'; g.value = '1'; form.appendChild(g);
+  const a = document.createElement('input'); a.type = 'hidden'; a.name = 'trailhead_address'; a.value = address; form.appendChild(a);
+  form.submit();
+}
+
+// ── Copy invite link ────────────────────────────────────────────────────────
+function copyInviteLink(url) {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(() => { alert('Link copied to clipboard!'); });
+  } else {
+    prompt('Copy this link:', url);
+  }
+}
+
+// ── Leaflet map ─────────────────────────────────────────────────────────────
+const sumLat  = <?= (float)$summit['latitude'] ?>;
+const sumLng  = <?= (float)$summit['longitude'] ?>;
+const trailLat = <?= $summit['trailhead_lat'] ? (float)$summit['trailhead_lat'] : 'null' ?>;
+const trailLng = <?= $summit['trailhead_lng'] ? (float)$summit['trailhead_lng'] : 'null' ?>;
+
+const map = L.map('summit-map').setView([sumLat, sumLng], 13);
+
+const baseLayers = {
+  street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>', maxZoom: 19 }),
+  topo:   L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',   { attribution: '© <a href="https://opentopomap.org">OpenTopoMap</a>',      maxZoom: 17 }),
+  satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri', maxZoom: 19 })
+};
+let activeBase = 'street';
+baseLayers.street.addTo(map);
+let gpxPolyline = null, activationZoneLayer = null;
+
+function switchBase(name) {
+  if (name === activeBase) return;
+  map.removeLayer(baseLayers[activeBase]);
+  baseLayers[name].addTo(map);
+  if (gpxPolyline) gpxPolyline.bringToFront();
+  if (activationZoneLayer) activationZoneLayer.bringToFront();
+  activeBase = name;
+  ['street','topo','satellite'].forEach(n => {
+    const b = document.getElementById('btn-base-' + n);
+    if (!b) return;
+    b.className = 'btn btn-sm ' + (n === name ? 'btn-primary' : 'btn-secondary');
+  });
+}
+
+// Summit marker
+L.circleMarker([sumLat, sumLng], { radius: 7, color: '#C03030', fillColor: '#C03030', fillOpacity: 0.9, weight: 2 })
+  .bindPopup('<strong><?= htmlspecialchars(addslashes($summit['name'])) ?></strong><br><?= htmlspecialchars(addslashes($summit['sota_ref'] ?? '')) ?>')
+  .addTo(map);
+
+// Trailhead marker
+if (trailLat !== null && trailLng !== null) {
+  L.circleMarker([trailLat, trailLng], { radius: 6, color: '#2D8653', fillColor: '#2D8653', fillOpacity: 0.9, weight: 2 })
+    .bindPopup('Trailhead').addTo(map);
+}
+
+// Cell coverage layers
+const tileOpts = { opacity: 0.5, maxNativeZoom: 13, maxZoom: 20, crossOrigin: true, attribution: 'FCC Form 477' };
+const carrierLayers = {
+  tmobile: L.tileLayer('https://tiles.arcgis.com/tiles/YnOQrIGdN9JGtBh4/arcgis/rest/services/TMobile_LTE_Data/MapServer/tile/{z}/{y}/{x}', tileOpts),
+  verizon: L.tileLayer('https://tiles.arcgis.com/tiles/YnOQrIGdN9JGtBh4/arcgis/rest/services/Verizon_LTE_Data/MapServer/tile/{z}/{y}/{x}', tileOpts),
+  att:     L.tileLayer('https://tiles.arcgis.com/tiles/YnOQrIGdN9JGtBh4/arcgis/rest/services/ATT_Mobility_LTE_Data/MapServer/tile/{z}/{y}/{x}', tileOpts)
+};
+const carrierActive = { tmobile: false, verizon: false, att: false };
+const carrierColors = { tmobile: '#E91E8C', verizon: '#CD040B', att: '#00A8E0' };
+function toggleCarrier(name) {
+  const btn = document.getElementById('btn-' + name);
+  if (carrierActive[name]) {
+    map.removeLayer(carrierLayers[name]); carrierActive[name] = false;
+    btn.style.background = '#fff'; btn.style.color = carrierColors[name];
+  } else {
+    carrierLayers[name].addTo(map); carrierActive[name] = true;
+    btn.style.background = carrierColors[name]; btn.style.color = '#fff';
+  }
+}
+
+function initActivationZone(poly) {
+  let coords;
+  if (Array.isArray(poly[0]) && Array.isArray(poly[0][0]) && Array.isArray(poly[0][0][0])) coords = poly[0][0].map(c => [c[1], c[0]]);
+  else if (Array.isArray(poly[0]) && Array.isArray(poly[0][0])) coords = poly[0].map(c => [c[1], c[0]]);
+  else coords = poly.map(c => [c[1], c[0]]);
+  activationZoneLayer = L.polygon(coords, { color: '#CC2200', fillColor: '#CC2200', fillOpacity: 0.18, weight: 2, dashArray: '5,4' })
+    .bindPopup('<strong>SOTA Activation Zone</strong>').addTo(map);
+  const zBtn = document.getElementById('btn-actzone');
+  if (zBtn) { zBtn.disabled = false; zBtn.style.opacity = '1'; }
+  const az = document.getElementById('az-methodology');
+  if (az) az.innerHTML = '<strong>Activation Zone:</strong> <span style="color:var(--green);">Precise terrain-based boundary</span> from <a href="https://activation.zone" target="_blank">Activation.Zone</a> by N6ARA.';
+}
+function setActivationZoneFallback() {
+  const az = document.getElementById('az-methodology');
+  if (az) az.textContent = 'Activation Zone: API unavailable — showing estimated 50m radius.';
+}
+function zoomToActivationZone() {
+  if (!activationZoneLayer) return;
+  map.fitBounds(activationZoneLayer.getBounds(), { padding: [40, 40] });
+}
+
+<?php if ($gpx_data): ?>
+fetch('load_gpx.php?id=<?= $gpx_data['id'] ?>')
+  .then(r => r.text())
+  .then(gpxText => {
+    const parser = new DOMParser();
+    const gpx = parser.parseFromString(gpxText, 'text/xml');
+    const pts = gpx.querySelectorAll('trkpt, rtept');
+    const coords = [], elevPts = [];
+    pts.forEach(pt => {
+      const lat = parseFloat(pt.getAttribute('lat')), lon = parseFloat(pt.getAttribute('lon'));
+      coords.push([lat, lon]);
+      const ele = pt.querySelector('ele');
+      if (ele) elevPts.push([lat, lon, parseFloat(ele.textContent)]);
+    });
+    gpxPolyline = L.polyline(coords, { color: '#9B6328', weight: 3, opacity: 0.85 }).addTo(map);
+    const elevState = drawElevationProfile(elevPts);
+    if (elevState) setupElevMapHover(elevState, map);
+    map.fitBounds(L.polyline(coords).getBounds(), { padding: [50, 50] });
+    <?php if ($gpx_data['using_api'] && $gpx_data['activation_zone_polygon']): ?>
+    initActivationZone(<?= $gpx_data['activation_zone_polygon'] ?>);
+    <?php elseif (!empty($summit['sota_ref'])): ?>
+    fetch('activation_zone.php?sota_ref=<?= urlencode($summit['sota_ref']) ?>')
+      .then(r => r.json())
+      .then(data => { if (data.polygon) initActivationZone(data.polygon); else setActivationZoneFallback(); })
+      .catch(() => setActivationZoneFallback());
+    <?php endif; ?>
+  });
+
+function drawElevationProfile(elevPts) {
+  const canvas = document.getElementById('elev-canvas');
+  const note   = document.getElementById('elev-note');
+  if (!canvas) return null;
+  if (elevPts.length < 2) { if (note) note.textContent = 'No elevation data.'; return null; }
+  const W = Math.floor(canvas.getBoundingClientRect().width) || 600, H = 120;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr);
+  let pts = elevPts;
+  if (pts.length > 500) { const step = Math.ceil(pts.length / 500); pts = pts.filter((_, i) => i % step === 0 || i === pts.length - 1); }
+  function hDist(lat1, lon1, lat2, lon2) {
+    const R = 6371, r = Math.PI/180, dLat = (lat2-lat1)*r, dLon = (lon2-lon1)*r;
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*r)*Math.cos(lat2*r)*Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+  const useMetric = <?= $current_group['units'] === 'metric' ? 'true' : 'false' ?>;
+  const eleConv = useMetric ? 1 : 3.28084, distConv = useMetric ? 1 : 0.621371;
+  const eleUnit = useMetric ? 'm' : 'ft', distUnit = useMetric ? 'km' : 'mi';
+  const data = []; let cumD = 0;
+  for (let i = 0; i < pts.length; i++) {
+    if (i > 0) cumD += hDist(pts[i-1][0], pts[i-1][1], pts[i][0], pts[i][1]);
+    data.push({ d: cumD * distConv, e: pts[i][2] * eleConv, lat: pts[i][0], lon: pts[i][1] });
+  }
+  const eles = data.map(p => p.e), minE = Math.min(...eles), maxE = Math.max(...eles), maxD = data[data.length-1].d;
+  const pad = {top:8,right:12,bottom:24,left:46}, plotW = W-pad.left-pad.right, plotH = H-pad.top-pad.bottom;
+  const xS = d => pad.left + (d/maxD)*plotW;
+  const yS = e => pad.top + (1-(e-minE)/((maxE-minE)||1))*plotH;
+  const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top+plotH);
+  grad.addColorStop(0, 'rgba(43,142,142,0.32)'); grad.addColorStop(1, 'rgba(43,142,142,0.03)');
+  ctx.beginPath(); ctx.moveTo(xS(data[0].d), pad.top+plotH);
+  for (const p of data) ctx.lineTo(xS(p.d), yS(p.e));
+  ctx.lineTo(xS(maxD), pad.top+plotH); ctx.closePath(); ctx.fillStyle = grad; ctx.fill();
+  ctx.beginPath(); ctx.moveTo(xS(data[0].d), yS(data[0].e));
+  for (const p of data) ctx.lineTo(xS(p.d), yS(p.e));
+  ctx.strokeStyle = 'rgba(43,142,142,0.85)'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.fillStyle = '#8C8A86'; ctx.font = '10px DM Mono,monospace'; ctx.textAlign = 'right';
+  [minE, (minE+maxE)/2, maxE].forEach(e => ctx.fillText(Math.round(e)+' '+eleUnit, pad.left-4, yS(e)+3));
+  ctx.textAlign = 'center';
+  [0, maxD/2, maxD].forEach(d => ctx.fillText(d.toFixed(1)+' '+distUnit, xS(d), H-4));
+  return { data, xS, yS, W, H, pad, plotW, plotH, minE, maxE, maxD, eleUnit, distUnit };
+}
+
+function setupElevMapHover(s, mapRef) {
+  const canvas = document.getElementById('elev-canvas');
+  const note = document.getElementById('elev-note');
+  let hoverMarker = null;
+  canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * (canvas.width / rect.width / (window.devicePixelRatio || 1));
+    const d = ((x - s.pad.left) / s.plotW) * s.maxD;
+    if (d < 0 || d > s.maxD) { if (note) note.textContent = 'Hover for elevation details'; return; }
+    let closest = s.data[0], minDist = Infinity;
+    for (const p of s.data) { const dd = Math.abs(p.d - d); if (dd < minDist) { minDist = dd; closest = p; } }
+    if (note) note.textContent = Math.round(closest.e) + ' ' + s.eleUnit + ' @ ' + closest.d.toFixed(2) + ' ' + s.distUnit;
+    if (!hoverMarker) hoverMarker = L.circleMarker([closest.lat, closest.lon], { radius: 5, color: '#9B6328', fillColor: '#9B6328', fillOpacity: 0.85, weight: 2 }).addTo(mapRef);
+    else hoverMarker.setLatLng([closest.lat, closest.lon]);
+  });
+  canvas.addEventListener('mouseleave', () => {
+    if (note) note.textContent = 'Hover for elevation details';
+    if (hoverMarker) { mapRef.removeLayer(hoverMarker); hoverMarker = null; }
+  });
+}
+<?php endif; ?>
+
+// ── SOTA Maps GPX Import ────────────────────────────────────────────────────
 const SOTAMAPS_SOTA_REF  = <?= json_encode($summit['sota_ref'] ?? '') ?>;
 const SOTAMAPS_SUMMIT_ID = <?= intval($summit_id) ?>;
 const SOTAMAPS_GROUP_ID  = <?= intval($current_group['id']) ?>;
 
 function fetchSotaMaps(fetchBtn) {
-    // Find the sibling result div within the same container
-    const resultEl = fetchBtn.closest('div').parentElement.querySelector('#sotamaps-result')
-                     || document.getElementById('sotamaps-result');
+  const resultEl = fetchBtn.closest('div').querySelector('#sotamaps-result')
+                   || document.getElementById('sotamaps-result');
 
-    if (!SOTAMAPS_SOTA_REF) {
-        resultEl.style.display = 'block';
-        resultEl.innerHTML = '<em>No SOTA reference set for this summit.</em>';
-        return;
-    }
+  if (!SOTAMAPS_SOTA_REF) {
+    resultEl.style.display = 'block';
+    resultEl.innerHTML = '<em style="font-size:0.8rem; color:var(--ink-3);">No SOTA reference set for this summit.</em>';
+    return;
+  }
 
-    fetchBtn.disabled = true;
-    fetchBtn.textContent = '⏳ Checking…';
-    resultEl.style.display = 'none';
+  fetchBtn.disabled = true;
+  fetchBtn.textContent = 'Checking…';
+  resultEl.style.display = 'none';
 
-    const url = 'import_sotamaps_gpx.php?action=list'
-              + '&sota_ref=' + encodeURIComponent(SOTAMAPS_SOTA_REF)
-              + '&summit_id=' + SOTAMAPS_SUMMIT_ID;
+  const url = 'import_sotamaps_gpx.php?action=list'
+            + '&sota_ref=' + encodeURIComponent(SOTAMAPS_SOTA_REF)
+            + '&summit_id=' + SOTAMAPS_SUMMIT_ID;
 
-    fetch(url)
-        .then(r => r.json())
-        .then(data => {
-            fetchBtn.disabled = false;
-            fetchBtn.textContent = '🗺 Check for Tracks';
-            resultEl.style.display = 'block';
-            resultEl.innerHTML = renderTrackList(data);
-        })
-        .catch(() => {
-            fetchBtn.disabled = false;
-            fetchBtn.textContent = '🗺 Check for Tracks';
-            resultEl.style.display = 'block';
-            resultEl.innerHTML = '<span style="color:#c0392b;">Network error — could not reach SOTA Maps API.</span>';
-        });
+  fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      fetchBtn.disabled = false;
+      fetchBtn.textContent = 'Import from SOTA Maps';
+      resultEl.style.display = 'block';
+      resultEl.innerHTML = renderTrackList(data);
+    })
+    .catch(() => {
+      fetchBtn.disabled = false;
+      fetchBtn.textContent = 'Import from SOTA Maps';
+      resultEl.style.display = 'block';
+      resultEl.innerHTML = '<span style="font-size:0.8rem; color:var(--red);">Network error — could not reach SOTA Maps API.</span>';
+    });
 }
 
 function renderTrackList(data) {
-    if (data.error) {
-        return '<span style="color:#c0392b;">Error: ' + escHtml(data.error) + '</span>';
-    }
-    if (data.message) {
-        return '<em style="color:#666;">' + escHtml(data.message) + '</em>';
-    }
-    if (!data.tracks || data.tracks.length === 0) {
-        return '<em style="color:#666;">No tracks found for this summit on SOTA Maps.</em>';
-    }
+  if (data.error)   return '<span style="font-size:0.8rem; color:var(--red);">Error: ' + escHtml(data.error) + '</span>';
+  if (data.message) return '<em style="font-size:0.8rem; color:var(--ink-3);">' + escHtml(data.message) + '</em>';
+  if (!data.tracks || data.tracks.length === 0)
+    return '<em style="font-size:0.8rem; color:var(--ink-3);">No tracks found for this summit on SOTA Maps.</em>';
 
-    let html = '<div style="display:flex;flex-direction:column;gap:0.6rem;">';
-    for (const t of data.tracks) {
-        const date = t.posted_date ? t.posted_date.slice(0, 10) : '';
-        const notes = t.notes ? '<div style="font-size:0.8rem;color:#555;margin-top:0.2rem;">' + escHtml(t.notes) + '</div>' : '';
-        html += `
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:0.75rem;
-                    padding:0.6rem 0.75rem;background:white;border:1px solid #ddd;border-radius:6px;">
-            <div>
-                <strong style="font-size:0.9rem;">${escHtml(t.title)}</strong>
-                <div style="font-size:0.8rem;color:#666;">${escHtml(t.callsign)} &nbsp;·&nbsp; ${escHtml(date)} &nbsp;·&nbsp; ${t.point_count} pts</div>
-                ${notes}
-            </div>
-            <button class="btn btn-small" style="white-space:nowrap;flex-shrink:0;"
-                    onclick="importSotaMapsTrack(${t.hdr_id}, this)">
-                Import
-            </button>
-        </div>`;
-    }
-    html += '</div>';
-    return html;
+  let html = '<div style="display:flex;flex-direction:column;gap:0.4rem;">';
+  for (const t of data.tracks) {
+    const date  = t.posted_date ? t.posted_date.slice(0, 10) : '';
+    const notes = t.notes ? '<div style="font-size:0.75rem;color:var(--ink-3);margin-top:2px;">' + escHtml(t.notes) + '</div>' : '';
+    html += `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:0.5rem;
+                  padding:0.5rem 0.75rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);">
+      <div>
+        <div style="font-size:0.82rem;font-weight:500;color:var(--ink);">${escHtml(t.title)}</div>
+        <div style="font-size:0.75rem;color:var(--ink-3);">${escHtml(t.callsign)} &middot; ${escHtml(date)} &middot; ${t.point_count} pts</div>
+        ${notes}
+      </div>
+      <button class="btn btn-accent btn-sm" style="flex-shrink:0;white-space:nowrap;"
+              onclick="importSotaMapsTrack(${t.hdr_id}, this)">Import</button>
+    </div>`;
+  }
+  html += '</div>';
+  return html;
 }
 
 function importSotaMapsTrack(hdrId, btn) {
-    if (!confirm('Import this track? It will replace any existing GPX for this summit.')) return;
+  if (!confirm('Import this track? It will replace any existing GPX for this summit.')) return;
+  btn.disabled = true;
+  btn.textContent = 'Importing…';
 
-    btn.disabled = true;
-    btn.textContent = '⏳ Importing…';
+  const body = new URLSearchParams({
+    action:    'import',
+    sota_ref:  SOTAMAPS_SOTA_REF,
+    summit_id: SOTAMAPS_SUMMIT_ID,
+    hdr_id:    hdrId
+  });
 
-    const body = new URLSearchParams({
-        action:    'import',
-        sota_ref:  SOTAMAPS_SOTA_REF,
-        summit_id: SOTAMAPS_SUMMIT_ID,
-        hdr_id:    hdrId
+  fetch('import_sotamaps_gpx.php', { method: 'POST', body })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        btn.textContent = 'Imported!';
+        setTimeout(() => {
+          window.location.href = 'summit_detail.php?id=' + SOTAMAPS_SUMMIT_ID
+            + '&group=' + SOTAMAPS_GROUP_ID + '&gpx=1';
+        }, 800);
+      } else {
+        btn.disabled = false;
+        btn.textContent = 'Import';
+        alert('Import failed: ' + (data.error || 'Unknown error'));
+      }
+    })
+    .catch(() => {
+      btn.disabled = false;
+      btn.textContent = 'Import';
+      alert('Network error during import.');
     });
-
-    fetch('import_sotamaps_gpx.php', { method: 'POST', body })
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                btn.textContent = '✓ Imported!';
-                setTimeout(() => {
-                    window.location.href = 'summit_detail.php?id=' + SOTAMAPS_SUMMIT_ID
-                        + '&group=' + SOTAMAPS_GROUP_ID + '&gpx=1';
-                }, 800);
-            } else {
-                btn.disabled = false;
-                btn.textContent = 'Import';
-                alert('Import failed: ' + (data.error || 'Unknown error'));
-            }
-        })
-        .catch(() => {
-            btn.disabled = false;
-            btn.textContent = 'Import';
-            alert('Network error during import.');
-        });
 }
 
 function escHtml(str) {
-    return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// Auto-dismiss flash
+const flash = document.getElementById('flash-msg');
+if (flash) setTimeout(() => { flash.style.transition = 'opacity 0.5s'; flash.style.opacity = '0'; setTimeout(() => flash.remove(), 500); }, 4000);
 </script>
-<footer style="text-align:center; padding:2rem 1rem 1.5rem; color:#aaa; font-size:0.78rem;">
-    SOTA Planner &nbsp;·&nbsp; <a href="changelog.php" style="color:#aaa; text-decoration:none;">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com" style="color:#aaa; text-decoration:none;">sotaplanner.com</a>
-</footer>
 </body>
 </html>

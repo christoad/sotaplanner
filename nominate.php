@@ -225,14 +225,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
     <style>
         :root {
             --navy: #1E3A5F;
-            --teal: #4A90A4;
-            --light-blue: #5BA4B8;
+            --teal: #9B6328;
+            --light-blue: #B8874A;
             --gold: #E6B84A;
             --tan: #D4A574;
             --snow: #F5F5F0;
             /* Aliases */
             --peak-brown: #1E3A5F;
-            --trail-green: #4A90A4;
+            --trail-green: #9B6328;
             --forest-dark: #1E3A5F;
             --summit-gold: #E6B84A;
             --earth-tan: #D4A574;

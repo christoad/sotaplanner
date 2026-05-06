@@ -97,7 +97,7 @@
         }
 
         .new-url a {
-            color: #4A90A4;
+            color: #9B6328;
             text-decoration: none;
         }
     </style>
