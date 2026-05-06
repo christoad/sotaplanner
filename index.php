@@ -465,6 +465,37 @@ $summits = $stmt->fetchAll();
     .btn-ghost:hover { background: var(--bg-2); color: var(--ink); }
     .btn-sm { height: 30px; padding: 0 var(--sp-3); font-size: 0.8rem; }
 
+    /* ── User chip / logout dropdown ── */
+    .user-chip {
+      position: relative;
+      display: flex; align-items: center; gap: 0.35rem;
+      cursor: pointer;
+      padding: 0.25rem 0.6rem;
+      border-radius: var(--r-sm);
+      font-size: 0.8rem; font-weight: 600; color: var(--ink-2);
+      border: 1px solid var(--border);
+      background: var(--bg);
+      user-select: none;
+      white-space: nowrap;
+    }
+    .user-chip:hover { background: var(--bg-2); }
+    .user-chip-chevron { transition: transform 0.15s; flex-shrink: 0; }
+    .user-chip.open .user-chip-chevron { transform: rotate(180deg); }
+    .user-dropdown {
+      display: none;
+      position: absolute; top: calc(100% + 6px); right: 0;
+      background: #fff; border: 1px solid var(--border);
+      border-radius: var(--r-sm); box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+      min-width: 130px; overflow: hidden; z-index: 200;
+    }
+    .user-chip.open .user-dropdown { display: block; }
+    .user-dropdown a {
+      display: block; padding: 0.6rem 1rem;
+      font-size: 0.82rem; font-weight: 500; color: var(--ink-2);
+      text-decoration: none;
+    }
+    .user-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
+
     /* ── Select inline ── */
     .select-inline {
       appearance: none; -webkit-appearance: none;
@@ -589,6 +620,8 @@ $summits = $stmt->fetchAll();
     .badge-activated   { background: var(--gray-bg);   color: var(--gray-badge); }
 
     /* ── Summit name cell ── */
+    .data-table thead th:first-child { padding-left: var(--sp-5); }
+    .td-main a { display: block; padding-left: var(--sp-5); }
     .summit-name { font-weight: 600; font-size: 0.9rem; color: var(--ink); line-height: 1.25; }
     .summit-ref { font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-3); margin-top: 2px; }
 
@@ -768,13 +801,16 @@ $summits = $stmt->fetchAll();
         </nav>
         <a href="nominate.php" class="btn btn-primary btn-sm">+ Nominate</a>
         <div class="topbar-divider"></div>
-        <span style="font-size:0.8rem; color:var(--ink-3); font-weight:500;">
+        <div class="user-chip" id="userChip">
             <?= htmlspecialchars(getCurrentCallsign()) ?>
             <?php if (($_SESSION['sota_login_type'] ?? '') === 'dev'): ?>
-                <span style="background:#856404; color:#fff3cd; font-size:0.65rem; padding:0.05rem 0.35rem; border-radius:3px; margin-left:0.3rem; vertical-align:middle;">DEV</span>
+                <span style="background:#856404; color:#fff3cd; font-size:0.65rem; padding:0.05rem 0.3rem; border-radius:3px;">DEV</span>
             <?php endif; ?>
-        </span>
-        <a href="logout.php" class="btn btn-ghost btn-sm">Sign Out</a>
+            <svg class="user-chip-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="2,3.5 5,6.5 8,3.5"/></svg>
+            <div class="user-dropdown">
+                <a href="logout.php">Sign Out</a>
+            </div>
+        </div>
     </div>
 </nav>
 
@@ -1118,6 +1154,14 @@ $summits = $stmt->fetchAll();
         urlParams.set('filter', current === 'all' || current === '' ? 'none' : 'all');
         window.location.search = urlParams.toString();
     }
+
+    // User chip dropdown
+    (function() {
+        const chip = document.getElementById('userChip');
+        if (!chip) return;
+        chip.addEventListener('click', function(e) { e.stopPropagation(); this.classList.toggle('open'); });
+        document.addEventListener('click', function() { chip.classList.remove('open'); });
+    })();
 </script>
 </body>
 </html>

@@ -735,6 +735,27 @@ if ($tl_show) {
     .btn-danger:hover { background: #f5d5d5; }
     .btn-sm { height: 30px; padding: 0 0.75rem; font-size: 0.8rem; }
     .btn-lg { height: 44px; padding: 0 1.5rem; font-size: 1rem; }
+    .user-chip {
+        position: relative; display: flex; align-items: center; gap: 0.35rem;
+        cursor: pointer; padding: 0.25rem 0.6rem;
+        border-radius: 6px; font-size: 0.8rem; font-weight: 600; color: var(--ink-2);
+        border: 1px solid var(--border); background: var(--bg); user-select: none; white-space: nowrap;
+    }
+    .user-chip:hover { background: var(--bg-2); }
+    .user-chip-chevron { transition: transform 0.15s; flex-shrink: 0; }
+    .user-chip.open .user-chip-chevron { transform: rotate(180deg); }
+    .user-dropdown {
+        display: none; position: absolute; top: calc(100% + 6px); right: 0;
+        background: #fff; border: 1px solid var(--border);
+        border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+        min-width: 130px; overflow: hidden; z-index: 200;
+    }
+    .user-chip.open .user-dropdown { display: block; }
+    .user-dropdown a {
+        display: block; padding: 0.6rem 1rem;
+        font-size: 0.82rem; font-weight: 500; color: var(--ink-2); text-decoration: none;
+    }
+    .user-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
     .btn-full { width: 100%; }
 
     /* Forms */
@@ -918,6 +939,13 @@ if ($tl_show) {
   </div>
   <div class="topbar-right">
     <a href="index.php" class="btn btn-ghost btn-sm">← Dashboard</a>
+    <div class="user-chip" id="userChip">
+        <?= htmlspecialchars(getCurrentCallsign()) ?>
+        <svg class="user-chip-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="2,3.5 5,6.5 8,3.5"/></svg>
+        <div class="user-dropdown">
+            <a href="logout.php">Sign Out</a>
+        </div>
+    </div>
   </div>
 </nav>
 
@@ -1887,6 +1915,14 @@ function escHtml(str) {
 // Auto-dismiss flash
 const flash = document.getElementById('flash-msg');
 if (flash) setTimeout(() => { flash.style.transition = 'opacity 0.5s'; flash.style.opacity = '0'; setTimeout(() => flash.remove(), 500); }, 4000);
+
+// User chip dropdown
+(function() {
+    var chip = document.getElementById('userChip');
+    if (!chip) return;
+    chip.addEventListener('click', function(e) { e.stopPropagation(); this.classList.toggle('open'); });
+    document.addEventListener('click', function() { chip.classList.remove('open'); });
+})();
 </script>
 </body>
 </html>

@@ -47,7 +47,7 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
 
         /* ── Hero ── */
         .hero {
-            background: linear-gradient(150deg, #1E3A5F 0%, #2d5a8e 60%, #4A90A4 100%);
+            background: linear-gradient(150deg, #1E3A5F 0%, #4A3A2A 60%, #9B6328 100%);
             color: white;
             padding: 3rem 1.5rem 2.5rem;
             text-align: center;
@@ -217,13 +217,13 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
         }
 
         .sota-btn-main {
-            background: linear-gradient(135deg, #1E3A5F 0%, #2d5a8e 100%);
+            background: linear-gradient(135deg, #1E3A5F 0%, #4A3A2A 100%);
             color: white;
         }
 
         .sota-btn-main:hover {
             transform: translateY(-1px);
-            box-shadow: 0 6px 18px rgba(30,58,95,0.35);
+            box-shadow: 0 6px 18px rgba(155,99,40,0.35);
         }
 
         .sota-btn-disabled {
@@ -289,7 +289,7 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
 
         .form-group input:focus {
             outline: none;
-            border-color: #4A90A4;
+            border-color: #9B6328;
         }
 
         .submit-btn {
@@ -361,7 +361,11 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
 <!-- Hero -->
 <div class="hero">
     <div class="hero-logo-wrap">
-        <img src="logo.png" alt="SOTA Planner">
+        <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
+            <path d="M20,85 L40,50 L55,62 L75,28 L100,28" stroke="#1E3A5F" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <circle cx="75" cy="28" r="7" fill="#9B6328"/>
+            <text x="60" y="105" text-anchor="middle" font-family="Overpass, sans-serif" font-size="13" font-weight="800" fill="#1E3A5F">SOTA</text>
+        </svg>
     </div>
     <h1>SOTA Planner</h1>
     <p class="tagline">Doorstep-to-doorstep planning for busy activators and collaborative teams — understand the full time commitment to getting that summit in your logbook.</p>
@@ -370,22 +374,22 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
 <!-- Feature highlights -->
 <div class="features">
     <div class="feature">
-        <span class="feature-icon">⏱️</span>
+        <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="17" r="12"/><polyline points="16,10 16,17 21,17"/><path d="M16,5 L16,3"/><path d="M14,3 L18,3"/></svg></span>
         <h3>Total Day Estimate</h3>
         <p>Drive time + hiking time + radio time = one number. Compare summits and pick what fits your day.</p>
     </div>
     <div class="feature">
-        <span class="feature-icon">🗺️</span>
+        <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6,26 12,10 18,20 26,6"/><circle cx="26" cy="6" r="3"/><line x1="4" y1="28" x2="28" y2="28"/></svg></span>
         <h3>GPX Track Analysis</h3>
         <p>Upload a recorded track to get real hiking time, activation time, rest breaks, elevation, and speed.</p>
     </div>
     <div class="feature">
-        <span class="feature-icon">📨</span>
+        <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="24" height="16" rx="2"/><polyline points="4,8 16,18 28,8"/></svg></span>
         <h3>Shareable Invitations</h3>
         <p>Generate a public invite page for guests — timeline, map, driving directions, no login required.</p>
     </div>
     <div class="feature">
-        <span class="feature-icon">👥</span>
+        <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M4,26 C4,20 8,18 12,18 C16,18 20,20 20,26"/><circle cx="22" cy="12" r="3"/><path d="M22,18 C25,18 28,20 28,25"/></svg></span>
         <h3>Group Planning</h3>
         <p>Share a planning group with your activation partners. Everyone sees the same summit wishlist and research.</p>
     </div>

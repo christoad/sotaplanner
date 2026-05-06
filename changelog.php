@@ -39,12 +39,26 @@
 <div class="container">
     <a href="index.php" class="back">← Back to Planner</a>
 
-    <!-- v1.0.5 -->
+    <!-- v1.0.6 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.0.6</span>
+            <span class="version-date">May 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Logged-in callsign now visible on every page with a click-to-logout dropdown. Login page updated to match the warm amber color scheme.</p>
+        <ul>
+            <li><span class="tag tag-new">New</span> Callsign chip in the top-right corner of every logged-in page — click to reveal a Sign Out option</li>
+            <li><span class="tag tag-fix">Fix</span> Planning Groups page PHP parse error (mismatched if/endif) that caused a blank white page</li>
+            <li><span class="tag tag-improve">Improve</span> Login page hero and button colors updated to match the warm amber Alpine Precision theme</li>
+        </ul>
+    </div>
+
+    <!-- v1.0.5 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.0.5</span>
             <span class="version-date">May 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Visual redesign — Alpine Precision design system across all pages. Minor content updates.</p>
         <ul>
