@@ -708,7 +708,7 @@ if ($tl_show) {
     .topbar { background: var(--surface); border-bottom: 1px solid var(--border); height: 56px; display: flex; align-items: center; padding: 0 2rem; gap: 1.5rem; position: sticky; top: 0; z-index: 100; }
     .topbar-logo { display: flex; align-items: center; gap: 0.75rem; text-decoration: none; color: var(--ink); font-weight: 600; font-size: 0.95rem; letter-spacing: -0.01em; flex-shrink: 0; }
     .topbar-logo:hover { text-decoration: none; color: var(--ink); }
-    .logo-mark { width: 28px; height: 28px; background: var(--ink); border-radius: var(--r-sm); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .logo-mark { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .topbar-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
     .topbar-nav { display: flex; align-items: center; gap: 0.25rem; flex: 1; }
     .topbar-nav a { color: var(--ink-3); font-size: 0.875rem; font-weight: 500; padding: 0.5rem 0.75rem; border-radius: var(--r-sm); transition: color 0.15s, background 0.15s; text-decoration: none; white-space: nowrap; }
@@ -924,10 +924,7 @@ if ($tl_show) {
 <nav class="topbar">
   <a href="index.php" class="topbar-logo">
     <div class="logo-mark">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-        <polyline points="1,12 5,6 8,9 11,4 15,4" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="11" cy="4" r="1.5" fill="white"/>
-      </svg>
+      <img src="sota-planner-logo.svg" width="32" height="32" alt="">
     </div>
     <span>SOTAplanner</span>
   </a>
@@ -1152,7 +1149,7 @@ if ($tl_show) {
         <button type="button" id="btn-tmobile" class="carrier-btn" style="border-color:#E91E8C; color:#E91E8C; background:#fff;" onclick="toggleCarrier('tmobile')">T-Mo</button>
         <button type="button" id="btn-verizon" class="carrier-btn" style="border-color:#CD040B; color:#CD040B; background:#fff;" onclick="toggleCarrier('verizon')">VZW</button>
         <button type="button" id="btn-att"     class="carrier-btn" style="border-color:#00A8E0; color:#00A8E0; background:#fff;" onclick="toggleCarrier('att')">AT&amp;T</button>
-        <?php if ($gpx_data): ?>
+        <?php if (!empty($summit['sota_ref'])): ?>
           <span class="map-divider"></span>
           <button type="button" id="btn-actzone" class="btn btn-sm btn-secondary" onclick="zoomToActivationZone()" disabled style="opacity:0.4;">Activation Zone</button>
         <?php endif; ?>
@@ -1169,6 +1166,8 @@ if ($tl_show) {
         <canvas id="elev-canvas"></canvas>
         <div class="elev-note" id="elev-note">Hover for elevation details</div>
       </div>
+      <?php endif; ?>
+      <?php if (!empty($summit['sota_ref'])): ?>
       <div id="az-methodology" style="font-size:0.75rem; color:var(--ink-3); margin-bottom:1rem; line-height:1.5;"></div>
       <?php endif; ?>
 
@@ -1808,6 +1807,14 @@ function setupElevMapHover(s, mapRef) {
     if (hoverMarker) { mapRef.removeLayer(hoverMarker); hoverMarker = null; }
   });
 }
+<?php endif; ?>
+
+<?php if (!$gpx_data && !empty($summit['sota_ref'])): ?>
+// No GPX — fetch activation zone directly
+fetch('activation_zone.php?sota_ref=<?= urlencode($summit['sota_ref']) ?>')
+  .then(r => r.json())
+  .then(data => { if (data.polygon) initActivationZone(data.polygon); else setActivationZoneFallback(); })
+  .catch(() => setActivationZoneFallback());
 <?php endif; ?>
 
 // ── SOTA Maps GPX Import ────────────────────────────────────────────────────

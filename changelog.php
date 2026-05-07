@@ -39,12 +39,29 @@
 <div class="container">
     <a href="index.php" class="back">← Back to Planner</a>
 
-    <!-- v1.0.6 -->
+    <!-- v1.0.7 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.0.7</span>
+            <span class="version-date">May 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">New SVG logo across all pages, smarter post-login redirect, and several UX improvements.</p>
+        <ul>
+            <li><span class="tag tag-new">New</span> SVG logo replaces old inline SVG and logo.png across all pages — sharper at every size</li>
+            <li><span class="tag tag-new">New</span> Returning users skip the group picker and land directly on their dashboard after sign-in (uses saved default group, or falls back to their owned group)</li>
+            <li><span class="tag tag-improve">Improve</span> Welcome banner on the Planning Groups page greets new users and explains how to get started</li>
+            <li><span class="tag tag-improve">Improve</span> Address modal opens automatically after creating a new planning group</li>
+            <li><span class="tag tag-fix">Fix</span> Activation Zone button now appears for any summit with a SOTA reference, not just GPX-tracked ones</li>
+            <li><span class="tag tag-fix">Fix</span> Activation zone data is fetched directly on Summit Detail when no GPX is attached</li>
+        </ul>
+    </div>
+
+    <!-- v1.0.6 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.0.6</span>
             <span class="version-date">May 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Logged-in callsign now visible on every page with a click-to-logout dropdown. Login page updated to match the warm amber color scheme.</p>
         <ul>

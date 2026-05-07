@@ -131,7 +131,7 @@
 <body>
     <div class="container">
         <header>
-            <img src="logo.png" alt="SOTA Planner" class="logo">
+            <img src="sota-planner-logo.svg" alt="SOTA Planner" class="logo">
             <a href="index.php" class="back-link">← Back to Dashboard</a>
         </header>
 

@@ -112,7 +112,7 @@
 </head>
 <body>
     <div class="welcome-container">
-        <img src="logo.png" alt="SOTA Planner" class="logo">
+        <img src="sota-planner-logo.svg" alt="SOTA Planner" class="logo">
         
         <h1>Welcome to SOTA Planner</h1>
         

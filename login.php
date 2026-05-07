@@ -2,9 +2,9 @@
 require_once 'config.php';
 session_start();
 
-// Already logged in — go to group selection
+// Already logged in — go to dashboard (or group picker if no group set)
 if (isset($_SESSION['sota_callsign'])) {
-    header('Location: planning_groups.php');
+    header('Location: ' . (isset($_SESSION['current_planning_group_id']) ? 'index.php' : 'planning_groups.php'));
     exit;
 }
 
@@ -13,15 +13,55 @@ $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['dev_login'])) {
         $callsign = strtoupper(trim($_POST['callsign'] ?? ''));
-        $password  = $_POST['password'] ?? '';
 
-        if ($callsign === 'KI6CR' && $password === 'sota') {
-            $_SESSION['sota_callsign']   = 'KI6CR';
-            $_SESSION['sota_login_type'] = 'dev';
-            header('Location: planning_groups.php');
+        if ($callsign !== '' && preg_match('/^[A-Z0-9]{3,10}$/', $callsign)) {
+            $_SESSION['sota_callsign']   = $callsign;
+            $_SESSION['sota_login_type'] = 'early_access';
+
+            // Determine redirect based on group membership
+            try {
+                $db = getDbConnection();
+
+                // Fetch all groups this user belongs to, owned groups first
+                $stmt = $db->prepare("
+                    SELECT DISTINCT pg.id,
+                           CASE WHEN pg.owner_callsign = :cs THEN 0 ELSE 1 END AS sort_order
+                    FROM planning_groups pg
+                    LEFT JOIN planning_group_members pgm ON pg.id = pgm.planning_group_id
+                    WHERE pg.owner_callsign = :cs2 OR pgm.callsign = :cs3
+                    ORDER BY sort_order ASC, pg.id ASC
+                ");
+                $stmt->execute([':cs' => $callsign, ':cs2' => $callsign, ':cs3' => $callsign]);
+                $groups = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+                if (count($groups) === 0) {
+                    // New user — no groups yet
+                    header('Location: planning_groups.php?welcome=1');
+                } else {
+                    // Returning user — pick best group: saved default cookie > owned/first group
+                    $target_group = null;
+
+                    if (!empty($_COOKIE['sota_default_group'])) {
+                        $cookie_id = (int)$_COOKIE['sota_default_group'];
+                        if (in_array($cookie_id, $groups)) {
+                            $target_group = $cookie_id;
+                        }
+                    }
+
+                    if (!$target_group) {
+                        $target_group = $groups[0]; // owned group first, then oldest
+                    }
+
+                    $_SESSION['current_planning_group_id'] = $target_group;
+                    header('Location: index.php');
+                }
+            } catch (PDOException $e) {
+                // DB error — fall back to group picker
+                header('Location: planning_groups.php');
+            }
             exit;
         } else {
-            $error = 'Invalid callsign or password.';
+            $error = 'Please enter a valid callsign (letters and numbers only).';
         }
     }
 }
@@ -57,16 +97,13 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            background: white;
-            border-radius: 50%;
-            width: 160px;
-            height: 160px;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 6px 24px rgba(0,0,0,0.2);
+            margin-bottom: 1.25rem;
         }
 
         .hero img {
-            height: 124px;
+            height: 280px;
+            filter: brightness(0) invert(1);
+            drop-shadow: 0 2px 12px rgba(255,255,255,0.15);
         }
 
         .hero h1 {
@@ -361,13 +398,8 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
 <!-- Hero -->
 <div class="hero">
     <div class="hero-logo-wrap">
-        <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
-            <path d="M20,85 L40,50 L55,62 L75,28 L100,28" stroke="#1E3A5F" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-            <circle cx="75" cy="28" r="7" fill="#9B6328"/>
-            <text x="60" y="105" text-anchor="middle" font-family="Overpass, sans-serif" font-size="13" font-weight="800" fill="#1E3A5F">SOTA</text>
-        </svg>
+        <img src="sota-planner-logo-font.svg" width="280" height="280" alt="SOTA Planner">
     </div>
-    <h1>SOTA Planner</h1>
     <p class="tagline">Doorstep-to-doorstep planning for busy activators and collaborative teams — understand the full time commitment to getting that summit in your logbook.</p>
 </div>
 
@@ -433,7 +465,7 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
 <div class="login-wrap">
     <div class="login-card">
         <h2>Sign in to get started</h2>
-        <p class="sub">Use your SOTA account to keep your planning groups private.</p>
+        <p class="sub">Enter your callsign to access your planning groups. Full SOTA SSO login coming soon.</p>
 
         <?php if ($error): ?>
             <div class="error-msg"><?= htmlspecialchars($error) ?></div>
@@ -451,21 +483,23 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
             <p class="coming-soon-note">OAuth client registration pending with SOTA team</p>
         <?php endif; ?>
 
-        <div class="divider"><span>Dev mode <span class="dev-badge">Testing</span></span></div>
+        <div class="divider"><span>Early Access Preview</span></div>
 
         <form method="POST">
             <div class="form-group">
-                <label>Callsign</label>
+                <label>Your Callsign</label>
                 <input type="text" name="callsign"
                        value="<?= htmlspecialchars($_POST['callsign'] ?? '') ?>"
                        autocomplete="username" autocapitalize="characters"
                        placeholder="KI6CR" required>
             </div>
             <div class="form-group">
-                <label>Password</label>
+                <label style="color:#ccc;">Password <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:0.72rem;">&mdash; not required during early access</span></label>
                 <input type="password" name="password"
-                       autocomplete="current-password"
-                       placeholder="••••••••" required>
+                       autocomplete="off"
+                       placeholder="No password needed yet"
+                       disabled
+                       style="background:#f7f7f7;color:#ccc;border-color:#e8e8e8;cursor:not-allowed;">
             </div>
             <button type="submit" name="dev_login" class="submit-btn">Sign In</button>
         </form>

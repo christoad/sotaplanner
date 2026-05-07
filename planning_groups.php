@@ -45,8 +45,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 setCurrentPlanningGroup($new_group_id);
                 $_SESSION['manage_group_id'] = $new_group_id;
 
-                $message = "Planning group created! Now add a starting location for your group below.";
-                $scroll_to_addresses = true;
+                $message = "Planning group created! Add a starting location so we can calculate drive times.";
+                $open_address_modal = true;
             } catch (PDOException $e) {
                 $error = "Error creating group: " . $e->getMessage();
             }
@@ -594,11 +594,7 @@ a:hover { text-decoration: underline; }
 
 <nav class="topbar">
     <a href="index.php" class="topbar-logo">
-        <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-            <rect width="28" height="28" rx="4" fill="#1C1B19"/>
-            <polyline points="4,20 10,10 15,15 20,7 24,7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-            <circle cx="20" cy="7" r="2" fill="white"/>
-        </svg>
+        <img src="sota-planner-logo.svg" width="32" height="32" alt="">
         <span>SOTAplanner</span>
     </a>
     <div class="topbar-divider"></div>
@@ -638,6 +634,26 @@ a:hover { text-decoration: underline; }
             <span><?= htmlspecialchars($error) ?></span>
             <button class="msg-dismiss" onclick="this.parentElement.remove()">×</button>
         </div>
+    <?php endif; ?>
+
+    <?php if (isset($_GET['welcome']) && count($all_groups) === 0): ?>
+    <div class="msg" style="background: linear-gradient(135deg, #f0f7ff 0%, #fdf6ec 100%); border: 1.5px solid #c8dff5; border-radius: 12px; padding: 1.5rem 1.75rem; margin-bottom: 1.5rem; display: flex; gap: 1.5rem; align-items: flex-start; flex-wrap: wrap;">
+        <div style="font-size: 2rem; line-height: 1;">⛰️</div>
+        <div style="flex: 1; min-width: 200px;">
+            <div style="font-size: 1rem; font-weight: 800; color: #1E3A5F; margin-bottom: 0.35rem;">Welcome to SOTA Planner, <?= htmlspecialchars($current_callsign) ?>!</div>
+            <div style="font-size: 0.875rem; color: #444; line-height: 1.55; margin-bottom: 1rem;">
+                You don't have any planning groups yet. Planning groups are how you organize your summit wishlist — each group can have its own members, addresses, and summits.
+            </div>
+            <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+                <button class="btn btn-primary" onclick="document.getElementById('createGroupModal').classList.add('open')" style="font-size: 0.875rem;">
+                    + Create my first group
+                </button>
+                <div style="font-size: 0.82rem; color: #666; line-height: 1.4;">
+                    Or, ask a group owner to add your callsign (<strong><?= htmlspecialchars($current_callsign) ?></strong>) to their group — it'll appear here automatically next time you sign in.
+                </div>
+            </div>
+        </div>
+    </div>
     <?php endif; ?>
 
     <div class="groups-grid">
@@ -904,8 +920,8 @@ a:hover { text-decoration: underline; }
             </div>
             <div class="form-group">
                 <label class="form-label">Address</label>
-                <input type="text" name="address" class="form-input" placeholder="123 Main St, City, CA 12345" required>
-                <div class="form-hint">Enter a city, cross streets, or full address that Google Maps can find.</div>
+                <input type="text" name="address" class="form-input" placeholder="e.g., 97201, Oak & Main Portland, Starbucks Bend OR" required>
+                <div class="form-hint">Anything Google Maps can find — zip code, cross streets, a business name, or a full address. No need to use your home address.</div>
             </div>
             <div style="display: flex; gap: 0.75rem;">
                 <button type="submit" name="add_address" class="btn btn-primary" style="flex: 1;">Add Address</button>
@@ -915,7 +931,15 @@ a:hover { text-decoration: underline; }
     </div>
 </div>
 
-<?php if (!empty($scroll_to_addresses) && $managing_group): ?>
+<?php if (!empty($open_address_modal) && $managing_group): ?>
+<script>
+    window.addEventListener('load', function() {
+        document.getElementById('addressModal').classList.add('open');
+    });
+</script>
+<?php endif; ?>
+
+<?php if (false && !empty($scroll_to_addresses) && $managing_group): ?>
 <script>
     window.addEventListener('load', function() {
         var el = document.getElementById('addresses');

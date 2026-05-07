@@ -104,7 +104,7 @@
 </head>
 <body>
     <div class="card">
-        <img src="logo.png" alt="SOTA Planner" class="logo">
+        <img src="sota-planner-logo.svg" alt="SOTA Planner" class="logo">
         <div class="moved-badge">We've Moved</div>
         <h1>SOTA Planner has a new home</h1>
         <p class="tagline">Doorstep to doorstep planning for busy activators</p>

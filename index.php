@@ -411,9 +411,7 @@ $summits = $stmt->fetchAll();
     }
     .topbar-logo:hover { text-decoration: none; color: var(--ink); }
     .topbar-logo .logo-mark {
-      width: 28px; height: 28px;
-      background: var(--ink);
-      border-radius: var(--r-sm);
+      width: 32px; height: 32px;
       display: flex; align-items: center; justify-content: center;
       flex-shrink: 0;
     }
@@ -725,7 +723,7 @@ $summits = $stmt->fetchAll();
       .td-hide-mobile { display: none; }
     }
     @media (min-width: 769px) {
-      .td-main, .td-time, .td-diff, .td-status { display: contents; }
+      .td-main, .td-time, .td-diff, .td-status { display: table-cell; vertical-align: middle; }
       .td-hide-mobile { display: table-cell; }
       .td-stats { display: none; }
     }
@@ -736,10 +734,7 @@ $summits = $stmt->fetchAll();
 <nav class="topbar">
     <a href="index.php" class="topbar-logo">
         <span class="logo-mark">
-            <svg width="16" height="16" viewBox="0 0 28 28" fill="none">
-                <polyline points="4,20 10,10 15,15 20,7 24,7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-                <circle cx="20" cy="7" r="2" fill="white"/>
-            </svg>
+            <img src="sota-planner-logo.svg" width="32" height="32" alt="">
         </span>
         <span>SOTAplanner</span>
     </a>
