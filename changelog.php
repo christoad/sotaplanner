@@ -1,43 +1,243 @@
-<?php require_once 'config.php'; ?>
+<?php require_once 'config.php';
+session_start();
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOTA Planner — Changelog</title>
+    <title>Changelog — SOTA Planner</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
-        .header { background: linear-gradient(135deg, #1E3A5F 0%, #2d5a8e 100%); color: white; padding: 2rem 1.5rem; text-align: center; }
-        .header h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 0.3rem; }
-        .header p { opacity: 0.75; font-size: 0.9rem; }
-        .container { max-width: 760px; margin: 2rem auto; padding: 0 1rem 4rem; }
-        .version-block { background: white; border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 1px 4px rgba(0,0,0,0.07); border-left: 5px solid #9B6328; }
-        .version-block.current { border-left-color: #2e7d32; }
-        .version-header { display: flex; align-items: baseline; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
-        .version-number { font-size: 1.15rem; font-weight: 800; color: #1E3A5F; }
-        .version-date { font-size: 0.82rem; color: #999; }
-        .version-badge { font-size: 0.7rem; font-weight: 700; background: #2e7d32; color: white; border-radius: 20px; padding: 0.15rem 0.6rem; text-transform: uppercase; letter-spacing: 0.05em; }
-        .version-desc { font-size: 0.88rem; color: #555; margin-bottom: 0.85rem; line-height: 1.55; }
-        ul { padding-left: 1.25rem; }
-        ul li { font-size: 0.88rem; line-height: 1.6; margin-bottom: 0.3rem; color: #444; }
-        .tag { display: inline-block; font-size: 0.68rem; font-weight: 700; border-radius: 4px; padding: 0.1rem 0.4rem; margin-right: 0.35rem; text-transform: uppercase; letter-spacing: 0.04em; vertical-align: middle; }
-        .tag-new { background: #e8f5e9; color: #2e7d32; }
-        .tag-fix { background: #fff3e0; color: #e65100; }
-        .tag-improve { background: #e3f2fd; color: #1565c0; }
-        .back { display: inline-block; margin-bottom: 1.5rem; color: #9B6328; font-size: 0.88rem; text-decoration: none; font-weight: 600; }
-        .back:hover { text-decoration: underline; }
+    /* === Alpine Precision Design System === */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+
+    :root {
+      --bg:            #F7F6F3;
+      --bg-2:          #EFEDE8;
+      --bg-3:          #E5E2DA;
+      --ink:           #1C1B19;
+      --ink-2:         #4A4844;
+      --ink-3:         #8C8A86;
+      --ink-4:         #B8B5B0;
+      --accent:        oklch(52% 0.13 50);
+      --accent-2:      oklch(44% 0.13 50);
+      --accent-bg:     oklch(96% 0.04 65);
+      --accent-border: oklch(84% 0.08 65);
+      --green:         oklch(52% 0.13 155);
+      --green-bg:      oklch(95% 0.04 155);
+      --orange:        oklch(62% 0.14 58);
+      --orange-bg:     oklch(96% 0.05 58);
+      --red:           oklch(52% 0.16 22);
+      --red-bg:        oklch(96% 0.04 22);
+      --blue:          oklch(52% 0.12 240);
+      --blue-bg:       oklch(95% 0.04 240);
+      --surface:       #FFFFFF;
+      --border:        #E5E2DA;
+      --border-2:      #D4D0C8;
+      --font-sans:     'DM Sans', system-ui, sans-serif;
+      --r-sm: 4px; --r-md: 8px; --r-lg: 12px; --r-xl: 16px;
+      --sp-1: 0.25rem; --sp-2: 0.5rem; --sp-3: 0.75rem; --sp-4: 1rem;
+      --sp-5: 1.25rem; --sp-6: 1.5rem; --sp-8: 2rem;
+      --shadow-sm: 0 1px 3px rgba(28,27,25,0.07), 0 1px 2px rgba(28,27,25,0.05);
+      --shadow-md: 0 4px 12px rgba(28,27,25,0.08), 0 2px 4px rgba(28,27,25,0.05);
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ── Topbar ── */
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      height: 56px;
+      display: flex;
+      align-items: center;
+      padding: 0 var(--sp-8);
+      gap: var(--sp-4);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .topbar-logo {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-3);
+      text-decoration: none;
+      color: var(--ink);
+      font-weight: 600;
+      font-size: 0.95rem;
+      letter-spacing: -0.01em;
+      flex-shrink: 0;
+    }
+    .topbar-logo:hover { text-decoration: none; color: var(--ink); }
+    .topbar-logo .logo-mark {
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .topbar-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+    .topbar-right {
+      display: flex; align-items: center; gap: var(--sp-3);
+      margin-left: auto; flex-shrink: 0;
+    }
+    .topbar-nav {
+      display: flex; align-items: center; gap: var(--sp-1);
+    }
+    .topbar-nav a {
+      color: var(--ink-3);
+      font-size: 0.875rem; font-weight: 500;
+      padding: var(--sp-2) var(--sp-3);
+      border-radius: var(--r-sm);
+      transition: color 0.15s, background 0.15s;
+      text-decoration: none; white-space: nowrap;
+    }
+    .topbar-nav a:hover { color: var(--ink); background: var(--bg-2); }
+
+    /* ── Page ── */
+    .page {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: var(--sp-8) var(--sp-8) 5rem;
+    }
+
+    .page-header {
+      margin-bottom: var(--sp-8);
+    }
+    .page-header h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--ink);
+      margin-bottom: 0.25rem;
+    }
+    .page-header p {
+      font-size: 0.875rem;
+      color: var(--ink-3);
+    }
+
+    /* ── Version blocks ── */
+    .version-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+      box-shadow: var(--shadow-sm);
+    }
+    .version-block.current {
+      border-color: var(--accent-border);
+      background: var(--accent-bg);
+    }
+
+    .version-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.6rem;
+      flex-wrap: wrap;
+    }
+    .version-number {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .version-date {
+      font-size: 0.8rem;
+      color: var(--ink-3);
+    }
+    .version-badge {
+      font-size: 0.68rem;
+      font-weight: 600;
+      background: var(--green);
+      color: #fff;
+      border-radius: 20px;
+      padding: 0.15rem 0.55rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .version-desc {
+      font-size: 0.875rem;
+      color: var(--ink-2);
+      margin-bottom: 0.85rem;
+      line-height: 1.55;
+    }
+
+    .version-block ul {
+      list-style: none;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+    .version-block li {
+      font-size: 0.855rem;
+      color: var(--ink-2);
+      line-height: 1.55;
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+    }
+
+    /* ── Tags ── */
+    .tag {
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 600;
+      border-radius: var(--r-sm);
+      padding: 0.1rem 0.4rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .tag-new     { background: var(--green-bg);  color: var(--green); }
+    .tag-fix     { background: var(--red-bg);    color: var(--red); }
+    .tag-improve { background: var(--blue-bg);   color: var(--blue); }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 1.5rem 1rem;
+      color: var(--ink-4);
+      font-size: 0.78rem;
+    }
+    footer a { color: var(--ink-4); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    @media (max-width: 600px) {
+      .topbar { padding: 0 var(--sp-4); }
+      .page { padding: var(--sp-6) var(--sp-4) 4rem; }
+    }
     </style>
 </head>
 <body>
 
-<div class="header">
-    <h1>⛰️ SOTA Planner — Changelog</h1>
-    <p>Release history and update notes</p>
-</div>
+<nav class="topbar">
+    <a href="index.php" class="topbar-logo">
+        <span class="logo-mark">
+            <img src="sota-planner-logo.svg" width="32" height="32" alt="">
+        </span>
+        <span>SOTAplanner</span>
+    </a>
+    <div class="topbar-divider"></div>
+    <div class="topbar-nav">
+        <a href="index.php">← Dashboard</a>
+    </div>
+</nav>
 
-<div class="container">
-    <a href="index.php" class="back">← Back to Planner</a>
+<div class="page">
+
+    <div class="page-header">
+        <h1>Changelog</h1>
+        <p>Release history and update notes for SOTA Planner</p>
+    </div>
 
     <!-- v1.0.7 -->
     <div class="version-block current">
@@ -131,7 +331,6 @@
         <div class="version-header">
             <span class="version-number">v1.0.2</span>
             <span class="version-date">April 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Activation timeline visualization and GPX stat display improvements.</p>
         <ul>
@@ -148,7 +347,6 @@
         <div class="version-header">
             <span class="version-number">v1.0.1</span>
             <span class="version-date">April 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">UX improvements and activation zone precision update.</p>
         <ul>
@@ -192,8 +390,8 @@
 
 </div>
 
-<footer style="text-align:center; padding:1.5rem 1rem; color:#bbb; font-size:0.78rem;">
-    SOTA Planner &nbsp;·&nbsp; <a href="changelog.php" style="color:#bbb; text-decoration:none;">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com" style="color:#bbb; text-decoration:none;">sotaplanner.com</a>
+<footer>
+    SOTA Planner &nbsp;·&nbsp; <a href="changelog.php">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com">sotaplanner.com</a>
 </footer>
 
 </body>
