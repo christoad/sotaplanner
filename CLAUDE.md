@@ -494,11 +494,14 @@ Status badge (rounded pill, white text):
 
 ---
 
-## Changelog tag conventions
+## Changelog conventions
 
-When updating changelog.php, use these three tags only:
-- `New` — a brand-new feature or page
-- `Improve` — enhancement or refinement to something existing
-- `Fix` — a bug fix
+The changelog is **user-facing and feature-focused**. Keep it high-level and readable by a non-developer.
 
-Each version block: version number, month+year date, optional "Current" badge on the latest, one-sentence description, then bulleted list with tags.
+**What to include:**
+- New features and meaningful UX improvements worth calling out to users
+
+**What to omit:**
+- Bug fixes, PHP errors, internal refactors, cosmetic tweaks, technical debt cleanup — none of this belongs in the public changelog
+
+**Format per version block:** version number, month+year date, "Current" badge on the latest only, one-sentence description of the release theme, then a short plain-English bullet list (no tags, no technical jargon). Each bullet should describe what the user can now *do* or *see*, not what changed in the code.
