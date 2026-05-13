@@ -139,10 +139,11 @@ if (isset($_POST['select_group'])) {
     if (isset($_POST['add_member']) && isset($_SESSION['manage_group_id'])) {
         $group_id  = (int)$_SESSION['manage_group_id'];
         $raw       = trim($_POST['new_member_callsign'] ?? '');
-        $stmt = $db->prepare("SELECT owner_callsign FROM planning_groups WHERE id = ?");
-        $stmt->execute([$group_id]);
-        $grp = $stmt->fetch();
-        if ($grp && $grp['owner_callsign'] === $current_callsign && $raw !== '') {
+        // Verify current user is a member of the group
+        $stmt = $db->prepare("SELECT id FROM planning_group_members WHERE planning_group_id = ? AND callsign = ?");
+        $stmt->execute([$group_id, $current_callsign]);
+        $isMember = $stmt->fetch();
+        if ($isMember && $raw !== '') {
             try {
                 $ins = $db->prepare("INSERT IGNORE INTO planning_group_members (planning_group_id, callsign, role, invited_by) VALUES (?, ?, 'member', ?)");
                 $added = [];
@@ -158,7 +159,7 @@ if (isset($_POST['select_group'])) {
                 $error = "Error adding member: " . $e->getMessage();
             }
         } else {
-            $error = "Only the group owner can add members.";
+            $error = "You must be a member of this group to add members.";
         }
     }
 
@@ -795,9 +796,7 @@ a:hover { text-decoration: underline; }
                         <h2>Group Members</h2>
                         <p style="font-size: 0.8rem; color: var(--ink-3); margin-top: 3px;">Members can see this group's summits and addresses when they log in.</p>
                     </div>
-                    <?php if ($is_group_owner): ?>
-                        <button onclick="document.getElementById('memberModal').classList.add('open')" class="btn btn-secondary btn-sm">+ Add Member</button>
-                    <?php endif; ?>
+                    <button onclick="document.getElementById('memberModal').classList.add('open')" class="btn btn-secondary btn-sm">+ Add Member</button>
                 </div>
 
                 <?php if (count($group_members) > 0): ?>

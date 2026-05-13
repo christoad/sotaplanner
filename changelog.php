@@ -230,12 +230,24 @@ session_start();
         <p>Release history and update notes for SOTA Planner</p>
     </div>
 
-    <!-- v1.0.7 -->
+    <!-- v1.0.8 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.0.8</span>
+            <span class="version-date">May 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Group members can now invite others.</p>
+        <ul>
+            <li>Any group member can add new callsigns to a planning group, not just the owner</li>
+        </ul>
+    </div>
+
+    <!-- v1.0.7 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.0.7</span>
             <span class="version-date">May 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">New logo, smarter login, and onboarding improvements.</p>
         <ul>
