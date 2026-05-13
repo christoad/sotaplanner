@@ -230,12 +230,25 @@ session_start();
         <p>Release history and update notes for SOTA Planner</p>
     </div>
 
-    <!-- v1.0.8 -->
+    <!-- v1.0.9 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.0.9</span>
+            <span class="version-date">May 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Small UX improvements to group setup.</p>
+        <ul>
+            <li>When you add your first starting address to a group, it's automatically set as the active address — no extra step needed</li>
+            <li>Co-activators field renamed for clarity when creating a new group</li>
+        </ul>
+    </div>
+
+    <!-- v1.0.8 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.0.8</span>
             <span class="version-date">May 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Group members can now invite others.</p>
         <ul>

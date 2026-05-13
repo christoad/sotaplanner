@@ -544,6 +544,9 @@ $google_maps = "https://www.google.com/maps/search/" . urlencode($summit_name . 
     <?= htmlspecialchars($current_user) ?>
     <svg class="user-chip-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="2,3.5 5,6.5 8,3.5"/></svg>
     <div class="user-dropdown">
+        <?php if (($current_user ?? '') === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
+            <a href="god_mode.php">God Mode</a>
+        <?php endif; ?>
         <a href="logout.php">Sign Out</a>
     </div>
 </div>

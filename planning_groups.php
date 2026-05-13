@@ -12,6 +12,10 @@ $current_callsign = getCurrentCallsign();
 $message = '';
 $error = '';
 
+// Sitewide banner
+$_banner_raw      = $db->query("SELECT setting_value FROM app_settings WHERE setting_key = 'sitewide_banner'")->fetchColumn();
+$_sitewide_banner = $_banner_raw ? json_decode($_banner_raw, true) : null;
+
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Create new planning group
@@ -112,6 +116,17 @@ if (isset($_POST['select_group'])) {
             try {
                 $stmt = $db->prepare("INSERT INTO addresses (planning_group_id, label, address) VALUES (?, ?, ?)");
                 $stmt->execute([$group_id, $label, $address]);
+                $new_address_id = $db->lastInsertId();
+
+                // If this is the only address for the group, auto-select it
+                $count_stmt = $db->prepare("SELECT COUNT(*) FROM addresses WHERE planning_group_id = ?");
+                $count_stmt->execute([$group_id]);
+                if ((int)$count_stmt->fetchColumn() === 1) {
+                    $setting_key = 'selected_address_group_' . $group_id;
+                    $sel_stmt = $db->prepare("INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
+                    $sel_stmt->execute([$setting_key, $new_address_id]);
+                }
+
                 $message = "Address added successfully!";
             } catch (PDOException $e) {
                 $error = "Error adding address: " . $e->getMessage();
@@ -608,11 +623,26 @@ a:hover { text-decoration: underline; }
             <?= htmlspecialchars($current_callsign) ?>
             <svg class="user-chip-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="2,3.5 5,6.5 8,3.5"/></svg>
             <div class="user-dropdown">
+                <?php if (($current_callsign ?? '') === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
+                    <a href="god_mode.php">God Mode</a>
+                <?php endif; ?>
                 <a href="logout.php">Sign Out</a>
             </div>
         </div>
     </div>
 </nav>
+
+<?php if (!empty($_SESSION['_god_mode_real_callsign'])): ?>
+<div style="background:oklch(52% 0.16 22); color:#fff; text-align:center; padding:0.5rem 1rem; font-size:0.82rem; font-weight:600; display:flex; align-items:center; justify-content:center; gap:1rem;">
+    ⚠️ Impersonating <strong><?= htmlspecialchars($_SESSION['sota_callsign'] ?? '') ?></strong>
+    <a href="god_mode.php" style="color:#fff; background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.4); padding:0.2rem 0.75rem; border-radius:4px; font-size:0.78rem; text-decoration:none;">Return to God Mode</a>
+</div>
+<?php endif; ?>
+<?php if (!empty($_sitewide_banner['text'])): ?>
+<div style="background:var(--<?= $_sitewide_banner['type'] === 'success' ? 'green' : ($_sitewide_banner['type'] === 'error' ? 'red' : 'accent') ?>-bg); border-bottom:1px solid var(--border); padding:0.6rem var(--sp-8); font-size:0.85rem; font-weight:500; color:var(--ink-2); text-align:center;">
+    <?= htmlspecialchars($_sitewide_banner['text']) ?>
+</div>
+<?php endif; ?>
 
 <div class="page">
     <div class="page-header">
@@ -870,7 +900,7 @@ a:hover { text-decoration: underline; }
                 </select>
             </div>
             <div class="form-group">
-                <label class="form-label">Crew Callsigns <span style="font-weight:400; color:var(--ink-4);">(optional)</span></label>
+                <label class="form-label">Co-activators <span style="font-weight:400; color:var(--ink-4);">(optional)</span></label>
                 <input type="text" name="member_callsigns" class="form-input" placeholder="e.g. K3MGM, N6ARA, W6CMY">
                 <div class="form-hint">Comma-separated. Each callsign will see this group when they log in.</div>
             </div>
@@ -908,10 +938,11 @@ a:hover { text-decoration: underline; }
 <div id="addressModal" class="modal-overlay" onclick="if(event.target===this)this.classList.remove('open')">
     <div class="modal-box">
         <button class="modal-close" onclick="document.getElementById('addressModal').classList.remove('open')">×</button>
-        <div class="modal-title">Add Address</div>
+        <div class="modal-title">Add Starting Location</div>
         <?php if ($managing_group): ?>
             <p class="modal-subtitle">For <strong><?= htmlspecialchars($managing_group['name']) ?></strong></p>
         <?php endif; ?>
+        <p style="font-size: 0.85rem; color: var(--ink-2); margin-bottom: 1rem; line-height: 1.5;">SOTA Planner uses this to calculate accurate drive time estimates from your starting point to each summit's trailhead — so you can see the full door-to-door time for an activation.</p>
         <form method="POST">
             <div class="form-group">
                 <label class="form-label">Label (optional)</label>

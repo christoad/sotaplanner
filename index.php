@@ -11,6 +11,10 @@ $db = getDbConnection();
 
 $message = '';
 
+// Sitewide banner
+$_banner_raw    = $db->query("SELECT setting_value FROM app_settings WHERE setting_key = 'sitewide_banner'")->fetchColumn();
+$_sitewide_banner = $_banner_raw ? json_decode($_banner_raw, true) : null;
+
 // Restore defaults from cookies if session has no group set yet
 if (!getCurrentPlanningGroup($db) && !empty($_COOKIE['sota_default_group'])) {
     $cookie_group = (int)$_COOKIE['sota_default_group'];
@@ -803,11 +807,26 @@ $summits = $stmt->fetchAll();
             <?php endif; ?>
             <svg class="user-chip-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="2,3.5 5,6.5 8,3.5"/></svg>
             <div class="user-dropdown">
+                <?php if (($_SESSION['sota_callsign'] ?? '') === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
+                    <a href="god_mode.php">God Mode</a>
+                <?php endif; ?>
                 <a href="logout.php">Sign Out</a>
             </div>
         </div>
     </div>
 </nav>
+
+<?php if (!empty($_SESSION['_god_mode_real_callsign'])): ?>
+<div style="background:oklch(52% 0.16 22); color:#fff; text-align:center; padding:0.5rem 1rem; font-size:0.82rem; font-weight:600; display:flex; align-items:center; justify-content:center; gap:1rem;">
+    ⚠️ Impersonating <strong><?= htmlspecialchars($_SESSION['sota_callsign'] ?? '') ?></strong>
+    <a href="god_mode.php" style="color:#fff; background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.4); padding:0.2rem 0.75rem; border-radius:4px; font-size:0.78rem; text-decoration:none;">Return to God Mode</a>
+</div>
+<?php endif; ?>
+<?php if (!empty($_sitewide_banner['text'])): ?>
+<div style="background:var(--<?= $_sitewide_banner['type'] === 'success' ? 'green' : ($_sitewide_banner['type'] === 'error' ? 'red' : 'accent') ?>-bg); border-bottom:1px solid var(--border); padding:0.6rem var(--sp-8); font-size:0.85rem; font-weight:500; color:var(--ink-2); text-align:center;">
+    <?= htmlspecialchars($_sitewide_banner['text']) ?>
+</div>
+<?php endif; ?>
 
 <div class="page">
 

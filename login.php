@@ -491,7 +491,7 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
                 <input type="text" name="callsign"
                        value="<?= htmlspecialchars($_POST['callsign'] ?? '') ?>"
                        autocomplete="username" autocapitalize="characters"
-                       placeholder="KI6CR" required>
+                       placeholder="e.g. W7XYZ" required>
             </div>
             <div class="form-group">
                 <label style="color:#ccc;">Password <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:0.72rem;">&mdash; not required during early access</span></label>
