@@ -972,7 +972,7 @@ if ($tl_show) {
     </div>
     <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-start;">
       <?php if ($summit['sota_ref']): ?>
-        <a href="https://sotl.as/summits/<?= urlencode($summit['sota_ref']) ?>" target="_blank" class="btn btn-ghost btn-sm">SOTLAS ↗</a>
+        <a href="https://sotl.as/summits/<?= str_replace('%2F', '/', urlencode($summit['sota_ref'])) ?>" target="_blank" class="btn btn-ghost btn-sm">SOTLAS ↗</a>
       <?php endif; ?>
       <?php if (!empty($planned_activations_list)): ?>
         <?php
@@ -1254,7 +1254,7 @@ if ($tl_show) {
           <a href="https://caltopo.com/map.html#ll=<?= $search_lat ?>,<?= $search_lng ?>&z=14&b=t" target="_blank" class="trail-search-btn">CalTopo</a>
           <a href="https://www.hikingproject.com/directory/search?type=trail&q=<?= $search_name ?>" target="_blank" class="trail-search-btn">Hiking Project</a>
           <?php if (!empty($summit['sota_ref'])): ?>
-            <a href="https://sotl.as/summits/<?= urlencode($summit['sota_ref']) ?>" target="_blank" class="trail-search-btn">SOTLAS</a>
+            <a href="https://sotl.as/summits/<?= str_replace('%2F', '/', urlencode($summit['sota_ref'])) ?>" target="_blank" class="trail-search-btn">SOTLAS</a>
           <?php endif; ?>
         </div>
       </div>
@@ -1332,7 +1332,7 @@ if ($tl_show) {
           <?php endif; ?>
           <a href="#planned-activations" class="btn btn-secondary btn-full">Schedule Activation</a>
           <?php if ($summit['sota_ref']): ?>
-            <a href="https://sotl.as/summits/<?= urlencode($summit['sota_ref']) ?>" target="_blank" class="btn btn-ghost btn-full">View on SOTLAS</a>
+            <a href="https://sotl.as/summits/<?= str_replace('%2F', '/', urlencode($summit['sota_ref'])) ?>" target="_blank" class="btn btn-ghost btn-full">View on SOTLAS</a>
           <?php endif; ?>
           <?php if (!empty($summit['trail_link'])): ?>
             <a href="<?= htmlspecialchars($summit['trail_link']) ?>" target="_blank" class="btn btn-ghost btn-full">View Trail</a>
