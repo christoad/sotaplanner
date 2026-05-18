@@ -161,6 +161,36 @@ if (isset($_GET['code'])) {
     $_SESSION['sota_refresh_token'] = $tokens['refresh_token'] ?? null;
     $_SESSION['sota_token_expires'] = time() + ($tokens['expires_in'] ?? 300);
 
+    // Find user's planning groups
+    $stmt = $db->prepare("
+        SELECT pg.id FROM planning_groups pg
+        LEFT JOIN planning_group_members pgm ON pg.id = pgm.planning_group_id
+        WHERE pg.owner_callsign = ? OR pgm.callsign = ?
+        ORDER BY pg.id ASC
+    ");
+    $stmt->execute([$callsign, $callsign]);
+    $groups = $stmt->fetchAll();
+
+    if (empty($groups)) {
+        // New user — send to groups page to create their first group
+        $_SESSION['onboarding'] = true;
+        header('Location: planning_groups.php');
+        exit;
+    }
+
+    // Try to restore last-used group from cookie (may be gone in Safari — fall back to first group)
+    $target_group_id = $groups[0]['id'];
+    if (!empty($_COOKIE['sota_default_group'])) {
+        $cookie_id = (int)$_COOKIE['sota_default_group'];
+        foreach ($groups as $g) {
+            if ((int)$g['id'] === $cookie_id) {
+                $target_group_id = $cookie_id;
+                break;
+            }
+        }
+    }
+
+    setCurrentPlanningGroup($target_group_id);
     header('Location: index.php');
     exit;
 }

@@ -111,6 +111,12 @@ if (isset($_POST['select_group'])) {
             try {
                 $stmt = $db->prepare("INSERT INTO addresses (planning_group_id, label, address) VALUES (?, ?, ?)");
                 $stmt->execute([$group_id, $label, $address]);
+                // During onboarding (new SSO user), send straight to dashboard after first address
+                if (!empty($_SESSION['onboarding'])) {
+                    unset($_SESSION['onboarding']);
+                    header('Location: index.php');
+                    exit;
+                }
                 $message = "Address added successfully!";
             } catch (PDOException $e) {
                 $error = "Error adding address: " . $e->getMessage();

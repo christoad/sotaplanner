@@ -134,11 +134,25 @@ $current_group = getCurrentPlanningGroup($db);
 $selected_address = null;
 $all_addresses = [];
 
-// If no planning group selected, show setup page
+// If no planning group in session, try to auto-select one from DB
 if (!$current_group) {
-    // Show group selection page
-    include 'choose_group.php';
-    exit;
+    $callsign = getCurrentCallsign();
+    $stmt = $db->prepare("
+        SELECT pg.id FROM planning_groups pg
+        LEFT JOIN planning_group_members pgm ON pg.id = pgm.planning_group_id
+        WHERE pg.owner_callsign = ? OR pgm.callsign = ?
+        ORDER BY pg.id ASC LIMIT 1
+    ");
+    $stmt->execute([$callsign, $callsign]);
+    $auto_group = $stmt->fetch();
+    if ($auto_group) {
+        setCurrentPlanningGroup($auto_group['id']);
+        $current_group = getCurrentPlanningGroup($db);
+    } else {
+        // Genuinely no groups — send to setup
+        header('Location: planning_groups.php');
+        exit;
+    }
 }
 
 // Restore default address from cookie if nothing is selected yet
