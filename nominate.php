@@ -226,14 +226,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
     <style>
         :root {
             --navy: #1E3A5F;
-            --teal: #4A90A4;
-            --light-blue: #5BA4B8;
+            --teal: #9B6328;
+            --light-blue: #B8874A;
             --gold: #E6B84A;
             --tan: #D4A574;
             --snow: #F5F5F0;
             /* Aliases */
             --peak-brown: #1E3A5F;
-            --trail-green: #4A90A4;
+            --trail-green: #9B6328;
             --forest-dark: #1E3A5F;
             --summit-gold: #E6B84A;
             --earth-tan: #D4A574;
@@ -393,9 +393,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
             margin-bottom: 1.5rem;
             font-weight: 600;
         }
+
+    /* ── User chip ── */
+    .user-chip-fixed {
+        position: fixed; top: 1rem; right: 1rem; z-index: 500;
+        display: flex; align-items: center; gap: 0.35rem;
+        cursor: pointer; padding: 0.3rem 0.7rem;
+        border-radius: 6px; font-size: 0.8rem; font-weight: 700;
+        color: var(--forest-dark); background: white;
+        border: 1px solid var(--earth-tan);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        user-select: none; white-space: nowrap;
+    }
+    .user-chip-fixed:hover { background: #f5f5f0; }
+    .user-chip-chevron { transition: transform 0.15s; }
+    .user-chip-fixed.open .user-chip-chevron { transform: rotate(180deg); }
+    .user-dropdown {
+        display: none; position: absolute; top: calc(100% + 6px); right: 0;
+        background: white; border: 1px solid var(--earth-tan);
+        border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+        min-width: 130px; overflow: hidden;
+    }
+    .user-chip-fixed.open .user-dropdown { display: block; }
+    .user-dropdown a {
+        display: block; padding: 0.6rem 1rem;
+        font-size: 0.82rem; font-weight: 500; color: var(--forest-dark); text-decoration: none;
+    }
+    .user-dropdown a:hover { background: #f5f5f0; }
     </style>
 </head>
 <body>
+<div class="user-chip-fixed" id="userChip">
+    <?= htmlspecialchars(getCurrentCallsign()) ?>
+    <svg class="user-chip-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="2,3.5 5,6.5 8,3.5"/></svg>
+    <div class="user-dropdown">
+        <?php if (getCurrentCallsign() === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
+            <a href="god_mode.php">God Mode</a>
+        <?php endif; ?>
+        <a href="logout.php">Sign Out</a>
+    </div>
+</div>
     <div class="container">
         <header style="margin-bottom: 2rem;">
             <a href="index.php" class="back-link">← Back to Dashboard</a>
@@ -449,5 +486,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
 <footer style="text-align:center; padding:2rem 1rem 1.5rem; color:#aaa; font-size:0.78rem;">
     SOTA Planner &nbsp;·&nbsp; <a href="changelog.php" style="color:#aaa; text-decoration:none;">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com" style="color:#aaa; text-decoration:none;">sotaplanner.com</a>
 </footer>
+<script>
+(function() {
+    var chip = document.getElementById('userChip');
+    if (!chip) return;
+    chip.addEventListener('click', function(e) { e.stopPropagation(); this.classList.toggle('open'); });
+    document.addEventListener('click', function() { chip.classList.remove('open'); });
+})();
+</script>
 </body>
 </html>

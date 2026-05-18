@@ -41,7 +41,7 @@ if (!isset($_SESSION['admin_logged_in'])) {
             <style>
                 body {
                     font-family: 'Overpass', sans-serif;
-                    background: linear-gradient(135deg, #1E3A5F 0%, #4A90A4 100%);
+                    background: linear-gradient(135deg, #1E3A5F 0%, #9B6328 100%);
                     display: flex;
                     align-items: center;
                     justify-content: center;
@@ -72,7 +72,7 @@ if (!isset($_SESSION['admin_logged_in'])) {
                 button {
                     width: 100%;
                     padding: 1rem;
-                    background: linear-gradient(135deg, #4A90A4 0%, #1E3A5F 100%);
+                    background: linear-gradient(135deg, #9B6328 0%, #1E3A5F 100%);
                     color: white;
                     border: none;
                     border-radius: 6px;
@@ -412,7 +412,7 @@ foreach ($health_raw as $r) {
     <style>
         :root {
             --navy: #1E3A5F;
-            --teal: #4A90A4;
+            --teal: #9B6328;
             --gold: #E6B84A;
             --red: #C62828;
         }
@@ -598,7 +598,7 @@ foreach ($health_raw as $r) {
         }
         .seg-t1 { background: #9E9E9E; }
         .seg-t2 { background: #FF9800; }
-        .seg-t3 { background: #4A90A4; }
+        .seg-t3 { background: #9B6328; }
         .seg-t4 { background: #2E7D32; }
 
         .health-legend {

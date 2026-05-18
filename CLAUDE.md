@@ -9,6 +9,7 @@ Context: VK3ARR (SOTA team) granted an SSO client for identity login. Chris sent
 
 ---
 
+
 ## What This Site Does
 
 SOTA Planner is a web app for amateur radio operators who participate in **SOTA — Summits On The Air**. SOTA is an amateur radio program where operators ("activators") hike to a designated summit and operate a radio station from the top to earn points. Chasers contact activators from home. Both activators and chasers log contacts; summits have point values based on height and difficulty.
@@ -106,6 +107,7 @@ Keycloak OIDC endpoints (already hardcoded in `oauth_callback.php`):
 The login button on `login.php` is active when `SOTA_CLIENT_ID` is defined. Client secret is optional — omitted from token exchange if `SOTA_CLIENT_SECRET` is not defined.
 
 ---
+
 
 ## Auth & Login State
 

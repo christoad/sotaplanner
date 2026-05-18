@@ -8,7 +8,7 @@
     <style>
         :root {
             --navy: #1E3A5F;
-            --teal: #4A90A4;
+            --teal: #9B6328;
             --gold: #E6B84A;
             --snow: #F5F5F0;
         }
@@ -131,7 +131,7 @@
 <body>
     <div class="container">
         <header>
-            <img src="logo.png" alt="SOTA Planner" class="logo">
+            <img src="sota-planner-logo.svg" alt="SOTA Planner" class="logo">
             <a href="index.php" class="back-link">← Back to Dashboard</a>
         </header>
 

@@ -1,43 +1,234 @@
-<?php require_once 'config.php'; ?>
+<?php require_once 'config.php';
+session_start();
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOTA Planner — Changelog</title>
+    <title>Changelog — SOTA Planner</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
-        .header { background: linear-gradient(135deg, #1E3A5F 0%, #2d5a8e 100%); color: white; padding: 2rem 1.5rem; text-align: center; }
-        .header h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 0.3rem; }
-        .header p { opacity: 0.75; font-size: 0.9rem; }
-        .container { max-width: 760px; margin: 2rem auto; padding: 0 1rem 4rem; }
-        .version-block { background: white; border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 1px 4px rgba(0,0,0,0.07); border-left: 5px solid #4A90A4; }
-        .version-block.current { border-left-color: #2e7d32; }
-        .version-header { display: flex; align-items: baseline; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
-        .version-number { font-size: 1.15rem; font-weight: 800; color: #1E3A5F; }
-        .version-date { font-size: 0.82rem; color: #999; }
-        .version-badge { font-size: 0.7rem; font-weight: 700; background: #2e7d32; color: white; border-radius: 20px; padding: 0.15rem 0.6rem; text-transform: uppercase; letter-spacing: 0.05em; }
-        .version-desc { font-size: 0.88rem; color: #555; margin-bottom: 0.85rem; line-height: 1.55; }
-        ul { padding-left: 1.25rem; }
-        ul li { font-size: 0.88rem; line-height: 1.6; margin-bottom: 0.3rem; color: #444; }
-        .tag { display: inline-block; font-size: 0.68rem; font-weight: 700; border-radius: 4px; padding: 0.1rem 0.4rem; margin-right: 0.35rem; text-transform: uppercase; letter-spacing: 0.04em; vertical-align: middle; }
-        .tag-new { background: #e8f5e9; color: #2e7d32; }
-        .tag-fix { background: #fff3e0; color: #e65100; }
-        .tag-improve { background: #e3f2fd; color: #1565c0; }
-        .back { display: inline-block; margin-bottom: 1.5rem; color: #4A90A4; font-size: 0.88rem; text-decoration: none; font-weight: 600; }
-        .back:hover { text-decoration: underline; }
+    /* === Alpine Precision Design System === */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+
+    :root {
+      --bg:            #F7F6F3;
+      --bg-2:          #EFEDE8;
+      --bg-3:          #E5E2DA;
+      --ink:           #1C1B19;
+      --ink-2:         #4A4844;
+      --ink-3:         #8C8A86;
+      --ink-4:         #B8B5B0;
+      --accent:        oklch(52% 0.13 50);
+      --accent-2:      oklch(44% 0.13 50);
+      --accent-bg:     oklch(96% 0.04 65);
+      --accent-border: oklch(84% 0.08 65);
+      --green:         oklch(52% 0.13 155);
+      --green-bg:      oklch(95% 0.04 155);
+      --orange:        oklch(62% 0.14 58);
+      --orange-bg:     oklch(96% 0.05 58);
+      --red:           oklch(52% 0.16 22);
+      --red-bg:        oklch(96% 0.04 22);
+      --blue:          oklch(52% 0.12 240);
+      --blue-bg:       oklch(95% 0.04 240);
+      --surface:       #FFFFFF;
+      --border:        #E5E2DA;
+      --border-2:      #D4D0C8;
+      --font-sans:     'DM Sans', system-ui, sans-serif;
+      --r-sm: 4px; --r-md: 8px; --r-lg: 12px; --r-xl: 16px;
+      --sp-1: 0.25rem; --sp-2: 0.5rem; --sp-3: 0.75rem; --sp-4: 1rem;
+      --sp-5: 1.25rem; --sp-6: 1.5rem; --sp-8: 2rem;
+      --shadow-sm: 0 1px 3px rgba(28,27,25,0.07), 0 1px 2px rgba(28,27,25,0.05);
+      --shadow-md: 0 4px 12px rgba(28,27,25,0.08), 0 2px 4px rgba(28,27,25,0.05);
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ── Topbar ── */
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      height: 56px;
+      display: flex;
+      align-items: center;
+      padding: 0 var(--sp-8);
+      gap: var(--sp-4);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .topbar-logo {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-3);
+      text-decoration: none;
+      color: var(--ink);
+      font-weight: 600;
+      font-size: 0.95rem;
+      letter-spacing: -0.01em;
+      flex-shrink: 0;
+    }
+    .topbar-logo:hover { text-decoration: none; color: var(--ink); }
+    .topbar-logo .logo-mark {
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .topbar-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+    .topbar-right {
+      display: flex; align-items: center; gap: var(--sp-3);
+      margin-left: auto; flex-shrink: 0;
+    }
+    .topbar-nav {
+      display: flex; align-items: center; gap: var(--sp-1);
+    }
+    .topbar-nav a {
+      color: var(--ink-3);
+      font-size: 0.875rem; font-weight: 500;
+      padding: var(--sp-2) var(--sp-3);
+      border-radius: var(--r-sm);
+      transition: color 0.15s, background 0.15s;
+      text-decoration: none; white-space: nowrap;
+    }
+    .topbar-nav a:hover { color: var(--ink); background: var(--bg-2); }
+
+    /* ── Page ── */
+    .page {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: var(--sp-8) var(--sp-8) 5rem;
+    }
+
+    .page-header {
+      margin-bottom: var(--sp-8);
+    }
+    .page-header h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--ink);
+      margin-bottom: 0.25rem;
+    }
+    .page-header p {
+      font-size: 0.875rem;
+      color: var(--ink-3);
+    }
+
+    /* ── Version blocks ── */
+    .version-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+      box-shadow: var(--shadow-sm);
+    }
+    .version-block.current {
+      border-color: var(--accent-border);
+      background: var(--accent-bg);
+    }
+
+    .version-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.6rem;
+      flex-wrap: wrap;
+    }
+    .version-number {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .version-date {
+      font-size: 0.8rem;
+      color: var(--ink-3);
+    }
+    .version-badge {
+      font-size: 0.68rem;
+      font-weight: 600;
+      background: var(--green);
+      color: #fff;
+      border-radius: 20px;
+      padding: 0.15rem 0.55rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .version-desc {
+      font-size: 0.875rem;
+      color: var(--ink-2);
+      margin-bottom: 0.85rem;
+      line-height: 1.55;
+    }
+
+    .version-block ul {
+      list-style: none;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+    .version-block li {
+      font-size: 0.855rem;
+      color: var(--ink-2);
+      line-height: 1.55;
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+    }
+
+    /* ── Bullet list ── */
+    .version-block li::before {
+      content: "–";
+      color: var(--ink-4);
+      flex-shrink: 0;
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 1.5rem 1rem;
+      color: var(--ink-4);
+      font-size: 0.78rem;
+    }
+    footer a { color: var(--ink-4); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    @media (max-width: 600px) {
+      .topbar { padding: 0 var(--sp-4); }
+      .page { padding: var(--sp-6) var(--sp-4) 4rem; }
+    }
     </style>
 </head>
 <body>
 
-<div class="header">
-    <h1>⛰️ SOTA Planner — Changelog</h1>
-    <p>Release history and update notes</p>
-</div>
+<nav class="topbar">
+    <a href="index.php" class="topbar-logo">
+        <span class="logo-mark">
+            <img src="sota-planner-logo.svg" width="32" height="32" alt="">
+        </span>
+        <span>SOTAplanner</span>
+    </a>
+    <div class="topbar-divider"></div>
+    <div class="topbar-nav">
+        <a href="index.php">← Dashboard</a>
+    </div>
+</nav>
 
-<div class="container">
-    <a href="index.php" class="back">← Back to Planner</a>
+<div class="page">
+
+    <div class="page-header">
+        <h1>Changelog</h1>
+        <p>Release history and update notes for SOTA Planner</p>
+    </div>
 
     <!-- v1.1.0 -->
     <div class="version-block current">
@@ -48,7 +239,59 @@
         </div>
         <p class="version-desc">Sign in with your SOTA account.</p>
         <ul>
-            <li><span class="tag tag-new">New</span> Log in using your official SOTA credentials — no separate password needed</li>
+            <li>Log in using your official SOTA credentials — no separate password needed</li>
+        </ul>
+    </div>
+
+    <!-- v1.0.9 -->
+    <div class="version-block">
+        <div class="version-header">
+            <span class="version-number">v1.0.9</span>
+            <span class="version-date">May 2026</span>
+        </div>
+        <p class="version-desc">Small UX improvements to group setup.</p>
+        <ul>
+            <li>When you add your first starting address to a group, it's automatically set as the active address — no extra step needed</li>
+            <li>Co-activators field renamed for clarity when creating a new group</li>
+        </ul>
+    </div>
+
+    <!-- v1.0.8 -->
+    <div class="version-block">
+        <div class="version-header">
+            <span class="version-number">v1.0.8</span>
+            <span class="version-date">May 2026</span>
+        </div>
+        <p class="version-desc">Group members can now invite others.</p>
+        <ul>
+            <li>Any group member can add new callsigns to a planning group, not just the owner</li>
+        </ul>
+    </div>
+
+    <!-- v1.0.7 -->
+    <div class="version-block">
+        <div class="version-header">
+            <span class="version-number">v1.0.7</span>
+            <span class="version-date">May 2026</span>
+        </div>
+        <p class="version-desc">New logo, smarter login, and onboarding improvements.</p>
+        <ul>
+            <li>New SVG logo across all pages</li>
+            <li>Returning users land directly on their dashboard after signing in — no more group picker every time</li>
+            <li>New users see a welcome screen with clear instructions on how to get started</li>
+            <li>Address prompt opens automatically when you create a new planning group</li>
+        </ul>
+    </div>
+
+    <!-- v1.0.6 -->
+    <div class="version-block">
+        <div class="version-header">
+            <span class="version-number">v1.0.6</span>
+            <span class="version-date">May 2026</span>
+        </div>
+        <p class="version-desc">Callsign chip with sign-out on every page.</p>
+        <ul>
+            <li>Your callsign now appears in the top corner of every page — click it to sign out</li>
         </ul>
     </div>
 
@@ -58,10 +301,10 @@
             <span class="version-number">v1.0.5</span>
             <span class="version-date">May 2026</span>
         </div>
-        <p class="version-desc">Minor content updates.</p>
+        <p class="version-desc">Full visual redesign.</p>
         <ul>
-            <li><span class="tag tag-improve">Improve</span> Updated login page tagline to better describe the app's value for activators and teams</li>
-            <li><span class="tag tag-fix">Fix</span> Corrected author name to Christopher Reddick on the About page</li>
+            <li>All pages redesigned with the Alpine Precision design system — warm off-white background, clean typography, warm amber accent color</li>
+            <li>Planning Groups page rebuilt with a sidebar + detail panel layout</li>
         </ul>
     </div>
 
@@ -71,15 +314,11 @@
             <span class="version-number">v1.0.4</span>
             <span class="version-date">April 2026</span>
         </div>
-        <p class="version-desc">User authentication and planning group privacy. Users now log in with their callsign — groups are private to their owner and invited members.</p>
+        <p class="version-desc">User accounts and private planning groups.</p>
         <ul>
-            <li><span class="tag tag-new">New</span> Login page with callsign-based authentication — SOTA SSO (OAuth) ready, dev login active for testing</li>
-            <li><span class="tag tag-new">New</span> Planning groups are now private — only visible to the owner and invited members</li>
-            <li><span class="tag tag-new">New</span> Group member management — owners can add or remove members by callsign from the Planning Groups page</li>
-            <li><span class="tag tag-new">New</span> Member callsigns field on group creation — invite your activation partners when creating a new group</li>
-            <li><span class="tag tag-new">New</span> Sign Out link and logged-in callsign indicator in the site header</li>
-            <li><span class="tag tag-new">New</span> SOTA SSO OAuth callback handler ready for production credentials (oauth_callback.php)</li>
-            <li><span class="tag tag-improve">Improve</span> Cookie-restored default group now validates membership before restoring</li>
+            <li>Sign in with your callsign — SOTA SSO coming when OAuth credentials are available</li>
+            <li>Planning groups are now private to the owner and invited members</li>
+            <li>Group owners can add and remove members by callsign</li>
         </ul>
     </div>
 
@@ -89,17 +328,10 @@
             <span class="version-number">v1.0.3</span>
             <span class="version-date">April 2026</span>
         </div>
-        <p class="version-desc">Mobile UX overhaul across all major pages.</p>
+        <p class="version-desc">Mobile layout overhaul.</p>
         <ul>
-            <li><span class="tag tag-improve">Improve</span> Summit list on mobile now renders as tap-friendly cards instead of a wide scrolling table — shows name, difficulty, status, total time, and a hike/drive/distance/gain stats strip</li>
-            <li><span class="tag tag-fix">Fix</span> Header title no longer clips the left edge on mobile — negative-margin bleed now matches container padding correctly</li>
-            <li><span class="tag tag-improve">Improve</span> Gantt chart milestones on summit detail and invitation pages now render as a clean vertical event list on mobile instead of overlapping absolute-positioned dots</li>
-            <li><span class="tag tag-improve">Improve</span> Invitation page quick-facts row switches to a responsive grid on mobile instead of a cramped no-wrap horizontal scroll</li>
-            <li><span class="tag tag-improve">Improve</span> Planned activation forms stack to single-column on mobile (date/time/radio fields no longer squeezed into a 3-column grid)</li>
-            <li><span class="tag tag-fix">Fix</span> Planned activation action buttons (View Invite, Copy Link, Edit, ×) stay compact and inline on mobile instead of going full-width</li>
-            <li><span class="tag tag-fix">Fix</span> Trailhead geocode input no longer gets crushed to a sliver on mobile — Find button stays compact beside the text field</li>
-            <li><span class="tag tag-improve">Improve</span> Invitation page hides carrier coverage map toggles on mobile where they aren't useful for guests</li>
-            <li><span class="tag tag-improve">Improve</span> Renamed "Use Custom Data" button to "Clear Imported Data" for clarity</li>
+            <li>Summit list on mobile shows tap-friendly cards with key stats at a glance</li>
+            <li>Summit detail, invitation, and planning pages all work cleanly on a phone</li>
         </ul>
     </div>
 
@@ -108,15 +340,10 @@
         <div class="version-header">
             <span class="version-number">v1.0.2</span>
             <span class="version-date">April 2026</span>
-            <span class="version-badge">Current</span>
         </div>
-        <p class="version-desc">Activation timeline visualization and GPX stat display improvements.</p>
+        <p class="version-desc">Activation timeline visualization.</p>
         <ul>
-            <li><span class="tag tag-new">New</span> Activation Timeline on summit detail page — collapsible Gantt chart showing drive, hike up, radio time, and hike down segments with milestone markers</li>
-            <li><span class="tag tag-improve">Improve</span> GPX stat cards (hiking time, activation time, speed, rest breaks) are now hidden when the uploaded file is a route without timestamps</li>
-            <li><span class="tag tag-new">New</span> "Want more stats?" banner shown when a route-only GPX is present, prompting user to upload a recorded track after their activation</li>
-            <li><span class="tag tag-fix">Fix</span> Directions focus on activation invite page now uses <code>preventScroll:true</code> to avoid a double-scroll jump when tapping drive/return buttons</li>
-            <li><span class="tag tag-fix">Fix</span> Removed unintended auto-scroll to addresses section after selecting a planning group</li>
+            <li>Activation timeline on summit detail — Gantt chart showing drive, hike up, radio time, and hike down with milestone markers</li>
         </ul>
     </div>
 
@@ -125,17 +352,10 @@
         <div class="version-header">
             <span class="version-number">v1.0.1</span>
             <span class="version-date">April 2026</span>
-            <span class="version-badge">Current</span>
         </div>
-        <p class="version-desc">UX improvements and activation zone precision update.</p>
+        <p class="version-desc">GPX download and refinements.</p>
         <ul>
-            <li><span class="tag tag-improve">Improve</span> Activation zone polygon now matches activation.zone website precision — updated deg_delta from 0.001 to 0.040</li>
-            <li><span class="tag tag-new">New</span> GPX download button on summit detail and invitation pages for loading tracks onto watches and phones</li>
-            <li><span class="tag tag-new">New</span> Daily automated database backup via cron (14-day retention)</li>
-            <li><span class="tag tag-improve">Improve</span> Planning Groups page redesigned — "Join existing" and "Create new" shown side-by-side with clear OR divider</li>
-            <li><span class="tag tag-improve">Improve</span> Page renamed from manage_addresses.php to planning_groups.php to better reflect its purpose</li>
-            <li><span class="tag tag-improve">Improve</span> Empty addresses state now prompts user to add a starting location with explanation of how it's used</li>
-            <li><span class="tag tag-improve">Improve</span> Page auto-scrolls to addresses section after selecting or creating a group</li>
+            <li>Download the GPX track from summit detail and invitation pages to load onto a watch or phone</li>
         </ul>
     </div>
 
@@ -145,32 +365,27 @@
             <span class="version-number">v1.0.0</span>
             <span class="version-date">April 2026</span>
         </div>
-        <p class="version-desc">Initial public release. Full feature set for planning, researching, and sharing SOTA activations.</p>
+        <p class="version-desc">Initial release.</p>
         <ul>
-            <li><span class="tag tag-new">New</span> Multi-group support — multiple planning groups share the same summit database</li>
-            <li><span class="tag tag-new">New</span> GPX track upload and analysis — hiking time, activation time, rest breaks, elevation, speed</li>
-            <li><span class="tag tag-new">New</span> Activation zone overlay using the activation.zone API with terrain-based polygon</li>
-            <li><span class="tag tag-new">New</span> Elevation profile chart with interactive map crosshair hover on summit detail and invitation pages</li>
-            <li><span class="tag tag-new">New</span> Activation invitation page for sharing with non-ham guests — timeline, map, driving directions</li>
-            <li><span class="tag tag-new">New</span> Real-time location sharing link field on planned activations</li>
-            <li><span class="tag tag-new">New</span> SOTA Maps GPX import — pull community tracks directly from sotamaps.org</li>
-            <li><span class="tag tag-new">New</span> Cell coverage overlay (T-Mobile, Verizon, AT&amp;T) on summit and invitation maps</li>
-            <li><span class="tag tag-new">New</span> Planned activations with calendar (.ics) export and shareable invite links</li>
-            <li><span class="tag tag-new">New</span> Drive time calculation from saved home addresses via Google Maps</li>
-            <li><span class="tag tag-new">New</span> Shared summit data — new groups can inherit trail research from existing groups</li>
-            <li><span class="tag tag-new">New</span> Auto-import GPX track from source group when adopting a shared summit</li>
-            <li><span class="tag tag-new">New</span> SOTLAS integration for trail and summit reference data</li>
-            <li><span class="tag tag-fix">Fix</span> Invitation URL double-slash when site is hosted at domain root</li>
-            <li><span class="tag tag-fix">Fix</span> SOTLAS link encoding — forward slash in summit reference no longer percent-encoded</li>
-            <li><span class="tag tag-fix">Fix</span> Cookie star buttons now reflect immediately without requiring a page reload</li>
-            <li><span class="tag tag-improve">Improve</span> Safety and location sharing info on invitation page is now generic and configurable per activation</li>
+            <li>Summit wishlist with drive time, hike time, and total day estimate</li>
+            <li>GPX track upload and analysis — hiking time, activation time, elevation, speed</li>
+            <li>Activation zone overlay on the summit map</li>
+            <li>Elevation profile chart with interactive map crosshair</li>
+            <li>Shareable activation invitation page for guests — map, timeline, driving directions</li>
+            <li>Planned activations with .ics calendar export</li>
+            <li>Cell coverage overlay (T-Mobile, Verizon, AT&amp;T)</li>
+            <li>SOTAmaps GPX import — pull community tracks directly from sotamaps.org</li>
+            <li>Drive time calculated from your saved starting address</li>
+            <li>Shared summit research — new groups can inherit trail data from existing groups</li>
+            <li>SOTLAS summit data integration</li>
+            <li>Multi-group support — keep separate wishlists for different crews or regions</li>
         </ul>
     </div>
 
 </div>
 
-<footer style="text-align:center; padding:1.5rem 1rem; color:#bbb; font-size:0.78rem;">
-    SOTA Planner &nbsp;·&nbsp; <a href="changelog.php" style="color:#bbb; text-decoration:none;">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com" style="color:#bbb; text-decoration:none;">sotaplanner.com</a>
+<footer>
+    SOTA Planner &nbsp;·&nbsp; <a href="changelog.php">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com">sotaplanner.com</a>
 </footer>
 
 </body>

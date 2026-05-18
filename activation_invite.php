@@ -34,10 +34,11 @@ if (!$pa) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><title>Invitation Not Found</title>
-<style>body{font-family:sans-serif;text-align:center;padding:4rem;color:#333;}</style>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600&display=swap" rel="stylesheet">
+<style>body{font-family:'DM Sans',sans-serif;text-align:center;padding:4rem;color:#1C1B19;background:#F7F6F3;}</style>
 </head>
 <body>
-    <h1>⛰️ Invitation Not Found</h1>
+    <h1>Invitation Not Found</h1>
     <p>This invitation may have expired or the link may be incorrect.</p>
 </body>
 </html>
@@ -53,15 +54,15 @@ if ($pa['planned_date'] < date('Y-m-d')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><title>Activation Complete</title>
-<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@300;600;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
 <style>
-body{font-family:'Overpass',sans-serif;text-align:center;padding:4rem;background:#F5F5F0;color:#1E3A5F;}
-h1{font-size:2rem;margin-bottom:1rem;}
+body{font-family:'DM Sans',sans-serif;text-align:center;padding:4rem;background:#F7F6F3;color:#1C1B19;}
+h1{font-family:'DM Serif Display',Georgia,serif;font-size:2rem;font-style:italic;font-weight:400;margin-bottom:1rem;}
 </style>
 </head>
 <body>
-    <h1>⛰️ This activation has already taken place!</h1>
-    <p>Thanks for your interest — <?= htmlspecialchars($pa['callsigns']) ?> completed
+    <h1>This activation has already taken place</h1>
+    <p><?= htmlspecialchars($pa['callsigns']) ?> completed
        <strong><?= htmlspecialchars($pa['summit_name']) ?></strong>
        on <?= date('F j, Y', strtotime($pa['planned_date'])) ?>.</p>
 </body>
@@ -117,7 +118,6 @@ $drive_pct      = round($drive_one_way / $total_min * 100, 1);
 $hike_up_pct    = round($hike_up_min   / $total_min * 100, 1);
 $activation_pct = round($activation_min / $total_min * 100, 1);
 $hike_down_pct  = round($hike_down_min  / $total_min * 100, 1);
-// drive back = same as drive there
 
 // Guest drive time calculation
 $guest_drive_min   = null;
@@ -154,15 +154,19 @@ $hike_down_pct  = round($hike_down_min  / $total_min * 100, 1);
 $gantt_leave_ts     = $guest_leave_ts;
 $gantt_back_home_ts = $guest_drive_min !== null ? $back_trailhead_ts + ($guest_drive_min * 60) : null;
 
+// Trailhead coordinates for directions button
+$trailhead_lat = $pa['trailhead_lat'] ?: $pa['latitude'];
+$trailhead_lng = $pa['trailhead_lng'] ?: $pa['longitude'];
+
 // Callsigns as display list
 $callsign_list = array_filter(array_map('trim', explode(',', $pa['callsigns'])));
 
 // Cell service label
 $cell_labels = [
-    'full'         => ['Full Coverage Expected', '📶', '#2E7D32', '#E8F5E9'],
-    'intermittent' => ['Intermittent Signal',    '📶', '#E65100', '#FFF3E0'],
-    'summit_only'  => ['Coverage at Summit Only', '📶', '#1565C0', '#E3F2FD'],
-    'none'         => ['No Cell Service Expected','📵', '#C62828', '#FDECEA'],
+    'full'         => ['Full Coverage Expected',      '📶', 'oklch(50% 0.13 155)', 'var(--green-bg)',  'oklch(82% 0.07 155)'],
+    'intermittent' => ['Intermittent Signal',          '📶', 'oklch(56% 0.14 58)',  'oklch(96% 0.05 58)', 'oklch(88% 0.08 58)'],
+    'summit_only'  => ['Coverage at Summit Only',      '📶', 'var(--accent)',        'var(--accent-bg)', 'var(--accent-border)'],
+    'none'         => ['No Cell Service Expected',     '📵', 'var(--red)',           'var(--red-bg)',    'oklch(85% 0.06 22)'],
 ];
 $cell_info = isset($cell_labels[$pa['cell_service']]) ? $cell_labels[$pa['cell_service']] : null;
 
@@ -190,153 +194,243 @@ $difficulty_labels = [
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>You're Invited — <?= htmlspecialchars($pa['summit_name']) ?> SOTA Activation</title>
-    <link href="https://fonts.googleapis.com/css2?family=Overpass:wght@300;600;800&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
+        /* ── Design tokens ── */
         :root {
-            --navy: #1E3A5F;
-            --teal: #4A90A4;
-            --gold: #E6B84A;
-            --tan:  #D4A574;
-            --snow: #F5F5F0;
-            --green: #2E7D32;
+            --bg:        #F7F6F3;
+            --bg-2:      #EFEDE8;
+            --bg-3:      #E5E2DA;
+            --ink:       #1C1B19;
+            --ink-2:     #4A4844;
+            --ink-3:     #8C8A86;
+            --ink-4:     #B8B5B0;
+            --surface:   #FFFFFF;
+            --border:    #E5E2DA;
+            --border-2:  #D4D0C8;
+            --accent:    oklch(52% 0.13 50);
+            --accent-2:  oklch(44% 0.13 50);
+            --accent-bg: oklch(96% 0.04 65);
+            --accent-border: oklch(84% 0.08 65);
+            --green:     oklch(50% 0.13 155);
+            --green-bg:  oklch(95% 0.04 155);
+            --green-border: oklch(82% 0.07 155);
+            --amber:     oklch(68% 0.16 75);
+            --amber-bg:  oklch(96% 0.05 80);
+            --red:       oklch(50% 0.16 22);
+            --red-bg:    oklch(96% 0.04 22);
+            --font-sans: 'DM Sans', system-ui, sans-serif;
+            --font-mono: 'DM Mono', monospace;
+            --font-serif:'DM Serif Display', Georgia, serif;
+            --r-sm: 4px; --r-md: 8px; --r-lg: 12px; --r-xl: 16px; --r-2xl: 24px;
+            --shadow-sm: 0 1px 3px rgba(28,27,25,.07), 0 1px 2px rgba(28,27,25,.05);
+            --shadow-md: 0 4px 12px rgba(28,27,25,.08), 0 2px 4px rgba(28,27,25,.05);
+            --shadow-lg: 0 8px 24px rgba(28,27,25,.10), 0 4px 8px rgba(28,27,25,.06);
         }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { -webkit-font-smoothing: antialiased; }
+        body { font-family: var(--font-sans); background: var(--bg); color: var(--ink); line-height: 1.5; }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
 
-        body {
-            font-family: 'Overpass', sans-serif;
-            background: linear-gradient(135deg, var(--snow) 0%, #E8E4D8 100%);
-            color: var(--navy);
-            min-height: 100vh;
-        }
-
-        /* ---- HERO ---- */
+        /* ── Hero ── */
         .hero {
-            background: linear-gradient(135deg, var(--navy) 0%, var(--teal) 100%);
-            color: white;
-            padding: 3rem 2rem 2.5rem;
+            background: var(--ink);
+            color: #fff;
+            padding: 3.5rem 2rem 0;
             text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero::before {
+            content: "";
+            position: absolute; inset: 0;
+            background: repeating-linear-gradient(
+                -55deg,
+                transparent, transparent 40px,
+                rgba(255,255,255,.018) 40px, rgba(255,255,255,.018) 41px
+            );
+            pointer-events: none;
         }
         .hero-eyebrow {
-            font-size: 0.85rem;
-            text-transform: uppercase;
-            letter-spacing: 0.15em;
-            opacity: 0.8;
-            margin-bottom: 0.75rem;
-            font-weight: 600;
+            display: inline-flex; align-items: center; gap: 8px;
+            font-size: 0.72rem; font-weight: 600; letter-spacing: 0.14em;
+            text-transform: uppercase; color: rgba(255,255,255,.5);
+            margin-bottom: 1.25rem;
+        }
+        .hero-eyebrow-dot {
+            width: 4px; height: 4px; border-radius: 50%;
+            background: var(--accent); display: inline-block;
         }
         .hero h1 {
-            font-size: 2.5rem;
-            font-weight: 800;
-            line-height: 1.1;
+            font-family: var(--font-serif);
+            font-size: clamp(2.25rem, 6vw, 3.75rem);
+            font-weight: 400;
+            font-style: italic;
+            line-height: 1.05;
+            letter-spacing: -0.01em;
+            color: #fff;
             margin-bottom: 0.5rem;
         }
-        .hero-sub {
-            font-size: 1.1rem;
-            opacity: 0.9;
-            margin-bottom: 1.5rem;
+        .hero-ref {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: rgba(255,255,255,.4);
+            margin-bottom: 1.75rem;
+            letter-spacing: 0.04em;
         }
-        .hero-date {
-            display: inline-block;
-            background: rgba(255,255,255,0.2);
-            border: 1px solid rgba(255,255,255,0.35);
-            border-radius: 50px;
-            padding: 0.6rem 1.5rem;
-            font-size: 1.2rem;
-            font-weight: 700;
-            margin-bottom: 1.5rem;
+        .hero-date-pill {
+            display: inline-flex; align-items: center; gap: 10px;
+            background: rgba(255,255,255,.08);
+            border: 1px solid rgba(255,255,255,.12);
+            border-radius: 100px;
+            padding: 0.55rem 1.5rem;
+            font-size: 1rem; font-weight: 500;
+            color: rgba(255,255,255,.9);
+            margin-bottom: 1.75rem;
         }
-        .callsigns-row {
-            display: flex;
-            justify-content: center;
-            flex-wrap: wrap;
-            gap: 0.6rem;
-            margin-bottom: 0.5rem;
+        .hero-date-sep { color: rgba(255,255,255,.25); }
+        .callsigns {
+            display: flex; justify-content: center; flex-wrap: wrap; gap: 8px;
+            margin-bottom: 2rem;
         }
-        .callsign-badge {
-            background: var(--gold);
-            color: var(--navy);
-            border-radius: 6px;
-            padding: 0.4rem 0.9rem;
-            font-weight: 800;
-            font-size: 1rem;
-            letter-spacing: 0.05em;
+        .callsign-tag {
+            font-family: var(--font-mono);
+            font-size: 0.875rem; font-weight: 500;
+            background: rgba(255,255,255,.1);
+            border: 1px solid rgba(255,255,255,.15);
+            border-radius: var(--r-md);
+            padding: 0.35rem 0.875rem;
+            color: #fff;
+            letter-spacing: 0.06em;
+        }
+        .hero-message {
+            max-width: 560px; margin: 0 auto 2rem;
+            font-size: 0.95rem; color: rgba(255,255,255,.65);
+            line-height: 1.7;
+        }
+        .hero-actions {
+            display: flex; justify-content: center; flex-wrap: wrap; gap: 8px;
+            margin-bottom: 2.5rem;
+        }
+        .hero-btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            height: 38px; padding: 0 1.25rem;
+            border-radius: 100px;
+            font-family: var(--font-sans); font-size: 0.82rem; font-weight: 500;
+            cursor: pointer; border: none; text-decoration: none;
+            transition: background .15s, transform .1s;
+        }
+        .hero-btn:hover { text-decoration: none; transform: translateY(-1px); }
+        .hero-btn-primary { background: #fff; color: var(--ink); }
+        .hero-btn-primary:hover { background: rgba(255,255,255,.88); }
+        .hero-btn-outline { background: rgba(255,255,255,.1); color: #fff; border: 1px solid rgba(255,255,255,.2); }
+        .hero-btn-outline:hover { background: rgba(255,255,255,.18); }
+        .hero-wave {
+            display: block;
+            width: 100%; height: 48px;
+            margin-bottom: -2px;
         }
 
-        /* ---- LAYOUT ---- */
-        .container {
-            max-width: 860px;
-            margin: 0 auto;
-            padding: 2rem 1.5rem;
-        }
-        .card {
-            background: white;
-            border-radius: 14px;
+        /* ── Page body ── */
+        .page { max-width: 760px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+        /* ── Section cards ── */
+        .section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--r-xl);
             padding: 1.75rem;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-        }
-        .card h2 {
-            font-size: 1.25rem;
-            font-weight: 800;
-            color: var(--navy);
             margin-bottom: 1.25rem;
-            padding-bottom: 0.75rem;
-            border-bottom: 2px solid var(--snow);
+            box-shadow: var(--shadow-sm);
+        }
+        .section-title {
+            font-size: 0.72rem; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.1em;
+            color: var(--ink-3);
+            margin-bottom: 1.25rem;
+            padding-bottom: 0.875rem;
+            border-bottom: 1px solid var(--border);
         }
 
-        /* ---- STATS ROW ---- */
-        .stats-row {
-            display: flex;
-            gap: 1rem;
-            flex-wrap: wrap;
+        /* ── Travel notes card ── */
+        .travel-note {
+            background: var(--surface);
+            border: 1px solid var(--accent-border);
+            border-radius: var(--r-xl);
+            padding: 1.5rem 1.75rem;
+            margin-bottom: 1.25rem;
+            box-shadow: var(--shadow-sm);
+        }
+        .travel-note-label {
+            font-size: 0.72rem; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.1em;
+            color: var(--accent); margin-bottom: 0.625rem;
+        }
+        .travel-note-body { font-size: 0.9rem; line-height: 1.7; color: var(--ink-2); }
+
+        /* ── Fact strip ── */
+        .fact-strip {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 1px;
+            background: var(--border);
+            border: 1px solid var(--border);
+            border-radius: var(--r-lg);
+            overflow: hidden;
             margin-bottom: 1.5rem;
         }
-        .stat-pill {
-            background: var(--snow);
-            border-radius: 8px;
-            padding: 0.6rem 1.1rem;
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: var(--navy);
-            white-space: nowrap;
+        .fact-cell {
+            background: var(--surface);
+            padding: 1rem 0.875rem;
+            text-align: center;
+            cursor: default;
         }
-        .stat-pill span { opacity: 0.65; font-weight: 400; margin-right: 0.35rem; }
+        .fact-cell.cta {
+            background: var(--accent-bg);
+            cursor: pointer;
+            transition: background .12s;
+        }
+        .fact-cell.cta:hover { background: oklch(93% 0.06 65); }
+        .fact-cell.personalized { background: var(--green-bg); }
+        .fact-label {
+            font-size: 0.65rem; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.08em;
+            color: var(--ink-3); margin-bottom: 5px;
+        }
+        .fact-val { font-size: 0.95rem; font-weight: 600; color: var(--ink); line-height: 1.2; }
+        .fact-val-cta { font-size: 0.8rem; font-weight: 500; color: var(--accent); line-height: 1.3; }
+        .fact-val-pers { font-size: 0.95rem; font-weight: 600; color: var(--green); line-height: 1.2; }
 
-        /* ---- GANTT ---- */
-        .gantt-wrap { margin-bottom: 1rem; }
+        /* ── Gantt ── */
         .gantt-bar {
-            display: flex;
-            border-radius: 8px;
+            display: flex; height: 44px;
+            border-radius: var(--r-md);
             overflow: hidden;
-            height: 52px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+            margin-bottom: 0.625rem;
         }
         .gantt-seg {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            transition: flex 0.3s;
-            padding: 0 4px;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            overflow: hidden; transition: flex .3s;
+            min-width: 0;
         }
-        .gantt-seg .seg-label { font-size: 0.7rem; font-weight: 700; text-align: center; line-height: 1.2; white-space: nowrap; }
-        .gantt-seg .seg-time  { font-size: 0.65rem; opacity: 0.85; margin-top: 2px; white-space: nowrap; }
+        .gantt-seg .seg-label { font-size: 0.65rem; font-weight: 600; white-space: nowrap; line-height: 1.2; }
+        .gantt-seg .seg-time  { font-size: 0.6rem; opacity: 0.75; white-space: nowrap; margin-top: 1px; }
+        .seg-drive     { background: oklch(55% 0.04 50);  color: #fff; }
+        .seg-hike-up   { background: var(--green);         color: #fff; }
+        .seg-radio     { background: var(--ink);            color: #fff; }
+        .seg-hike-down { background: oklch(60% 0.10 155);  color: #fff; }
+        .seg-drive-back{ background: oklch(55% 0.04 50);   color: #fff; }
 
-        .seg-drive    { background: #8D6E63; color: white; }
-        .seg-hike-up  { background: #43A047; color: white; }
-        .seg-radio    { background: var(--navy); color: white; }
-        .seg-hike-down{ background: #66BB6A; color: white; }
-        .seg-drive-back{ background: #8D6E63; color: white; }
-
-        .gantt-milestones {
-            display: flex;
+        /* ── Milestones ── */
+        .gantt-milestones-container {
             position: relative;
-            margin-top: 0.5rem;
-            font-size: 0.75rem;
-            color: #555;
+            height: 50px;
+            margin-top: 0.25rem;
         }
         .milestone {
             position: absolute;
@@ -346,143 +440,216 @@ $difficulty_labels = [
             transform: translateX(-50%);
         }
         .milestone-dot {
-            width: 8px; height: 8px;
-            background: var(--navy);
-            border-radius: 50%;
-            margin-bottom: 3px;
+            width: 1px; height: 6px;
+            background: var(--border-2);
+            margin: 0 auto 3px;
         }
-        .milestone-time { font-weight: 700; color: var(--navy); font-size: 0.8rem; }
-        .milestone-label { color: #666; font-size: 0.7rem; text-align: center; white-space: nowrap; }
-        .gantt-milestones-container {
-            position: relative;
-            height: 55px;
-            margin-top: 0.25rem;
+        .milestone-time {
+            font-size: 0.72rem; font-weight: 600;
+            color: var(--ink); font-variant-numeric: tabular-nums;
+            white-space: nowrap;
         }
+        .milestone-label { color: var(--ink-3); font-size: 0.6rem; white-space: nowrap; text-align: center; }
 
-        /* ---- LEGEND ---- */
+        /* ── Gantt legend ── */
         .gantt-legend {
-            display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem;
-            margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid #eee;
+            display: flex; flex-wrap: wrap; gap: 0.5rem 1rem;
+            margin-top: 1rem; padding-top: 0.875rem;
+            border-top: 1px solid var(--border);
         }
-        .legend-item { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; }
-        .legend-dot { width: 12px; height: 12px; border-radius: 3px; }
+        .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--ink-2); }
+        .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
 
-        /* ---- GUEST DRIVE FORM ---- */
-        .guest-form { background: #E8F4F8; border-radius: 10px; padding: 1.25rem; border: 2px solid var(--teal); }
-        .guest-form input[type="text"] {
-            width: 100%; padding: 0.7rem; border: 2px solid #ccc;
-            border-radius: 6px; font-family: 'Overpass', sans-serif;
-            font-size: 1rem; margin: 0.5rem 0 0.75rem;
+        /* ── Stats row ── */
+        .stats-row {
+            display: flex; flex-wrap: wrap; gap: 0.5rem;
+            margin-top: 1.25rem; padding-top: 1.125rem;
+            border-top: 1px solid var(--border);
         }
+        .stat-chip {
+            display: inline-flex; align-items: center; gap: 4px;
+            height: 28px; padding: 0 0.75rem;
+            background: var(--bg-2); border: 1px solid var(--border);
+            border-radius: 100px;
+            font-size: 0.775rem; font-weight: 500; color: var(--ink-2);
+        }
+        .stat-chip-label { color: var(--ink-4); font-weight: 400; margin-right: 2px; }
+
+        /* ── Buttons ── */
         .btn {
-            display: inline-block; padding: 0.7rem 1.5rem;
-            background: linear-gradient(135deg, var(--teal) 0%, var(--navy) 100%);
-            color: white; border: none; border-radius: 6px;
-            font-weight: 700; cursor: pointer; font-size: 0.9rem;
-            text-decoration: none; font-family: 'Overpass', sans-serif;
-            transition: all 0.2s;
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            height: 38px; padding: 0 1.125rem;
+            border-radius: var(--r-md); font-family: var(--font-sans);
+            font-size: 0.875rem; font-weight: 500;
+            cursor: pointer; border: none; transition: background .15s;
+            text-decoration: none; white-space: nowrap; flex-shrink: 0;
         }
-        .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
-        .btn-green { background: linear-gradient(135deg, #43A047, #1B5E20); }
-        .btn-gold  { background: linear-gradient(135deg, var(--gold), var(--tan)); color: var(--navy); }
+        .btn:hover { text-decoration: none; }
+        .btn-primary { background: var(--ink); color: #fff; }
+        .btn-primary:hover { background: var(--ink-2); color: #fff; }
+        .btn-accent { background: var(--accent); color: #fff; }
+        .btn-accent:hover { background: var(--accent-2); color: #fff; }
+        .btn-ghost { background: var(--bg-2); color: var(--ink); border: 1px solid var(--border); }
+        .btn-ghost:hover { background: var(--bg-3); }
+        .btn-green { background: var(--green); color: #fff; }
+        .btn-green:hover { background: oklch(44% 0.13 155); color: #fff; }
 
-        /* ---- CELL SERVICE BANNER ---- */
+        /* ── Drive form ── */
+        .drive-form {
+            background: var(--accent-bg);
+            border: 1px solid var(--accent-border);
+            border-radius: var(--r-lg);
+            padding: 1.25rem;
+        }
+        .drive-form-label {
+            font-size: 0.8rem; font-weight: 500;
+            color: var(--ink-2); margin-bottom: 0.5rem; display: block;
+        }
+        .drive-input-row { display: flex; gap: 0.625rem; }
+        .drive-input {
+            flex: 1; min-width: 0;
+            padding: 0.625rem 0.875rem;
+            background: var(--surface); border: 1px solid var(--border-2);
+            border-radius: var(--r-md); font-family: var(--font-sans);
+            font-size: 0.9rem; color: var(--ink); outline: none;
+            transition: border-color .15s;
+        }
+        .drive-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px oklch(85% 0.07 55 / .3); }
+        .drive-input::placeholder { color: var(--ink-4); }
+        .drive-result {
+            margin-top: 1rem;
+            padding: 0.875rem 1rem;
+            background: var(--green-bg);
+            border: 1px solid var(--green-border);
+            border-radius: var(--r-md);
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 1rem; flex-wrap: wrap;
+        }
+        .drive-result-text { font-size: 0.875rem; font-weight: 500; color: var(--green); }
+
+        /* ── Cell coverage banner ── */
         .cell-banner {
-            display: flex; align-items: center; gap: 0.75rem;
-            border-radius: 8px; padding: 0.85rem 1.1rem;
-            font-weight: 600; font-size: 0.95rem; margin-bottom: 1rem;
+            display: flex; align-items: flex-start; gap: 0.875rem;
+            padding: 1rem 1.125rem;
+            border-radius: var(--r-lg);
+            margin-bottom: 1rem;
+        }
+        .cell-banner-icon { font-size: 1.25rem; flex-shrink: 0; line-height: 1.3; }
+        .cell-banner-text { font-size: 0.875rem; line-height: 1.6; }
+        .cell-banner-title { font-weight: 600; display: block; margin-bottom: 2px; }
+
+        /* ── Safety notice ── */
+        .safety-box {
+            background: oklch(97% 0.025 75);
+            border: 1px solid oklch(88% 0.07 75);
+            border-radius: var(--r-lg);
+            padding: 1.125rem 1.25rem;
+            display: flex; gap: 0.875rem; align-items: flex-start;
+        }
+        .safety-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+        .safety-text { font-size: 0.835rem; line-height: 1.65; color: var(--ink-2); }
+        .safety-text strong { color: var(--ink); }
+
+        /* ── Info box (location link etc.) ── */
+        .info-box {
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            border-radius: var(--r-lg);
+            padding: 1rem 1.125rem;
+            display: flex; gap: 0.875rem; align-items: flex-start;
+            margin-top: 0.75rem;
+        }
+        .info-box-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+        .info-box-text { font-size: 0.875rem; line-height: 1.6; color: var(--ink-2); }
+        .info-box-text strong { color: var(--ink); display: block; margin-bottom: 2px; }
+
+        /* ── Map controls ── */
+        .map-controls {
+            display: flex; flex-wrap: wrap; gap: 6px;
+            margin-bottom: 0.75rem; align-items: center;
+        }
+        .map-ctrl-label { font-size: 0.72rem; color: var(--ink-4); }
+        .map-sep { color: var(--border-2); font-size: 0.8rem; margin: 0 2px; }
+        .map-btn {
+            padding: 0.25rem 0.75rem; border-radius: 100px;
+            border: 1px solid var(--border-2);
+            background: var(--surface); color: var(--ink-2);
+            font-weight: 600; font-size: 0.75rem;
+            cursor: pointer; transition: all 0.15s;
+            font-family: var(--font-sans);
         }
 
-        /* ---- WHAT IS SOTA MODAL ---- */
-        .sota-explainer { background: #E8F4F8; border-radius: 10px; padding: 1.25rem; }
-        .sota-explainer p { line-height: 1.7; color: #333; font-size: 0.95rem; }
-        .modal-backdrop {
-            display: none; position: fixed; inset: 0;
-            background: rgba(0,0,0,0.55); z-index: 1000;
-            align-items: center; justify-content: center; padding: 1rem;
+        /* ── Elevation wrap ── */
+        .elev-wrap {
+            background: var(--bg-2);
+            border-radius: var(--r-md);
+            border: 1px solid var(--border);
+            padding: 0.6rem 0.75rem 0.4rem;
+            margin-top: 0.75rem;
         }
-        .modal-backdrop.open { display: flex; }
+        .elev-label {
+            font-size: 0.68rem; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.08em;
+            color: var(--ink-3); margin-bottom: 0.375rem;
+        }
+
+        /* ── SOTA Modal ── */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(28,27,25,.5); z-index: 200;
+            align-items: center; justify-content: center;
+            backdrop-filter: blur(3px); padding: 1rem;
+        }
+        .modal-overlay.open { display: flex; }
         .modal-box {
-            background: white; border-radius: 14px; padding: 2rem;
-            max-width: 620px; width: 100%; max-height: 90vh; overflow-y: auto;
-            position: relative; box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+            background: var(--surface); border-radius: var(--r-2xl);
+            padding: 2rem; max-width: 500px; width: 100%;
+            max-height: 90vh; overflow-y: auto;
+            position: relative; box-shadow: var(--shadow-lg);
         }
         .modal-close {
             position: absolute; top: 1rem; right: 1rem;
-            background: none; border: none; font-size: 1.4rem;
-            cursor: pointer; color: #999; line-height: 1;
+            background: var(--bg-2); border: 1px solid var(--border);
+            border-radius: var(--r-md); width: 30px; height: 30px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; color: var(--ink-3); font-size: 1rem;
+            transition: background .1s;
         }
-        .modal-close:hover { color: #333; }
-        .btn-outline-white {
-            display: inline-block; padding: 0.45rem 1.1rem;
-            border: 2px solid rgba(255,255,255,0.7); border-radius: 50px;
-            color: white; font-weight: 700; font-size: 0.82rem;
-            cursor: pointer; background: rgba(255,255,255,0.1);
-            font-family: 'Overpass', sans-serif; letter-spacing: 0.03em;
-            transition: all 0.2s; text-decoration: none;
+        .modal-close:hover { background: var(--bg-3); color: var(--ink); }
+        .explainer-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
+            margin-top: 1rem;
         }
-        .btn-outline-white:hover { background: rgba(255,255,255,0.25); }
+        .explainer-card {
+            background: var(--bg-2); border-radius: var(--r-md); padding: 1rem;
+        }
+        .explainer-card h4 { font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; color: var(--ink); }
+        .explainer-card p { font-size: 0.8rem; color: var(--ink-2); line-height: 1.55; margin: 0; }
 
-        /* ---- QUICK FACTS ---- */
-        .quick-facts {
-            display: flex; flex-wrap: nowrap; gap: 0.75rem;
-            overflow-x: auto; padding-bottom: 0.25rem;
+        /* ── Footer ── */
+        .invite-footer {
+            text-align: center; padding: 2rem 1rem;
+            font-size: 0.75rem; color: var(--ink-4);
+            border-top: 1px solid var(--border);
         }
-        .fact-box {
-            background: var(--snow); border-radius: 8px; padding: 1rem;
-            text-align: center; border-top: 3px solid var(--teal);
-            flex: 1; min-width: 110px;
-        }
-        .fact-box.clickable {
-            cursor: pointer; border-top-color: var(--gold);
-            transition: all 0.2s;
-        }
-        .fact-box.clickable:hover { background: #FFF8E1; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        .fact-box.guest-calculated { border-top-color: #43A047; background: #F1F8F1; }
-        .fact-icon { font-size: 1.6rem; margin-bottom: 0.3rem; }
-        .fact-value { font-size: 1.1rem; font-weight: 800; color: var(--navy); }
-        .fact-label { font-size: 0.72rem; color: #666; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 0.2rem; }
+        .invite-footer a { color: var(--ink-3); }
 
-        /* ---- RESULT BOX ---- */
-        .result-box {
-            background: #E8F5E9; border-radius: 10px; padding: 1.25rem;
-            border: 2px solid #43A047; margin-top: 1rem;
-        }
-        .result-box h3 { color: #1B5E20; margin-bottom: 0.75rem; }
-
+        /* ── Mobile ── */
         @media (max-width: 600px) {
-            /* ── Hero ── */
-            .hero { padding: 1.75rem 1.25rem 1.5rem; }
-            .hero h1 { font-size: 1.75rem; line-height: 1.15; }
-            .hero-date { font-size: 1rem; padding: 0.5rem 1.1rem; margin-bottom: 1rem; }
-            .hero-sub  { font-size: 0.95rem; }
-
-            /* ── Layout ── */
-            .container { padding: 1.1rem 1rem; }
-            .card { padding: 1.25rem; border-radius: 10px; margin-bottom: 1rem; }
-            .card h2 { font-size: 1.05rem; margin-bottom: 0.9rem; padding-bottom: 0.55rem; }
-
-            /* ── Quick facts: responsive grid instead of no-wrap scroll ── */
-            .quick-facts {
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-                overflow-x: visible;
-                padding-bottom: 0;
-                gap: 0.5rem;
-            }
-            .fact-box { min-width: unset; padding: 0.75rem 0.4rem; }
-            .fact-icon  { font-size: 1.3rem; }
-            .fact-value { font-size: 0.82rem; }
-            .fact-label { font-size: 0.62rem; }
-
-            /* ── Gantt bar: strip labels — bar is visual-only on mobile ── */
-            .gantt-bar { height: 36px; border-radius: 6px; }
+            .hero { padding: 2.5rem 1.25rem 0; }
+            .hero h1 { font-size: 2.25rem; }
+            .hero-date-pill { flex-direction: column; gap: 4px; padding: 0.6rem 1.25rem; }
+            .hero-date-sep { display: none; }
+            .page { padding: 1.25rem 1rem 3rem; }
+            .section { padding: 1.25rem; border-radius: var(--r-lg); }
+            .explainer-grid { grid-template-columns: 1fr; }
+            .drive-input-row { flex-direction: column; }
             .gantt-seg .seg-label { display: none; }
             .gantt-seg .seg-time  { display: none; }
+            .gantt-bar { height: 36px; border-radius: var(--r-sm); }
+            .fact-strip { grid-template-columns: repeat(3, 1fr); }
 
-            /* ── Milestones: convert to vertical event list ──
-               Absolute positioning at left:X% causes overlap & clipping on small screens.
-               On mobile we replace with a simple top-to-bottom time list. ── */
+            /* Milestones: vertical list on mobile */
             .gantt-milestones-container {
                 position: static;
                 height: auto;
@@ -491,8 +658,8 @@ $difficulty_labels = [
                 flex-direction: column;
                 gap: 0.35rem;
                 padding: 0.6rem 0.75rem;
-                background: #f8f9fa;
-                border-radius: 8px;
+                background: var(--bg-2);
+                border-radius: var(--r-md);
             }
             .milestone {
                 position: static !important;
@@ -502,29 +669,19 @@ $difficulty_labels = [
                 align-items: center;
                 justify-content: flex-start;
             }
-            .milestone-dot   { margin-bottom: 0; flex-shrink: 0; }
-            .milestone-time  { font-size: 0.85rem; font-weight: 700; white-space: nowrap; min-width: 70px; }
-            .milestone-label { display: block !important; font-size: 0.78rem; color: #666; }
+            .milestone-dot {
+                width: 6px; height: 6px; border-radius: 50%;
+                background: var(--border-2); margin: 0; flex-shrink: 0;
+            }
+            .milestone-time { font-size: 0.85rem; min-width: 70px; }
+            .milestone-label { font-size: 0.78rem; color: var(--ink-3); white-space: nowrap; }
 
-            /* ── Legend ── */
-            .gantt-legend { gap: 0.4rem 0.75rem; margin-top: 0.75rem; }
-            .legend-item  { font-size: 0.75rem; }
-
-            /* ── Stats pills ── */
-            .stats-row { gap: 0.4rem; }
-            .stat-pill { font-size: 0.82rem; padding: 0.45rem 0.75rem; }
-
-            /* ── Map: hide cell-carrier toggles (not useful for guests on mobile) ── */
+            /* Hide cell carrier toggles on mobile */
             .map-cell-section { display: none !important; }
-
-            /* ── Guest form ── */
-            .result-box { padding: 1rem; }
         }
-
         @media (max-width: 390px) {
-            .hero h1   { font-size: 1.5rem; }
-            .fact-value { font-size: 0.75rem; }
-            .quick-facts { grid-template-columns: repeat(2, 1fr); }
+            .hero h1 { font-size: 1.9rem; }
+            .fact-strip { grid-template-columns: repeat(2, 1fr); }
         }
     </style>
 </head>
@@ -532,175 +689,171 @@ $difficulty_labels = [
 
 <!-- HERO -->
 <div class="hero">
-    <div class="hero-eyebrow">You're Invited</div>
-    <h1>⛰️ <?= htmlspecialchars($pa['summit_name']) ?></h1>
-    <div class="hero-sub">
+    <div class="hero-eyebrow">
+        <span class="hero-eyebrow-dot"></span>
+        You're Invited
+        <span class="hero-eyebrow-dot"></span>
+    </div>
+    <h1><?= htmlspecialchars($pa['summit_name']) ?></h1>
+    <div class="hero-ref">
         <?= htmlspecialchars($pa['sota_ref']) ?>
         <?php if ($pa['region']): ?> &nbsp;·&nbsp; <?= htmlspecialchars($pa['region']) ?><?php endif; ?>
     </div>
-    <div class="hero-date">
-        <?= date('l, F j, Y', strtotime($pa['planned_date'])) ?>
-        &nbsp;·&nbsp; Hike starts <?= date('g:i A', strtotime($pa['hike_start_time'])) ?>
+    <div class="hero-date-pill">
+        <span><?= date('l, F j, Y', strtotime($pa['planned_date'])) ?></span>
+        <span class="hero-date-sep">·</span>
+        <span>Hike starts <?= date('g:i A', strtotime($pa['hike_start_time'])) ?></span>
     </div>
-    <div style="margin-bottom:1.5rem; display:flex; justify-content:center; flex-wrap:wrap; gap:0.6rem;">
-        <a href="activation_ics.php?id=<?= $pa['pa_id'] ?>" class="btn-outline-white" style="font-size:0.85rem;">
-            📅 Add to Calendar
-        </a>
-        <?php if ($guest_directions_url): ?>
-            <a href="<?= htmlspecialchars($guest_directions_url) ?>" target="_blank" class="btn-outline-white" style="font-size:0.85rem; background:rgba(67,160,71,0.35); border-color:rgba(255,255,255,0.9);">
-                🗺️ Get Directions
-            </a>
-        <?php else: ?>
-            <button class="btn-outline-white" style="font-size:0.85rem;" onclick="document.getElementById('drive-section').scrollIntoView({behavior:'smooth'}); setTimeout(()=>document.getElementById('guest-address-input').focus({preventScroll:true}),400);">
-                🗺️ Get Directions
-            </button>
-        <?php endif; ?>
-    </div>
-    <div style="margin-bottom: 0.5rem; font-size: 0.9rem; opacity: 0.8;">Activating operators:</div>
-    <div class="callsigns-row">
+    <div class="callsigns">
         <?php foreach ($callsign_list as $cs): ?>
-            <span class="callsign-badge"><?= htmlspecialchars($cs) ?></span>
+            <span class="callsign-tag"><?= htmlspecialchars($cs) ?></span>
         <?php endforeach; ?>
     </div>
-    <p style="margin-top: 1.25rem; font-size: 1rem; opacity: 0.88; max-width: 560px; margin-left: auto; margin-right: auto; line-height: 1.6;">
+    <?php if ($pa['invitation_message']): ?>
+    <p class="hero-message"><?= nl2br(htmlspecialchars($pa['invitation_message'])) ?></p>
+    <?php else: ?>
+    <p class="hero-message">
         You're invited to join us for a day on the mountain! We'll be hiking to the summit and making
         amateur radio contacts with stations around the world — no radio license needed to tag along.
         Lace up your hiking boots and come enjoy the views.
     </p>
-    <div style="margin-top: 1.25rem;">
-        <button class="btn-outline-white" onclick="document.getElementById('sota-modal').classList.add('open')">
-            📻 What is Summits on the Air?
+    <?php endif; ?>
+    <div class="hero-actions">
+        <a href="activation_ics.php?id=<?= $pa['pa_id'] ?>" class="hero-btn hero-btn-primary">
+            Add to Calendar
+        </a>
+        <?php if ($guest_drive_min !== null && $guest_directions_url): ?>
+            <a href="<?= htmlspecialchars($guest_directions_url) ?>" target="_blank" class="hero-btn hero-btn-primary">
+                Get Directions
+            </a>
+        <?php elseif ($trailhead_lat && $trailhead_lng): ?>
+            <button class="hero-btn hero-btn-outline"
+                onclick="document.getElementById('drive-section').scrollIntoView({behavior:'smooth'}); setTimeout(()=>document.getElementById('guest-address-input').focus({preventScroll:true}),400);">
+                Calculate My Drive Time
+            </button>
+        <?php endif; ?>
+        <button class="hero-btn hero-btn-outline" onclick="document.getElementById('sota-modal').classList.add('open')">
+            What is SOTA?
         </button>
     </div>
+    <!-- Wave separator -->
+    <svg class="hero-wave" viewBox="0 0 1200 48" preserveAspectRatio="none" fill="var(--bg)">
+        <path d="M0,48 C300,0 900,0 1200,48 L1200,48 L0,48 Z" />
+    </svg>
 </div>
 
-<div class="container">
+<div class="page">
 
-<?php if ($pa['invitation_message'] || $pa['travel_notes']): ?>
-    <!-- Custom Invitation Message + Travel Notes -->
-    <div class="card" style="border-left: 5px solid var(--gold); background: #FFFDE7;">
-        <?php if ($pa['invitation_message']): ?>
-        <p style="font-size: 1.05rem; line-height: 1.75; color: #333; margin-bottom: <?= $pa['travel_notes'] ? '1rem' : '0' ?>;">
-            <?= nl2br(htmlspecialchars($pa['invitation_message'])) ?>
-        </p>
-        <?php endif; ?>
-        <?php if ($pa['travel_notes']): ?>
-        <div style="<?= $pa['invitation_message'] ? 'border-top: 1px solid #f0d060; padding-top: 0.85rem;' : '' ?>">
-            <div style="font-weight:700; font-size:0.85rem; text-transform:uppercase; letter-spacing:0.05em; color:#7a6000; margin-bottom:0.4rem;">🅿️ Parking &amp; Travel Info</div>
-            <div style="font-size:0.95rem; line-height:1.7; color:#333;"><?= nl2br(htmlspecialchars($pa['travel_notes'])) ?></div>
-        </div>
-        <?php endif; ?>
+<?php if ($pa['travel_notes']): ?>
+    <div class="travel-note">
+        <div class="travel-note-label">Parking &amp; Travel Info</div>
+        <div class="travel-note-body"><?= nl2br(htmlspecialchars($pa['travel_notes'])) ?></div>
     </div>
 <?php endif; ?>
 
 <!-- DAY AT A GLANCE -->
-<div class="card">
-    <h2>🗓️ Day at a Glance</h2>
+<div class="section">
+    <div class="section-title">Day at a Glance</div>
 
-    <!-- Quick facts — always one row -->
-    <div class="quick-facts" style="margin-bottom: 1rem;">
+    <?php
+    $guest_back_home_ts = $guest_drive_min !== null ? $back_trailhead_ts + ($guest_drive_min * 60) : null;
+    ?>
 
-        <?php
-        $guest_back_home_ts = $guest_drive_min !== null ? $back_trailhead_ts + ($guest_drive_min * 60) : null;
-        ?>
+    <!-- Fact strip -->
+    <div class="fact-strip">
 
-        <!-- Leave Home tile: guest calculated > CTA -->
         <?php if ($guest_leave_ts): ?>
-            <div class="fact-box guest-calculated">
-                <div class="fact-icon">🚗</div>
-                <div class="fact-value"><?= date('g:i A', $guest_leave_ts) ?></div>
+            <div class="fact-cell personalized">
                 <div class="fact-label">Your Leave Time</div>
+                <div class="fact-val-pers"><?= date('g:i A', $guest_leave_ts) ?></div>
                 <a href="<?= htmlspecialchars($guest_directions_url) ?>" target="_blank"
-                   style="display:inline-block; margin-top:0.4rem; font-size:0.7rem; font-weight:700;
-                          background:#1B5E20; color:white; padding:0.2rem 0.5rem; border-radius:4px;
-                          text-decoration:none;">🗺️ Directions</a>
+                   style="display:inline-block; margin-top:0.4rem; font-size:0.68rem; font-weight:600;
+                          background:var(--green); color:white; padding:0.2rem 0.5rem;
+                          border-radius:var(--r-sm); text-decoration:none;">Directions</a>
             </div>
         <?php else: ?>
-            <div class="fact-box clickable" onclick="document.getElementById('drive-section').scrollIntoView({behavior:'smooth'}); document.getElementById('guest-address-input').focus({preventScroll:true});">
-                <div class="fact-icon">🚗</div>
-                <div class="fact-value" style="font-size:0.85rem; color: var(--teal);">Calculate<br>My Drive</div>
-                <div class="fact-label">Tap to personalize</div>
+            <div class="fact-cell cta"
+                 onclick="document.getElementById('drive-section').scrollIntoView({behavior:'smooth'}); document.getElementById('guest-address-input').focus({preventScroll:true});">
+                <div class="fact-label">Your Leave Time</div>
+                <div class="fact-val-cta">Add your address →</div>
             </div>
         <?php endif; ?>
 
-        <div class="fact-box">
-            <div class="fact-icon">🥾</div>
-            <div class="fact-value"><?= date('g:i A', $hike_start_ts) ?></div>
+        <div class="fact-cell">
             <div class="fact-label">Hike Start</div>
+            <div class="fact-val"><?= date('g:i A', $hike_start_ts) ?></div>
         </div>
 
         <?php if ($hike_up_min > 0): ?>
-        <div class="fact-box">
-            <div class="fact-icon">⛰️</div>
-            <div class="fact-value"><?= date('g:i A', $at_summit_ts) ?></div>
+        <div class="fact-cell">
             <div class="fact-label">At Summit</div>
+            <div class="fact-val"><?= date('g:i A', $at_summit_ts) ?></div>
         </div>
         <?php endif; ?>
 
-        <div class="fact-box">
-            <div class="fact-icon">📻</div>
-            <div class="fact-value"><?= date('g:i A', $at_summit_ts) ?>–<?= date('g:i A', $radio_done_ts) ?></div>
+        <div class="fact-cell">
             <div class="fact-label">Radio Time</div>
+            <div class="fact-val" style="font-size:0.82rem;"><?= date('g:i A', $at_summit_ts) ?>–<?= date('g:i A', $radio_done_ts) ?></div>
         </div>
 
-        <!-- Back Home tile: guest calculated > CTA -->
         <?php if ($guest_back_home_ts): ?>
-            <div class="fact-box guest-calculated">
-                <div class="fact-icon">🏠</div>
-                <div class="fact-value">~<?= date('g:i A', $guest_back_home_ts) ?></div>
+            <div class="fact-cell personalized">
                 <div class="fact-label">Your Return</div>
+                <div class="fact-val-pers">~<?= date('g:i A', $guest_back_home_ts) ?></div>
             </div>
         <?php else: ?>
-            <div class="fact-box clickable" onclick="document.getElementById('drive-section').scrollIntoView({behavior:'smooth'}); document.getElementById('guest-address-input').focus({preventScroll:true});">
-                <div class="fact-icon">🏠</div>
-                <div class="fact-value" style="font-size:0.85rem; color: var(--teal);">Calculate<br>My Drive</div>
-                <div class="fact-label">Tap to personalize</div>
+            <div class="fact-cell cta"
+                 onclick="document.getElementById('drive-section').scrollIntoView({behavior:'smooth'}); document.getElementById('guest-address-input').focus({preventScroll:true});">
+                <div class="fact-label">Your Return</div>
+                <div class="fact-val-cta">Add your address →</div>
             </div>
         <?php endif; ?>
 
     </div>
+
     <?php if ($guest_leave_ts): ?>
-        <p style="font-size: 0.8rem; color: #2E7D32; margin-bottom: 1.25rem; font-weight: 600;">✓ Showing your personalized times based on: <?= htmlspecialchars($guest_address) ?></p>
+        <p style="font-size:0.78rem; color:var(--green); margin-bottom:1.25rem; font-weight:500;">
+            Showing your personalized times based on: <?= htmlspecialchars($guest_address) ?>
+        </p>
     <?php endif; ?>
 
-    <!-- GANTT BAR -->
+    <!-- Gantt bar -->
     <?php if ($total_min > 0): ?>
-    <div class="gantt-wrap">
+    <div>
         <div class="gantt-bar">
             <?php if ($drive_pct > 0): ?>
             <div class="gantt-seg seg-drive" style="flex: <?= $drive_pct ?>;">
-                <span class="seg-label">🚗 Drive</span>
+                <span class="seg-label">Drive</span>
                 <span class="seg-time"><?= $gantt_drive ?>m</span>
             </div>
             <?php endif; ?>
             <?php if ($hike_up_pct > 0): ?>
             <div class="gantt-seg seg-hike-up" style="flex: <?= $hike_up_pct ?>;">
-                <span class="seg-label">🥾 Hike Up</span>
+                <span class="seg-label">Hike Up</span>
                 <span class="seg-time"><?= $hike_up_min ?>m</span>
             </div>
             <?php endif; ?>
             <?php if ($activation_pct > 0): ?>
             <div class="gantt-seg seg-radio" style="flex: <?= $activation_pct ?>;">
-                <span class="seg-label">📻 Radio</span>
+                <span class="seg-label">Radio</span>
                 <span class="seg-time"><?= $activation_min ?>m</span>
             </div>
             <?php endif; ?>
             <?php if ($hike_down_pct > 0): ?>
             <div class="gantt-seg seg-hike-down" style="flex: <?= $hike_down_pct ?>;">
-                <span class="seg-label">🥾 Hike Down</span>
+                <span class="seg-label">Hike Down</span>
                 <span class="seg-time"><?= $hike_down_min ?>m</span>
             </div>
             <?php endif; ?>
             <?php if ($drive_pct > 0): ?>
             <div class="gantt-seg seg-drive-back" style="flex: <?= $drive_pct ?>;">
-                <span class="seg-label">🚗 Drive</span>
+                <span class="seg-label">Drive</span>
                 <span class="seg-time"><?= $gantt_drive ?>m</span>
             </div>
             <?php endif; ?>
         </div>
 
         <?php
-        // Milestone positions (cumulative %)
         $m = [];
         $cursor = 0;
         if ($gantt_leave_ts) { $m[] = [$cursor, date('g:i A', $gantt_leave_ts), 'Leave Home']; }
@@ -728,207 +881,151 @@ $difficulty_labels = [
 
     <div class="gantt-legend">
         <?php if ($show_drive): ?>
-        <div class="legend-item"><div class="legend-dot" style="background:#8D6E63;"></div> Drive (<?= $gantt_drive ?> min each way — your estimate)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:oklch(55% 0.04 50);"></div> Drive (<?= $gantt_drive ?> min each way — your estimate)</div>
         <?php endif; ?>
         <?php if ($hike_up_pct > 0): ?>
-        <div class="legend-item"><div class="legend-dot" style="background:#43A047;"></div> Hike Up (<?= $hike_up_min ?> min)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--green);"></div> Hike Up (<?= $hike_up_min ?> min)</div>
         <?php endif; ?>
-        <div class="legend-item"><div class="legend-dot" style="background:var(--navy);"></div> Radio / SOTA Activation (<?= $activation_min ?> min)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--ink);"></div> Radio / SOTA Activation (<?= $activation_min ?> min)</div>
         <?php if ($hike_down_pct > 0): ?>
-        <div class="legend-item"><div class="legend-dot" style="background:#66BB6A;"></div> Hike Down (<?= $hike_down_min ?> min)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:oklch(60% 0.10 155);"></div> Hike Down (<?= $hike_down_min ?> min)</div>
         <?php endif; ?>
         <?php if ($show_drive): ?>
-        <div class="legend-item"><div class="legend-dot" style="background:#555;"></div> Total Day: ~<?= formatTime($total_min) ?></div>
+        <div class="legend-item" style="color:var(--ink-3);">Total Day: ~<?= formatTime($total_min) ?></div>
         <?php else: ?>
-        <div class="legend-item" style="color:var(--teal); cursor:pointer;" onclick="document.getElementById('drive-section').scrollIntoView({behavior:'smooth'}); document.getElementById('guest-address-input').focus({preventScroll:true});">
-            🚗 <em>Add your address below to include drive time</em>
+        <div class="legend-item" style="color:var(--accent); cursor:pointer;"
+             onclick="document.getElementById('drive-section').scrollIntoView({behavior:'smooth'}); document.getElementById('guest-address-input').focus({preventScroll:true});">
+            <em>Add your address below to include drive time</em>
         </div>
         <?php endif; ?>
     </div>
     <?php endif; ?>
 
-    <!-- Hike Stats -->
+    <!-- Hike stats -->
     <?php if ($elev_display || $dist_display || $gain_display || $pa['difficulty'] || $pa['points']): ?>
-    <div class="stats-row" style="margin-top:1.25rem; padding-top:1.1rem; border-top:1px solid #eee;">
+    <div class="stats-row">
         <?php if ($elev_display): ?>
-            <div class="stat-pill"><span>Elevation</span><?= $elev_display ?></div>
+            <span class="stat-chip"><span class="stat-chip-label">Elevation</span><?= $elev_display ?></span>
         <?php endif; ?>
         <?php if ($dist_display): ?>
-            <div class="stat-pill"><span>Round-trip</span><?= $dist_display ?></div>
+            <span class="stat-chip"><span class="stat-chip-label">Round-trip</span><?= $dist_display ?></span>
         <?php endif; ?>
         <?php if ($gain_display): ?>
-            <div class="stat-pill"><span>Gain</span><?= $gain_display ?></div>
+            <span class="stat-chip"><span class="stat-chip-label">Gain</span><?= $gain_display ?></span>
         <?php endif; ?>
         <?php if ($pa['difficulty'] && isset($difficulty_labels[$pa['difficulty']])): ?>
-            <div class="stat-pill"><span>Difficulty</span><?= $difficulty_labels[$pa['difficulty']] ?></div>
+            <span class="stat-chip"><span class="stat-chip-label">Difficulty</span><?= $difficulty_labels[$pa['difficulty']] ?></span>
         <?php endif; ?>
         <?php if ($pa['points']): ?>
-            <div class="stat-pill"><span>SOTA pts</span><?= $pa['points'] ?></div>
+            <span class="stat-chip"><span class="stat-chip-label">SOTA pts</span><?= $pa['points'] ?></span>
         <?php endif; ?>
     </div>
     <?php endif; ?>
 
     <!-- Summit links -->
     <?php if ($pa['trail_link'] || $pa['sotlas_link'] || ($pa['latitude'] && $pa['longitude'])): ?>
-    <div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-top:1rem;">
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:1rem;">
         <?php if ($pa['trail_link']): ?>
-            <a href="<?= htmlspecialchars($pa['trail_link']) ?>" target="_blank" class="btn btn-gold">🥾 Trail Info</a>
+            <a href="<?= htmlspecialchars($pa['trail_link']) ?>" target="_blank" class="btn btn-ghost" style="font-size:0.82rem;">Trail Info ↗</a>
         <?php endif; ?>
         <?php if ($pa['latitude'] && $pa['longitude']): ?>
-            <a href="https://www.google.com/maps/search/?api=1&query=<?= $pa['latitude'] ?>,<?= $pa['longitude'] ?>" target="_blank" class="btn btn-gold">🗺️ Summit Map</a>
+            <a href="https://www.google.com/maps/search/?api=1&query=<?= $pa['latitude'] ?>,<?= $pa['longitude'] ?>" target="_blank" class="btn btn-ghost" style="font-size:0.82rem;">Summit Map ↗</a>
         <?php endif; ?>
         <?php if ($pa['sotlas_link']): ?>
-            <a href="<?= htmlspecialchars($pa['sotlas_link']) ?>" target="_blank" class="btn btn-gold">📡 SOTA Info</a>
+            <a href="<?= htmlspecialchars($pa['sotlas_link']) ?>" target="_blank" class="btn btn-ghost" style="font-size:0.82rem;">SOTA Info ↗</a>
         <?php endif; ?>
     </div>
     <?php endif; ?>
 </div>
 
-<!-- GUEST DRIVE TIME -->
-<div class="card" id="drive-section">
-    <h2>🏠 Your Drive Time</h2>
-    <p style="color:#555; margin-bottom:1rem;">Enter your address to get a personalized departure time and driving directions to the trailhead using Google Maps</p>
+<!-- YOUR DRIVE TIME -->
+<div class="section" id="drive-section">
+    <div class="section-title">Your Drive Time</div>
+    <p style="font-size:0.875rem; color:var(--ink-2); margin-bottom:1rem; line-height:1.6;">
+        Enter your starting address to get a personalized departure time and driving directions to the trailhead.
+    </p>
 
-    <div class="guest-form">
+    <div class="drive-form">
         <form method="POST">
-            <label style="font-weight:700; font-size:0.9rem;">Your starting address (be specific for the best results)</label>
-            <input type="text" name="guest_address" id="guest-address-input"
-                   value="<?= htmlspecialchars($guest_address) ?>"
-                   placeholder="1234 Main St, Los Angeles, CA">
-            <button type="submit" class="btn">Calculate My Drive Time</button>
+            <label class="drive-form-label" for="guest-address-input">Your starting address</label>
+            <div class="drive-input-row">
+                <input type="text" name="guest_address" id="guest-address-input"
+                       class="drive-input"
+                       value="<?= htmlspecialchars($guest_address) ?>"
+                       placeholder="1234 Main St, Los Angeles, CA">
+                <button type="submit" class="btn btn-accent">Calculate</button>
+            </div>
         </form>
     </div>
 
     <?php if ($guest_error): ?>
-        <div style="color:#C62828; margin-top:1rem; font-weight:600;">⚠️ <?= htmlspecialchars($guest_error) ?></div>
+        <p style="color:var(--red); margin-top:0.875rem; font-size:0.875rem; font-weight:500;">
+            <?= htmlspecialchars($guest_error) ?>
+        </p>
     <?php endif; ?>
 
     <?php if ($guest_drive_min !== null): ?>
-        <div style="margin-top:1rem; display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
-            <span style="font-size:0.95rem; color:#1B5E20; font-weight:600;">
-                ✅ <?= formatTime($guest_drive_min) ?> drive — your times are updated above.
+        <div class="drive-result">
+            <span class="drive-result-text">
+                <?= formatTime($guest_drive_min) ?> drive — your times are updated above.
             </span>
-            <a href="<?= htmlspecialchars($guest_directions_url) ?>" target="_blank" class="btn btn-green">
-                🗺️ Get Driving Directions
+            <a href="<?= htmlspecialchars($guest_directions_url) ?>" target="_blank" class="btn btn-green" style="font-size:0.82rem;">
+                Get Directions ↗
             </a>
         </div>
     <?php endif; ?>
-</div>
 
-<!-- CELL COVERAGE & SAFETY -->
-<div class="card">
-    <h2>📶 Cell Coverage &amp; Safety Info</h2>
-
-    <?php if ($cell_info): ?>
-    <div class="cell-banner" style="background: <?= $cell_info[3] ?>; color: <?= $cell_info[2] ?>;">
-        <span style="font-size:1.3rem;"><?= $cell_info[1] ?></span>
-        <div>
-            <strong>Cell Service:</strong> <?= $cell_info[0] ?><br>
-            <span style="font-size:0.82rem; font-weight:400;">Let someone know your plans before heading out.</span>
-        </div>
-    </div>
-    <?php else: ?>
-    <div class="cell-banner" style="background:#F5F5F0; color:#555;">
-        <span style="font-size:1.3rem;">📵</span>
-        <div>Cell service coverage is unknown for this route. Let someone know your plans before heading out.</div>
-    </div>
-    <?php endif; ?>
-
-    <div style="background:#FFF8E1; border-radius:8px; padding:1rem 1.1rem; border-left:4px solid #F9A825; display:flex; gap:0.85rem; align-items:flex-start;">
-        <span style="font-size:1.4rem; flex-shrink:0;">⚠️</span>
-        <div style="font-size:0.9rem; line-height:1.6; color:#1a1a2e;">
-            <strong>Safety: Hiking &amp; Mountaineering Involves Real Risk</strong><br>
-            Hiking to mountain summits is physically demanding and inherently dangerous. Conditions can change
-            rapidly — weather, terrain, and altitude are serious factors. <strong>Please do not join if you are
-            sick, injured, or in poor health.</strong> Know your limits and come prepared with appropriate gear,
-            water, and clothing for the conditions.<br><br>
-            Always let someone at home know your plans — where you're going, who you're with, and when
-            to expect you back. <strong>Share this invitation page</strong> with a friend or family member as
-            your trip plan so they know where to look if needed.
-        </div>
-    </div>
-
-    <?php if (!empty($pa['location_link'])): ?>
-    <div style="background:#EEF4FB; border-radius:8px; padding:1rem 1.1rem; border-left:4px solid #1565C0; display:flex; gap:0.85rem; align-items:flex-start; margin-top:0.75rem;">
-        <span style="font-size:1.4rem; flex-shrink:0;">📡</span>
-        <div style="font-size:0.9rem; line-height:1.6; color:#1a1a2e;">
-            <strong>Live Group Location</strong><br>
-            The hiking group will be sharing their real-time location for the duration of this trip.
-            Share this link with anyone who may need to know where the group is:<br>
-            <a href="<?= htmlspecialchars($pa['location_link']) ?>" target="_blank"
-               style="color:#1565C0; font-weight:700; word-break:break-all;"><?= htmlspecialchars($pa['location_link']) ?></a>
-        </div>
-    </div>
-    <?php endif; ?>
-
+    <p style="font-size:0.75rem; color:var(--ink-4); margin-top:0.75rem;">
+        Drive times calculated via Google Maps. Use nearby cross streets for privacy.
+    </p>
 </div>
 
 <?php if ($gpx): ?>
-<!-- HIKE MAP -->
-<div class="card">
-    <h2>🗺️ Hike Route</h2>
+<!-- HIKE ROUTE -->
+<div class="section">
+    <div class="section-title">Hike Route</div>
 
     <!-- Map controls -->
-    <div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.75rem; align-items:center;">
-        <span style="font-size:0.75rem; color:#888;">Map:</span>
-        <button onclick="switchBase('street')" id="btn-base-street"
-                style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #1E3A5F;
-                       background:#1E3A5F; color:white; font-weight:700; font-size:0.78rem;
-                       cursor:pointer; transition:all 0.2s;">Street</button>
-        <button onclick="switchBase('topo')" id="btn-base-topo"
-                style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #1E3A5F;
-                       background:white; color:#1E3A5F; font-weight:700; font-size:0.78rem;
-                       cursor:pointer; transition:all 0.2s;">Topo</button>
-        <button onclick="switchBase('satellite')" id="btn-base-satellite"
-                style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #1E3A5F;
-                       background:white; color:#1E3A5F; font-weight:700; font-size:0.78rem;
-                       cursor:pointer; transition:all 0.2s;">Satellite</button>
+    <div class="map-controls">
+        <span class="map-ctrl-label">Map:</span>
+        <button onclick="switchBase('street')" id="btn-base-street" class="map-btn" style="background:#1C1B19;color:#fff;border-color:#1C1B19;">Street</button>
+        <button onclick="switchBase('topo')"   id="btn-base-topo"   class="map-btn">Topo</button>
+        <button onclick="switchBase('satellite')" id="btn-base-satellite" class="map-btn">Satellite</button>
 
         <?php if ($az_polygon_json): ?>
-        <span style="color:#ddd; font-size:0.75rem;">|</span>
+        <span class="map-sep">|</span>
         <button onclick="zoomToActivationZone()" id="btn-actzone"
-                style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #CC2200;
-                       background:#CC2200; color:white; font-weight:700; font-size:0.78rem;
-                       cursor:pointer; transition:all 0.2s;">🏔 Zoom to Activation Zone</button>
+                class="map-btn" style="border-color:#CC2200;color:#CC2200;background:#fff;">
+            Zoom to Activation Zone
+        </button>
         <?php endif; ?>
 
         <span class="map-cell-section" style="display:contents;">
-            <span style="color:#ddd; font-size:0.75rem;">|</span>
-            <span style="font-size:0.75rem; color:#888;">Cell Coverage:</span>
-            <button onclick="toggleCarrier('tmobile')" id="btn-tmobile"
-                    style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #E91E8C;
-                           background:white; color:#E91E8C; font-weight:700; font-size:0.78rem;
-                           cursor:pointer; transition:all 0.2s;">T-Mobile</button>
-            <button onclick="toggleCarrier('verizon')" id="btn-verizon"
-                    style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #CD040B;
-                           background:white; color:#CD040B; font-weight:700; font-size:0.78rem;
-                           cursor:pointer; transition:all 0.2s;">Verizon</button>
-            <button onclick="toggleCarrier('att')" id="btn-att"
-                    style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #00A8E0;
-                           background:white; color:#00A8E0; font-weight:700; font-size:0.78rem;
-                           cursor:pointer; transition:all 0.2s;">AT&T</button>
-            <span style="font-size:0.72rem; color:#999; margin-left:0.1rem;">Cell data may be optimistic in mountainous terrain</span>
+            <span class="map-sep">|</span>
+            <span class="map-ctrl-label">Cell Coverage:</span>
+            <button onclick="toggleCarrier('tmobile')" id="btn-tmobile" class="map-btn" style="border-color:#E91E8C;color:#E91E8C;">T-Mobile</button>
+            <button onclick="toggleCarrier('verizon')" id="btn-verizon" class="map-btn" style="border-color:#CD040B;color:#CD040B;">Verizon</button>
+            <button onclick="toggleCarrier('att')"     id="btn-att"     class="map-btn" style="border-color:#00A8E0;color:#00A8E0;">AT&amp;T</button>
+            <span style="font-size:0.72rem; color:var(--ink-4);">Cell data may be optimistic in mountainous terrain</span>
         </span>
 
-        <?php if ($gpx): ?>
-        <span style="color:#ddd; font-size:0.75rem;">|</span>
+        <span class="map-sep">|</span>
         <a href="load_gpx.php?id=<?= $gpx['id'] ?>" download="<?= htmlspecialchars($gpx_download_name) ?>"
-           style="padding:0.3rem 0.8rem; border-radius:20px; border:2px solid #4A7C59;
-                  background:#4A7C59; color:white; font-weight:700; font-size:0.78rem;
-                  text-decoration:none; display:inline-block; line-height:1.4;">⬇ Download GPX</a>
-        <?php endif; ?>
+           class="btn btn-ghost" style="font-size:0.75rem; height:28px; padding:0 0.75rem;">
+            Download GPX ↓
+        </a>
     </div>
 
-    <div id="gpx-map" style="height: 420px; border-radius: 10px; border: 2px solid #ddd;"></div>
-    <p style="font-size:0.72rem; color:#aaa; margin-top:0.5rem;">
+    <div id="gpx-map" style="height: 400px; border-radius: var(--r-lg); border: 1px solid var(--border);"></div>
+    <p style="font-size:0.72rem; color:var(--ink-4); margin-top:0.5rem;">
         Coverage data: FCC Form 477 filings (2021), via ArcGIS public tile service. Carrier-reported estimates — actual signal in mountainous terrain may differ.
     </p>
 
     <!-- Elevation Profile -->
-    <div style="background:#f8f9fa; border-radius:8px; padding:0.6rem 0.75rem 0.4rem; margin-top:0.75rem; border:1px solid #e8e8e8;">
-        <div style="font-size:0.7rem; text-transform:uppercase; letter-spacing:0.06em; color:#aaa; font-weight:600; margin-bottom:0.3rem;">Elevation Profile</div>
-        <canvas id="elev-canvas" style="width:100%; height:120px; display:block;"></canvas>
-        <div id="elev-note" style="font-size:0.72rem; color:#bbb; margin-top:0.25rem; text-align:center; display:none;"></div>
+    <div class="elev-wrap">
+        <div class="elev-label">Elevation Profile</div>
+        <canvas id="elev-canvas" style="width:100%; height:100px; display:block;"></canvas>
+        <div id="elev-note" style="font-size:0.72rem; color:var(--ink-4); margin-top:0.25rem; text-align:center; display:none;"></div>
     </div>
 
     <script>
@@ -949,13 +1046,13 @@ $difficulty_labels = [
         currentBase.addTo(map);
         if (gpxPolyline) gpxPolyline.bringToFront();
         if (activationZoneLayer) activationZoneLayer.bringToFront();
-        // Keep carrier overlays on top
         Object.values(carrierLayers).forEach(l => { if (map.hasLayer(l)) l.bringToFront(); });
         ['street','topo','satellite'].forEach(n => {
             const b = document.getElementById('btn-base-' + n);
             if (!b) return;
-            b.style.background = n === name ? '#1E3A5F' : 'white';
-            b.style.color      = n === name ? 'white'   : '#1E3A5F';
+            b.style.background = n === name ? '#1C1B19' : '#fff';
+            b.style.color      = n === name ? '#fff'    : '#4A4844';
+            b.style.borderColor= n === name ? '#1C1B19' : '#D4D0C8';
         });
     }
 
@@ -974,7 +1071,7 @@ $difficulty_labels = [
         if (carrierActive[name]) {
             map.removeLayer(carrierLayers[name]);
             carrierActive[name] = false;
-            btn.style.background = 'white';
+            btn.style.background = '#fff';
             btn.style.color = carrierColors[name];
         } else {
             carrierLayers[name].addTo(map);
@@ -1018,7 +1115,7 @@ $difficulty_labels = [
             const gpxDoc = parser.parseFromString(gpxText, 'text/xml');
             const pts = gpxDoc.querySelectorAll('trkpt, rtept');
             const coords = [];
-            const elevPts = []; // [lat, lon, ele_m]
+            const elevPts = [];
             pts.forEach(pt => {
                 const lat = parseFloat(pt.getAttribute('lat'));
                 const lon = parseFloat(pt.getAttribute('lon'));
@@ -1029,12 +1126,12 @@ $difficulty_labels = [
 
             if (coords.length === 0) return;
 
-            gpxPolyline = L.polyline(coords, {color: '#4A90A4', weight: 4, opacity: 0.85}).addTo(map);
+            gpxPolyline = L.polyline(coords, {color: '#9B6328', weight: 4, opacity: 0.85}).addTo(map);
 
             // Trailhead marker
             L.marker(coords[0], {
                 icon: L.divIcon({
-                    html: '<div style="background:#43A047;color:white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:15px;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3)">🅿️</div>',
+                    html: '<div style="background:var(--green,#2E7D32);color:white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:15px;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3)">P</div>',
                     iconSize:[28,28], className:''
                 })
             }).bindPopup('Trailhead').addTo(map);
@@ -1042,7 +1139,7 @@ $difficulty_labels = [
             // Summit marker
             L.marker([<?= $gpx['summit_lat'] ?>, <?= $gpx['summit_lon'] ?>], {
                 icon: L.divIcon({
-                    html: '<div style="background:#E6B84A;color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:18px;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3)">⛰️</div>',
+                    html: '<div style="background:#1C1B19;color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:15px;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3)">▲</div>',
                     iconSize:[32,32], className:''
                 })
             }).bindPopup('<?= htmlspecialchars(addslashes($pa['summit_name'])) ?><br><?= htmlspecialchars($pa['sota_ref']) ?>').addTo(map);
@@ -1064,7 +1161,7 @@ $difficulty_labels = [
 
         const rect = canvas.getBoundingClientRect();
         const W = Math.floor(rect.width) || 600;
-        const H = 120;
+        const H = 100;
         const dpr = window.devicePixelRatio || 1;
         canvas.width = W * dpr;
         canvas.height = H * dpr;
@@ -1108,8 +1205,8 @@ $difficulty_labels = [
         const yS = e => pad.top + (1 - (e - minE) / ((maxE - minE) || 1)) * plotH;
 
         const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + plotH);
-        grad.addColorStop(0, 'rgba(74,144,164,0.5)');
-        grad.addColorStop(1, 'rgba(74,144,164,0.04)');
+        grad.addColorStop(0, 'rgba(74,144,164,0.4)');
+        grad.addColorStop(1, 'rgba(74,144,164,0.03)');
         ctx.beginPath();
         ctx.moveTo(xS(data[0].d), pad.top + plotH);
         for (const p of data) ctx.lineTo(xS(p.d), yS(p.e));
@@ -1121,7 +1218,7 @@ $difficulty_labels = [
         ctx.beginPath();
         ctx.moveTo(xS(data[0].d), yS(data[0].e));
         for (let i = 1; i < data.length; i++) ctx.lineTo(xS(data[i].d), yS(data[i].e));
-        ctx.strokeStyle = '#4A90A4';
+        ctx.strokeStyle = '#9B6328';
         ctx.lineWidth = 1.5;
         ctx.stroke();
 
@@ -1132,16 +1229,16 @@ $difficulty_labels = [
             const y = yS(e);
             ctx.strokeStyle = '#efefef'; ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + plotW, y); ctx.stroke();
-            ctx.fillStyle = '#aaa';
+            ctx.fillStyle = '#B8B5B0';
             ctx.fillText(Math.round(e), pad.left - 3, y + 3);
         }
-        ctx.textAlign = 'center'; ctx.fillStyle = '#aaa';
+        ctx.textAlign = 'center'; ctx.fillStyle = '#B8B5B0';
         const nX = Math.min(5, Math.floor(maxD) || 1);
         for (let i = 0; i <= nX; i++) {
             const d = maxD * i / nX;
             ctx.fillText(d.toFixed(1), xS(d), H - 5);
         }
-        ctx.fillStyle = '#ccc';
+        ctx.fillStyle = '#D4D0C8';
         ctx.textAlign = 'left';  ctx.fillText(eleUnit, 2, pad.top + 8);
         ctx.textAlign = 'right'; ctx.fillText(distUnit, W - 2, H - 5);
 
@@ -1162,16 +1259,16 @@ $difficulty_labels = [
             const cx = xS(p.d), cy = yS(p.e);
             ctx.save();
             ctx.setLineDash([3, 3]);
-            ctx.strokeStyle = 'rgba(230,160,32,0.9)';
+            ctx.strokeStyle = 'rgba(28,27,25,0.4)';
             ctx.lineWidth = 1.5;
             ctx.beginPath(); ctx.moveTo(cx, pad.top); ctx.lineTo(cx, pad.top + plotH); ctx.stroke();
             ctx.restore();
             ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2);
-            ctx.fillStyle = '#E6A020'; ctx.fill();
+            ctx.fillStyle = '#1C1B19'; ctx.fill();
             ctx.strokeStyle = 'white'; ctx.lineWidth = 1.5; ctx.stroke();
             if (note) {
                 note.style.display = '';
-                note.style.color = '#555';
+                note.style.color = '#8C8A86';
                 note.textContent = '\u2191 ' + Math.round(p.e) + '\u202f' + eleUnit
                                  + '   \u21a6 ' + p.d.toFixed(2) + '\u202f' + distUnit;
             }
@@ -1211,7 +1308,7 @@ $difficulty_labels = [
             const p = data[idx];
             if (!hoverMarker) {
                 hoverMarker = L.circleMarker([p.lat, p.lon], {
-                    radius: 6, color: '#E6A020', fillColor: '#E6A020', fillOpacity: 0.9, weight: 2
+                    radius: 6, color: '#1C1B19', fillColor: '#1C1B19', fillOpacity: 0.9, weight: 2
                 }).addTo(gpxMap);
             } else {
                 hoverMarker.setLatLng([p.lat, p.lon]);
@@ -1238,50 +1335,119 @@ $difficulty_labels = [
 </div>
 <?php endif; ?>
 
-<!-- FOOTER -->
-<div style="text-align:center; color:#999; font-size:0.8rem; padding: 1rem 0 2rem;">
-    Planned by <?= htmlspecialchars($pa['group_name']) ?> &nbsp;·&nbsp; SOTA Planner
+<!-- CELL COVERAGE & SAFETY -->
+<div class="section">
+    <div class="section-title">Cell Coverage &amp; Safety</div>
+
+    <?php if ($cell_info): ?>
+    <div class="cell-banner" style="background:<?= $cell_info[4] ?>20; border:1px solid <?= $cell_info[4] ?>;">
+        <span class="cell-banner-icon"><?= $cell_info[1] ?></span>
+        <div class="cell-banner-text">
+            <span class="cell-banner-title" style="color:<?= $cell_info[2] ?>;"><?= $cell_info[0] ?></span>
+            <span style="color:var(--ink-2);">Let someone know your plans before heading out.</span>
+        </div>
+    </div>
+    <?php else: ?>
+    <div class="cell-banner" style="background:var(--bg-2); border:1px solid var(--border);">
+        <span class="cell-banner-icon">📵</span>
+        <div class="cell-banner-text">
+            <span style="color:var(--ink-2);">Cell service coverage is unknown for this route. Let someone know your plans before heading out.</span>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <div class="safety-box">
+        <span class="safety-icon">⚠️</span>
+        <p class="safety-text">
+            <strong>Hiking &amp; Mountaineering Involves Real Risk.</strong>
+            Hiking to mountain summits is physically demanding and inherently dangerous. Conditions can change
+            rapidly — weather, terrain, and altitude are serious factors. <strong>Please do not join if you are
+            sick, injured, or in poor health.</strong> Know your limits and come prepared with appropriate gear,
+            water, and clothing for the conditions.<br><br>
+            Always let someone at home know your plans — where you're going, who you're with, and when
+            to expect you back. <strong>Share this invitation page</strong> with a friend or family member as
+            your trip plan so they know where to look if needed.
+        </p>
+    </div>
+
+    <?php if (!empty($pa['location_link'])): ?>
+    <div class="info-box">
+        <span class="info-box-icon">📡</span>
+        <div class="info-box-text">
+            <strong>Live Group Location</strong>
+            The hiking group will be sharing their real-time location for the duration of this trip.
+            Share this link with anyone who may need to know where the group is:<br>
+            <a href="<?= htmlspecialchars($pa['location_link']) ?>" target="_blank"
+               style="font-weight:600; word-break:break-all;"><?= htmlspecialchars($pa['location_link']) ?></a>
+        </div>
+    </div>
+    <?php endif; ?>
 </div>
 
-</div><!-- /container -->
+<div style="text-align:center; padding:0.5rem 0 1.5rem; font-size:0.78rem; color:var(--ink-4);">
+    Planned by <?= htmlspecialchars($pa['group_name']) ?>
+</div>
+
+</div><!-- /page -->
+
+<script>
+function openTrailheadDirections(lat, lng) {
+    var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isIOS) {
+        window.location = 'maps://maps.apple.com/?daddr=' + lat + ',' + lng + '&dirflg=d';
+    } else {
+        window.open('https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng + '&travelmode=driving', '_blank');
+    }
+}
+</script>
 
 <!-- WHAT IS SOTA MODAL -->
-<div class="modal-backdrop" id="sota-modal" onclick="if(event.target===this)this.classList.remove('open')">
+<div class="modal-overlay" id="sota-modal" onclick="if(event.target===this)this.classList.remove('open')">
     <div class="modal-box">
         <button class="modal-close" onclick="document.getElementById('sota-modal').classList.remove('open')" aria-label="Close">✕</button>
-        <h2 style="font-size:1.4rem; font-weight:800; color:var(--navy); margin-bottom:1.25rem;">📻 What is SOTA?</h2>
-        <div class="sota-explainer">
-            <p>
-                <strong>Summits on the Air (SOTA)</strong> is an international amateur radio program where licensed
-                operators hike to designated mountain summits and make radio contacts with other stations around the world —
-                using only portable, battery-powered equipment they carry up themselves.
-            </p>
-            <p style="margin-top:0.75rem;">
-                When you join this hike, you'll get to witness the radio operation at the summit!
-                The operators will set up a lightweight antenna, then call out over the airwaves and log contacts
-                from other amateur radio enthusiasts who are listening and responding.
-                On a clear day, contacts can be made hundreds or even thousands of miles away.
-            </p>
-            <p style="margin-top:0.75rem;">
-                <strong>You don't need to be a licensed ham operator to tag along</strong> — just bring good hiking boots,
-                water, snacks, layers for the summit, and a sense of adventure!
-            </p>
+        <h2 style="font-size:1.3rem; font-weight:600; color:var(--ink); margin-bottom:0.25rem;">What is Summits on the Air?</h2>
+        <p style="font-size:0.85rem; color:var(--ink-3); margin-bottom:1.25rem;">A worldwide amateur radio activity program</p>
+        <p style="font-size:0.9rem; color:var(--ink-2); line-height:1.7; margin-bottom:1.25rem;">
+            <strong style="color:var(--ink);">Summits on the Air (SOTA)</strong> is an international amateur radio program where licensed
+            operators hike to designated mountain summits and make radio contacts with other stations around the world —
+            using only portable, battery-powered equipment they carry up themselves.
+        </p>
+        <div class="explainer-grid">
+            <div class="explainer-card">
+                <h4>No license needed to hike</h4>
+                <p>You don't need a radio license to join the hike — just come along for the mountain views and fresh air.</p>
+            </div>
+            <div class="explainer-card">
+                <h4>What we do on top</h4>
+                <p>We set up a lightweight portable radio and antenna, then make contact with stations across the country — sometimes across oceans.</p>
+            </div>
+            <div class="explainer-card">
+                <h4>Points &amp; awards</h4>
+                <p>Each summit is worth points based on elevation. Operators accumulate points toward international awards.</p>
+            </div>
+            <div class="explainer-card">
+                <h4>A global community</h4>
+                <p>Chasers around the world listen for activators and make contact. It's like geocaching, but with radio waves.</p>
+            </div>
         </div>
         <?php if ($pa['sota_ref']): ?>
-        <p style="margin-top:1rem; font-size:0.85rem; color:#666;">
-            Learn more about this summit at
+        <div style="margin-top:1.25rem; display:flex; gap:8px; flex-wrap:wrap;">
             <a href="https://sotl.as/summits/<?= str_replace('%2F', '/', rawurlencode($pa['sota_ref'])) ?>" target="_blank"
-               style="color:var(--teal); font-weight:600;">SOTLas</a>
-            or the
+               class="btn btn-ghost" style="font-size:0.82rem;">View on SOTLas ↗</a>
             <a href="https://www.sotadata.org.uk/en/summit/<?= urlencode($pa['sota_ref']) ?>" target="_blank"
-               style="color:var(--teal); font-weight:600;">SOTA database</a>.
-        </p>
+               class="btn btn-ghost" style="font-size:0.82rem;">SOTA Database ↗</a>
+            <button class="btn btn-primary" style="font-size:0.82rem;" onclick="document.getElementById('sota-modal').classList.remove('open')">Got it</button>
+        </div>
+        <?php else: ?>
+        <div style="margin-top:1.25rem;">
+            <button class="btn btn-primary" style="font-size:0.82rem;" onclick="document.getElementById('sota-modal').classList.remove('open')">Got it</button>
+        </div>
         <?php endif; ?>
     </div>
 </div>
 
-<footer style="text-align:center; padding:2rem 1rem 1.5rem; color:#aaa; font-size:0.78rem;">
-    SOTA Planner &nbsp;·&nbsp; <a href="changelog.php" style="color:#aaa; text-decoration:none;">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com" style="color:#aaa; text-decoration:none;">sotaplanner.com</a>
+<footer class="invite-footer">
+    SOTA Planner &nbsp;·&nbsp; <a href="changelog.php">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com">sotaplanner.com</a>
 </footer>
 </body>
 </html>

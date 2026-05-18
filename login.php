@@ -2,9 +2,9 @@
 require_once 'config.php';
 session_start();
 
-// Already logged in — go to group selection
+// Already logged in — go to dashboard (or group picker if no group set)
 if (isset($_SESSION['sota_callsign'])) {
-    header('Location: planning_groups.php');
+    header('Location: ' . (isset($_SESSION['current_planning_group_id']) ? 'index.php' : 'planning_groups.php'));
     exit;
 }
 
@@ -13,15 +13,55 @@ $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['dev_login'])) {
         $callsign = strtoupper(trim($_POST['callsign'] ?? ''));
-        $password  = $_POST['password'] ?? '';
 
-        if ($callsign === 'KI6CR' && $password === 'sota') {
-            $_SESSION['sota_callsign']   = 'KI6CR';
-            $_SESSION['sota_login_type'] = 'dev';
-            header('Location: planning_groups.php');
+        if ($callsign !== '' && preg_match('/^[A-Z0-9]{3,10}$/', $callsign)) {
+            $_SESSION['sota_callsign']   = $callsign;
+            $_SESSION['sota_login_type'] = 'early_access';
+
+            // Determine redirect based on group membership
+            try {
+                $db = getDbConnection();
+
+                // Fetch all groups this user belongs to, owned groups first
+                $stmt = $db->prepare("
+                    SELECT DISTINCT pg.id,
+                           CASE WHEN pg.owner_callsign = :cs THEN 0 ELSE 1 END AS sort_order
+                    FROM planning_groups pg
+                    LEFT JOIN planning_group_members pgm ON pg.id = pgm.planning_group_id
+                    WHERE pg.owner_callsign = :cs2 OR pgm.callsign = :cs3
+                    ORDER BY sort_order ASC, pg.id ASC
+                ");
+                $stmt->execute([':cs' => $callsign, ':cs2' => $callsign, ':cs3' => $callsign]);
+                $groups = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+                if (count($groups) === 0) {
+                    // New user — no groups yet
+                    header('Location: planning_groups.php?welcome=1');
+                } else {
+                    // Returning user — pick best group: saved default cookie > owned/first group
+                    $target_group = null;
+
+                    if (!empty($_COOKIE['sota_default_group'])) {
+                        $cookie_id = (int)$_COOKIE['sota_default_group'];
+                        if (in_array($cookie_id, $groups)) {
+                            $target_group = $cookie_id;
+                        }
+                    }
+
+                    if (!$target_group) {
+                        $target_group = $groups[0]; // owned group first, then oldest
+                    }
+
+                    $_SESSION['current_planning_group_id'] = $target_group;
+                    header('Location: index.php');
+                }
+            } catch (PDOException $e) {
+                // DB error — fall back to group picker
+                header('Location: planning_groups.php');
+            }
             exit;
         } else {
-            $error = 'Invalid callsign or password.';
+            $error = 'Please enter a valid callsign (letters and numbers only).';
         }
     }
 }
@@ -47,7 +87,7 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
 
         /* ── Hero ── */
         .hero {
-            background: linear-gradient(150deg, #1E3A5F 0%, #2d5a8e 60%, #4A90A4 100%);
+            background: linear-gradient(150deg, #1E3A5F 0%, #4A3A2A 60%, #9B6328 100%);
             color: white;
             padding: 3rem 1.5rem 2.5rem;
             text-align: center;
@@ -57,16 +97,13 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            background: white;
-            border-radius: 50%;
-            width: 160px;
-            height: 160px;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 6px 24px rgba(0,0,0,0.2);
+            margin-bottom: 1.25rem;
         }
 
         .hero img {
-            height: 124px;
+            height: 280px;
+            filter: brightness(0) invert(1);
+            drop-shadow: 0 2px 12px rgba(255,255,255,0.15);
         }
 
         .hero h1 {
@@ -217,13 +254,13 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
         }
 
         .sota-btn-main {
-            background: linear-gradient(135deg, #1E3A5F 0%, #2d5a8e 100%);
+            background: linear-gradient(135deg, #1E3A5F 0%, #4A3A2A 100%);
             color: white;
         }
 
         .sota-btn-main:hover {
             transform: translateY(-1px);
-            box-shadow: 0 6px 18px rgba(30,58,95,0.35);
+            box-shadow: 0 6px 18px rgba(155,99,40,0.35);
         }
 
         .sota-btn-disabled {
@@ -289,7 +326,7 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
 
         .form-group input:focus {
             outline: none;
-            border-color: #4A90A4;
+            border-color: #9B6328;
         }
 
         .submit-btn {
@@ -361,31 +398,30 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
 <!-- Hero -->
 <div class="hero">
     <div class="hero-logo-wrap">
-        <img src="logo.png" alt="SOTA Planner">
+        <img src="sota-planner-logo-font.svg" width="280" height="280" alt="SOTA Planner">
     </div>
-    <h1>SOTA Planner</h1>
     <p class="tagline">Doorstep-to-doorstep planning for busy activators and collaborative teams — understand the full time commitment to getting that summit in your logbook.</p>
 </div>
 
 <!-- Feature highlights -->
 <div class="features">
     <div class="feature">
-        <span class="feature-icon">⏱️</span>
+        <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="17" r="12"/><polyline points="16,10 16,17 21,17"/><path d="M16,5 L16,3"/><path d="M14,3 L18,3"/></svg></span>
         <h3>Total Day Estimate</h3>
         <p>Drive time + hiking time + radio time = one number. Compare summits and pick what fits your day.</p>
     </div>
     <div class="feature">
-        <span class="feature-icon">🗺️</span>
+        <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6,26 12,10 18,20 26,6"/><circle cx="26" cy="6" r="3"/><line x1="4" y1="28" x2="28" y2="28"/></svg></span>
         <h3>GPX Track Analysis</h3>
         <p>Upload a recorded track to get real hiking time, activation time, rest breaks, elevation, and speed.</p>
     </div>
     <div class="feature">
-        <span class="feature-icon">📨</span>
+        <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="24" height="16" rx="2"/><polyline points="4,8 16,18 28,8"/></svg></span>
         <h3>Shareable Invitations</h3>
         <p>Generate a public invite page for guests — timeline, map, driving directions, no login required.</p>
     </div>
     <div class="feature">
-        <span class="feature-icon">👥</span>
+        <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M4,26 C4,20 8,18 12,18 C16,18 20,20 20,26"/><circle cx="22" cy="12" r="3"/><path d="M22,18 C25,18 28,20 28,25"/></svg></span>
         <h3>Group Planning</h3>
         <p>Share a planning group with your activation partners. Everyone sees the same summit wishlist and research.</p>
     </div>
@@ -429,7 +465,7 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
 <div class="login-wrap">
     <div class="login-card">
         <h2>Sign in to get started</h2>
-        <p class="sub">Use your SOTA account to keep your planning groups private.</p>
+        <p class="sub">Enter your callsign to access your planning groups. Full SOTA SSO login coming soon.</p>
 
         <?php if ($error): ?>
             <div class="error-msg"><?= htmlspecialchars($error) ?></div>
@@ -447,21 +483,23 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
             <p class="coming-soon-note">OAuth client registration pending with SOTA team</p>
         <?php endif; ?>
 
-        <div class="divider"><span>Dev mode <span class="dev-badge">Testing</span></span></div>
+        <div class="divider"><span>Early Access Preview</span></div>
 
         <form method="POST">
             <div class="form-group">
-                <label>Callsign</label>
+                <label>Your Callsign</label>
                 <input type="text" name="callsign"
                        value="<?= htmlspecialchars($_POST['callsign'] ?? '') ?>"
                        autocomplete="username" autocapitalize="characters"
-                       placeholder="KI6CR" required>
+                       placeholder="e.g. W7XYZ" required>
             </div>
             <div class="form-group">
-                <label>Password</label>
+                <label style="color:#ccc;">Password <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:0.72rem;">&mdash; not required during early access</span></label>
                 <input type="password" name="password"
-                       autocomplete="current-password"
-                       placeholder="••••••••" required>
+                       autocomplete="off"
+                       placeholder="No password needed yet"
+                       disabled
+                       style="background:#f7f7f7;color:#ccc;border-color:#e8e8e8;cursor:not-allowed;">
             </div>
             <button type="submit" name="dev_login" class="submit-btn">Sign In</button>
         </form>
