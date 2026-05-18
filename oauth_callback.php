@@ -31,7 +31,11 @@ if (isset($_GET['action']) && $_GET['action'] === 'login') {
     }
 
     $state = bin2hex(random_bytes(16));
-    $_SESSION['oauth_state'] = $state;
+
+    // Store state in DB — cookies and sessions are unreliable across OAuth redirects in Safari
+    $db = getDbConnection();
+    $db->prepare("INSERT INTO app_settings (setting_key, setting_value, updated_at) VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=NOW()")
+       ->execute(['oauth_state_' . $state, time() + 600]);
 
     $params = [
         'response_type' => 'code',
@@ -47,25 +51,45 @@ if (isset($_GET['action']) && $_GET['action'] === 'login') {
 
 // ── Step 2: Handle callback from SOTA SSO ─────────────────────────────────
 if (isset($_GET['code'])) {
-    // Validate state to prevent CSRF
-    if (!isset($_GET['state']) || $_GET['state'] !== ($_SESSION['oauth_state'] ?? '')) {
-        http_response_code(403);
-        die('OAuth state mismatch. Please try logging in again.');
+    $debug = defined('SOTA_SSO_DEBUG') && SOTA_SSO_DEBUG;
+    if ($debug) {
+        echo "<pre style='background:#1a1a2e;color:#00ff88;padding:1rem;font-size:13px;'>";
+        echo "=== SOTA SSO DEBUG ===\n";
+        echo "code present: yes\n";
+        echo "state param:  " . htmlspecialchars($_GET['state'] ?? '(none)') . "\n";
+        echo "error param:  " . htmlspecialchars($_GET['error'] ?? '(none)') . "\n";
+        echo "</pre>";
     }
-    unset($_SESSION['oauth_state']);
+    // Validate state via DB — immune to Safari ITP and shared-hosting session issues
+    $incoming_state = $_GET['state'] ?? '';
+    if (empty($incoming_state)) {
+        http_response_code(403);
+        die('OAuth error: no state parameter returned from SOTA.');
+    }
+    $db = getDbConnection();
+    $stmt = $db->prepare("SELECT setting_value FROM app_settings WHERE setting_key = ?");
+    $stmt->execute(['oauth_state_' . $incoming_state]);
+    $row = $stmt->fetch();
+    if (!$row || (int)$row['setting_value'] < time()) {
+        http_response_code(403);
+        die('OAuth state invalid or expired. Please try logging in again.');
+    }
+    $db->prepare("DELETE FROM app_settings WHERE setting_key = ?")->execute(['oauth_state_' . $incoming_state]);
 
-    if (!defined('SOTA_CLIENT_ID') || !defined('SOTA_CLIENT_SECRET')) {
+    if (!defined('SOTA_CLIENT_ID')) {
         die('SOTA OAuth credentials are not configured.');
     }
 
     // Exchange code for tokens
     $token_data = [
-        'grant_type'    => 'authorization_code',
-        'code'          => $_GET['code'],
-        'redirect_uri'  => SOTA_REDIRECT_URI,
-        'client_id'     => SOTA_CLIENT_ID,
-        'client_secret' => SOTA_CLIENT_SECRET,
+        'grant_type'   => 'authorization_code',
+        'code'         => $_GET['code'],
+        'redirect_uri' => SOTA_REDIRECT_URI,
+        'client_id'    => SOTA_CLIENT_ID,
     ];
+    if (defined('SOTA_CLIENT_SECRET') && SOTA_CLIENT_SECRET !== '') {
+        $token_data['client_secret'] = SOTA_CLIENT_SECRET;
+    }
 
     $ch = curl_init(SOTA_TOKEN_URL);
     curl_setopt_array($ch, [
@@ -81,12 +105,22 @@ if (isset($_GET['code'])) {
 
     if ($http_code !== 200 || !$response) {
         error_log("SOTA token exchange failed: HTTP $http_code — $response");
+        if ($debug) {
+            die("<pre>TOKEN EXCHANGE FAILED\nHTTP: $http_code\nResponse: " . htmlspecialchars($response) . "\nRequest params: " . htmlspecialchars(http_build_query($token_data)) . "</pre>");
+        }
         die('Login failed: could not exchange authorization code. Please try again.');
     }
 
     $tokens = json_decode($response, true);
+    if ($debug) {
+        echo "<pre>TOKEN RESPONSE (HTTP $http_code):\n" . htmlspecialchars(json_encode($tokens, JSON_PRETTY_PRINT)) . "</pre>";
+    }
+
     if (empty($tokens['access_token'])) {
         error_log("SOTA token response missing access_token: $response");
+        if ($debug) {
+            die("<pre>NO ACCESS TOKEN\nFull response: " . htmlspecialchars($response) . "</pre>");
+        }
         die('Login failed: no access token received.');
     }
 
@@ -101,13 +135,23 @@ if (isset($_GET['code'])) {
     curl_close($ch);
 
     $userinfo = json_decode($userinfo_raw, true);
+    if ($debug) {
+        echo "<pre>USERINFO RESPONSE:\n" . htmlspecialchars(json_encode($userinfo, JSON_PRETTY_PRINT)) . "</pre>";
+    }
 
     // Callsign is the preferred_username in SOTA's Keycloak
     $callsign = strtoupper(trim($userinfo['preferred_username'] ?? $userinfo['sub'] ?? ''));
 
     if (empty($callsign)) {
         error_log("SOTA userinfo missing callsign: $userinfo_raw");
+        if ($debug) {
+            die("<pre>NO CALLSIGN IN USERINFO\nFull userinfo: " . htmlspecialchars($userinfo_raw) . "</pre>");
+        }
         die('Login failed: could not retrieve callsign from SOTA account.');
+    }
+
+    if ($debug) {
+        die("<pre>DEBUG: Login would succeed for callsign: $callsign\nClick <a href='index.php'>here</a> to skip debug and continue normally (disable SOTA_SSO_DEBUG first).</pre>");
     }
 
     // Store in session

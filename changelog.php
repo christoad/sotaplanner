@@ -39,12 +39,24 @@
 <div class="container">
     <a href="index.php" class="back">← Back to Planner</a>
 
-    <!-- v1.0.5 -->
+    <!-- v1.1.0 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.1.0</span>
+            <span class="version-date">May 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Sign in with your SOTA account.</p>
+        <ul>
+            <li><span class="tag tag-new">New</span> Log in using your official SOTA credentials — no separate password needed</li>
+        </ul>
+    </div>
+
+    <!-- v1.0.5 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.0.5</span>
             <span class="version-date">May 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Minor content updates.</p>
         <ul>
