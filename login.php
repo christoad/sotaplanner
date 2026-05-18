@@ -464,8 +464,8 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
 <!-- Login card -->
 <div class="login-wrap">
     <div class="login-card">
-        <h2>Sign in to get started</h2>
-        <p class="sub">Enter your callsign to access your planning groups. Full SOTA SSO login coming soon.</p>
+        <h2 style="text-align:center;">Sign in to get started</h2>
+        <p class="sub">Use your official SOTA account — the same login you use on sotadata.org.uk.</p>
 
         <?php if ($error): ?>
             <div class="error-msg"><?= htmlspecialchars($error) ?></div>
@@ -474,7 +474,7 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
         <!-- SOTA SSO -->
         <?php if ($sota_oauth_enabled): ?>
             <a href="oauth_callback.php?action=login" class="sota-btn sota-btn-main">
-                ⛰️ Continue with SOTA Login
+                ⛰️ Continue with SOTA Login (SSO)
             </a>
         <?php else: ?>
             <button class="sota-btn sota-btn-disabled" disabled>
@@ -483,32 +483,44 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
             <p class="coming-soon-note">OAuth client registration pending with SOTA team</p>
         <?php endif; ?>
 
-        <div class="divider"><span>Early Access Preview</span></div>
-
-        <form method="POST">
-            <div class="form-group">
-                <label>Your Callsign</label>
-                <input type="text" name="callsign"
-                       value="<?= htmlspecialchars($_POST['callsign'] ?? '') ?>"
-                       autocomplete="username" autocapitalize="characters"
-                       placeholder="e.g. W7XYZ" required>
-            </div>
-            <div class="form-group">
-                <label style="color:#ccc;">Password <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:0.72rem;">&mdash; not required during early access</span></label>
-                <input type="password" name="password"
-                       autocomplete="off"
-                       placeholder="No password needed yet"
-                       disabled
-                       style="background:#f7f7f7;color:#ccc;border-color:#e8e8e8;cursor:not-allowed;">
-            </div>
-            <button type="submit" name="dev_login" class="submit-btn">Sign In</button>
-        </form>
     </div>
 </div>
 
 <footer>
     <a href="changelog.php">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; sotaplanner.com
 </footer>
+
+<!-- Developer access — bottom left corner -->
+<div style="position:fixed; bottom:1rem; left:1rem; z-index:999;">
+    <div id="dev-access" style="display:<?= $error ? 'block' : 'none' ?>; margin-bottom:0.5rem; padding:0.85rem 1rem; background:#fff; border:1px solid #e0e0e0; border-radius:10px; box-shadow:0 4px 16px rgba(0,0,0,0.1); width:220px;">
+        <?php if ($error): ?>
+            <div style="font-size:0.75rem;color:#dc2626;margin-bottom:0.6rem;font-weight:600;"><?= htmlspecialchars($error) ?></div>
+        <?php endif; ?>
+        <form method="POST" style="display:flex; gap:0.4rem; align-items:center;">
+            <input type="text" name="callsign"
+                   value="<?= htmlspecialchars($_POST['callsign'] ?? '') ?>"
+                   autocomplete="off" autocapitalize="characters"
+                   placeholder="Callsign"
+                   style="flex:1;padding:0.4rem 0.6rem;border:1px solid #ddd;border-radius:6px;font-family:inherit;font-size:0.82rem;color:#333;">
+            <button type="submit" name="dev_login"
+                    style="padding:0.4rem 0.75rem;border:none;border-radius:6px;background:#555;color:#fff;font-family:inherit;font-size:0.8rem;font-weight:600;cursor:pointer;">
+                Go
+            </button>
+        </form>
+    </div>
+    <button type="button" id="dev-toggle"
+            style="background:none;border:none;cursor:pointer;font-size:0.68rem;color:#ccc;font-family:inherit;padding:0;"
+            onmouseover="this.style.color='#999'" onmouseout="this.style.color='#ccc'">
+        Developer access
+    </button>
+</div>
+
+<script>
+document.getElementById('dev-toggle').addEventListener('click', function() {
+    var d = document.getElementById('dev-access');
+    d.style.display = d.style.display === 'none' ? 'block' : 'none';
+});
+</script>
 
 </body>
 </html>
