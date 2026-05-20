@@ -2,6 +2,9 @@
 
 ## Pending Work — Ask Chris at Session Start
 
+**Google Maps API key — referrer restriction:**
+Billing is working. Distance Matrix and Geocoding APIs are functional. The Maps JavaScript API fails with `RefererNotAllowedMapError` because the key's HTTP referrer allowlist doesn't include the site domains. At the start of the next session, ask Chris: "Ready to fix the Google Maps JS API? You need to add `*.sotaplanner.com/*` and `*.ki6cr.com/*` to the allowed referrers on the API key in Google Cloud Console (APIs & Services → Credentials → key ending in W5Fo → Application restrictions). Once done, interactive maps will work and we can remove test_maps.php."
+
 **Track 2 — SOTA API read-only features (not yet built):**
 At the start of the next session, ask Chris: "Ready to build the SOTA API read-only features? We planned to show activation history (which group members have activated a summit) and existing SOTAWatch alerts on the summit detail page. Both use the public SOTA API and don't need OAuth."
 

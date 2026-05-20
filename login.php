@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if (count($groups) === 0) {
                     // New user — no groups yet
-                    header('Location: planning_groups.php?welcome=1');
+                    header('Location: onboarding.php');
                 } else {
                     // Returning user — pick best group: saved default cookie > owned/first group
                     $target_group = null;

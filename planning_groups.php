@@ -213,8 +213,13 @@ try {
     }
 } catch (PDOException $e) {}
 
-// Get selected group
+// Get selected group — auto-select if user only belongs to one group
 $managing_group_id = $_SESSION['manage_group_id'] ?? null;
+if (!$managing_group_id && count($all_groups) === 1) {
+    $managing_group_id = $all_groups[0]['id'];
+    $_SESSION['manage_group_id'] = $managing_group_id;
+    setCurrentPlanningGroup($managing_group_id);
+}
 $managing_group = null;
 $addresses = [];
 $selected_address_id = null;

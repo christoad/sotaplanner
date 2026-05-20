@@ -1191,5 +1191,286 @@ $summits = $stmt->fetchAll();
         document.addEventListener('click', function() { chip.classList.remove('open'); });
     })();
 </script>
+
+<script>
+// Auto-launch tour if the user checked "show again next time"
+if (!new URLSearchParams(window.location.search).has('tour') &&
+    localStorage.getItem('sota_tour_pending') === '1') {
+    localStorage.removeItem('sota_tour_pending');
+    var u = new URL(window.location);
+    u.searchParams.set('tour', '1');
+    window.location.replace(u.toString());
+}
+</script>
+
+<?php if (isset($_GET['tour']) && $_GET['tour'] === '1'): ?>
+<!-- ═══ NEW USER TOUR ═══ -->
+<style>
+#tour-svg {
+    position: fixed; inset: 0; z-index: 900;
+    width: 100vw; height: 100vh;
+    pointer-events: none;
+}
+#tour-card {
+    position: fixed; z-index: 910;
+    width: min(380px, calc(100vw - 32px));
+    background: var(--surface);
+    border-radius: var(--r-xl);
+    box-shadow: 0 16px 48px rgba(28,27,25,0.28), 0 4px 16px rgba(28,27,25,0.14);
+    padding: 1.5rem;
+    opacity: 0;
+    transition: opacity 0.18s ease;
+}
+#tour-card.visible { opacity: 1; }
+.tdots { display: flex; align-items: center; gap: 5px; margin-bottom: 1rem; }
+.tdot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--border-2); transition: all 0.25s;
+}
+.tdot.active { background: var(--ink); width: 22px; border-radius: 4px; }
+.tdot.done   { background: var(--accent); }
+#tour-title {
+    font-size: 1.05rem; font-weight: 600; color: var(--ink);
+    margin-bottom: 0.5rem; line-height: 1.3;
+}
+#tour-body {
+    font-size: 0.875rem; color: var(--ink-2); line-height: 1.65;
+    margin-bottom: 1.25rem;
+}
+.tour-actions {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+}
+.tbtn {
+    display: inline-flex; align-items: center;
+    padding: 0 0.875rem; height: 34px;
+    border-radius: var(--r-md); font-family: var(--font-sans);
+    font-size: 0.82rem; font-weight: 500; cursor: pointer;
+    border: none; line-height: 1; transition: background 0.12s;
+}
+.tbtn-primary { background: var(--ink); color: #fff; }
+.tbtn-primary:hover { background: var(--ink-2); }
+.tbtn-ghost { background: var(--bg-2); color: var(--ink-2); border: 1px solid var(--border); }
+.tbtn-ghost:hover { background: var(--bg-3); }
+.tbtn-skip {
+    background: none; border: none; color: var(--ink-4);
+    font-size: 0.8rem; cursor: pointer; font-family: var(--font-sans);
+    text-decoration: underline; text-underline-offset: 2px; padding: 0;
+}
+.tbtn-skip:hover { color: var(--ink-2); }
+</style>
+
+<svg id="tour-svg" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <mask id="tour-mask">
+            <rect width="100%" height="100%" fill="white"/>
+            <rect id="tour-hole" rx="10" ry="10" fill="black" x="-9999" y="-9999" width="1" height="1"/>
+        </mask>
+    </defs>
+    <rect width="100%" height="100%" fill="rgba(28,27,25,0.78)" mask="url(#tour-mask)"/>
+    <rect id="tour-ring" rx="12" ry="12" fill="none"
+          stroke="rgba(255,255,255,0.4)" stroke-width="2"
+          x="-9999" y="-9999" width="1" height="1"/>
+</svg>
+
+<div id="tour-card">
+    <div class="tdots" id="tdots"></div>
+    <div id="tour-title"></div>
+    <p id="tour-body"></p>
+    <label id="tour-show-again-wrap" style="display:none;align-items:center;gap:0.5rem;font-size:0.82rem;color:var(--ink-3);margin-bottom:1rem;cursor:pointer;line-height:1.4;">
+        <input type="checkbox" id="tour-show-again" style="cursor:pointer;flex-shrink:0;">
+        Show this tour again next time I visit
+    </label>
+    <div class="tour-actions">
+        <button class="tbtn tbtn-skip" id="tour-skip" onclick="tourSkip()">Skip — remind me next time</button>
+        <div style="display:flex;gap:0.4rem">
+            <button class="tbtn tbtn-ghost" id="tour-back" onclick="tourBack()">← Back</button>
+            <button class="tbtn tbtn-primary" id="tour-next" onclick="tourNext()">Next →</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+var STEPS = [
+    {
+        sel: null,
+        title: "Welcome to your dashboard!",
+        body:  "Your planning group is all set up. Let me show you the key parts of the dashboard so you can hit the ground running.",
+    },
+    {
+        sel: '.topbar-context',
+        title: "Your planning group",
+        body:  "Your active group and starting address live here. Switch groups or addresses anytime — drive times and totals update automatically.",
+    },
+    {
+        sel: '.topbar-nav a[href="planning_groups.php"]',
+        title: "Manage your group",
+        body:  "Planning Groups is where you add friends as co-activators, set up additional groups, and manage your starting addresses. Everything's editable anytime.",
+    },
+    {
+        sel: 'a[href="nominate.php"].btn',
+        title: "Add your first summit",
+        body:  "Click '+ Nominate Summit' and enter a SOTA reference code (like W7O/NC-001). SOTA Planner pulls the name, elevation, and coordinates automatically.",
+    },
+    {
+        sel: '.toolbar',
+        title: "Filter and time your trips",
+        body:  "Filter by difficulty or research status. Adjust the Activation time field to instantly recalculate the total door-to-door estimate for every summit in your list.",
+    },
+    {
+        sel: null,
+        title: "You're all set!",
+        body:  "Click any summit row to open its full detail page — interactive map, elevation chart, GPX upload, and planning tools. Manage your group anytime from Planning Groups in the nav.",
+        final: true,
+    },
+];
+
+var step = 0;
+
+function dots() {
+    var el = document.getElementById('tdots');
+    el.innerHTML = '';
+    STEPS.forEach(function(_, i) {
+        var d = document.createElement('div');
+        d.className = 'tdot' + (i < step ? ' done' : i === step ? ' active' : '');
+        el.appendChild(d);
+    });
+}
+
+function spotlight(rect, pad) {
+    var p = pad || 10;
+    var hole = document.getElementById('tour-hole');
+    var ring = document.getElementById('tour-ring');
+    if (!rect) {
+        ['x','y','width','height'].forEach(function(a,i) {
+            hole.setAttribute(a, i < 2 ? '-9999' : '1');
+            ring.setAttribute(a, i < 2 ? '-9999' : '1');
+        });
+        return;
+    }
+    hole.setAttribute('x',      rect.left - p);
+    hole.setAttribute('y',      rect.top  - p);
+    hole.setAttribute('width',  rect.width  + p * 2);
+    hole.setAttribute('height', rect.height + p * 2);
+    ring.setAttribute('x',      rect.left - p - 2);
+    ring.setAttribute('y',      rect.top  - p - 2);
+    ring.setAttribute('width',  rect.width  + p * 2 + 4);
+    ring.setAttribute('height', rect.height + p * 2 + 4);
+}
+
+function placeCard(rect) {
+    var card = document.getElementById('tour-card');
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var cw = card.offsetWidth, ch = card.offsetHeight;
+    var top, left;
+    if (!rect) {
+        top  = Math.max(16, (vh - ch) / 2);
+        left = Math.max(16, (vw - cw) / 2);
+    } else {
+        var pad = 10, gap = 16;
+        var mid = (rect.top + rect.bottom) / 2;
+        if (mid < vh * 0.55) {
+            top = rect.bottom + pad + gap;
+            if (top + ch > vh - 16) top = vh - ch - 16;
+        } else {
+            top = rect.top - pad - ch - gap;
+            if (top < 16) top = 16;
+        }
+        left = rect.left + rect.width / 2 - cw / 2;
+        left = Math.max(16, Math.min(left, vw - cw - 16));
+    }
+    card.style.top  = top  + 'px';
+    card.style.left = left + 'px';
+}
+
+function show(i) {
+    var s = STEPS[i];
+    document.getElementById('tour-title').textContent = s.title;
+    document.getElementById('tour-body').textContent  = s.body;
+    dots();
+
+    var backBtn = document.getElementById('tour-back');
+    var nextBtn = document.getElementById('tour-next');
+    var skipBtn = document.getElementById('tour-skip');
+
+    backBtn.style.display = (i === 0) ? 'none' : '';
+    skipBtn.style.display = s.final  ? 'none' : '';
+    nextBtn.textContent = s.final ? 'Start planning →' : (i === STEPS.length - 2 ? 'Finish →' : 'Next →');
+
+    var showAgainWrap = document.getElementById('tour-show-again-wrap');
+    showAgainWrap.style.display = s.final ? 'flex' : 'none';
+
+    var card = document.getElementById('tour-card');
+    card.classList.remove('visible');
+
+    if (s.sel) {
+        var el = document.querySelector(s.sel);
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            setTimeout(function() {
+                var rect = el.getBoundingClientRect();
+                spotlight(rect);
+                placeCard(rect);
+                card.classList.add('visible');
+            }, 280);
+        } else {
+            spotlight(null);
+            placeCard(null);
+            card.classList.add('visible');
+        }
+    } else {
+        spotlight(null);
+        placeCard(null);
+        card.classList.add('visible');
+    }
+}
+
+window.tourNext = function() {
+    if (step < STEPS.length - 1) { step++; show(step); }
+    else tourEnd();
+};
+window.tourBack = function() {
+    if (step > 0) { step--; show(step); }
+};
+function hideTour() {
+    document.getElementById('tour-svg').style.display  = 'none';
+    document.getElementById('tour-card').style.display = 'none';
+    var url = new URL(window.location);
+    url.searchParams.delete('tour');
+    history.replaceState({}, '', url.toString());
+}
+window.tourSkip = function() {
+    localStorage.setItem('sota_tour_pending', '1');
+    hideTour();
+};
+window.tourEnd = function() {
+    var cb = document.getElementById('tour-show-again');
+    if (cb && cb.checked) {
+        localStorage.setItem('sota_tour_pending', '1');
+    } else {
+        localStorage.removeItem('sota_tour_pending');
+    }
+    hideTour();
+};
+
+window.addEventListener('resize', function() {
+    var s = STEPS[step];
+    if (s.sel) {
+        var el = document.querySelector(s.sel);
+        if (el) { var r = el.getBoundingClientRect(); spotlight(r); placeCard(r); }
+    } else { spotlight(null); placeCard(null); }
+});
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape')      tourEnd();
+    if (e.key === 'ArrowRight')  tourNext();
+    if (e.key === 'ArrowLeft')   tourBack();
+});
+
+window.addEventListener('load', function() { show(0); });
+})();
+</script>
+<?php endif; ?>
+
 </body>
 </html>

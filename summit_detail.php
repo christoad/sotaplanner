@@ -46,6 +46,11 @@ if (isset($_GET['saved'])) {
 if (isset($_GET['geocoded'])) {
     $message = $_GET['geocoded'];
 }
+if (isset($_GET['drive_error'])) {
+    $error = $_GET['drive_error'] == 2
+        ? 'No address set — add a starting address in the Groups page first.'
+        : 'Drive time calculation failed. Check that your Google Maps API key has the Distance Matrix API enabled, or try again.';
+}
 
 
 // Quick summit/group name lookup used for activity logging on POST
@@ -367,27 +372,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $db->prepare("SELECT trailhead_lat, trailhead_lng, latitude, longitude FROM summits WHERE id = ?");
             $stmt->execute([$summit_id]);
             $summit_data = $stmt->fetch();
-            
-            $dest_lat = $summit_data['trailhead_lat'] ?? $summit_data['latitude'];
-            $dest_lng = $summit_data['trailhead_lng'] ?? $summit_data['longitude'];
-            
+
+            $dest_lat = !empty($summit_data['trailhead_lat']) ? $summit_data['trailhead_lat'] : $summit_data['latitude'];
+            $dest_lng = !empty($summit_data['trailhead_lng']) ? $summit_data['trailhead_lng'] : $summit_data['longitude'];
+
             $drive_time = calculateDriveTime($selected_address['address'], $dest_lat, $dest_lng);
-            
+
             if ($drive_time !== null) {
-                // Multiply by 2 for round trip
                 $drive_time_rt = $drive_time * 2;
                 $stmt = $db->prepare("UPDATE summits SET drive_time_min = ? WHERE id = ?");
                 $stmt->execute([$drive_time_rt, $summit_id]);
-                
                 $msg = urlencode("Drive time (RT): " . formatTime($drive_time_rt));
-                header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&geocoded=" . $msg);
-                exit;
+                header("Location: summit_detail.php?id=" . $summit_id . "&group=" . ($current_group['id'] ?? '') . "&geocoded=" . $msg);
             } else {
-                $error = "Could not calculate drive time.";
+                error_log("SOTA drive time calc failed for summit $summit_id — origin: {$selected_address['address']}, dest: $dest_lat,$dest_lng");
+                header("Location: summit_detail.php?id=" . $summit_id . "&group=" . ($current_group['id'] ?? '') . "&drive_error=1");
             }
         } else {
-            $error = "Please select an address first.";
+            header("Location: summit_detail.php?id=" . $summit_id . "&drive_error=2");
         }
+        exit;
     }
     
     // Update summit
@@ -587,6 +591,20 @@ $stmt->execute([$summit_id]);
 $notes = $stmt->fetchAll();
 
 $selected_address = getSelectedAddress($db);
+
+// Auto-calculate drive time on first load if it's missing and we have an address + coordinates
+if (empty($summit['drive_time_min']) && $selected_address && !empty($summit['latitude'])) {
+    $dest_lat = !empty($summit['trailhead_lat']) ? $summit['trailhead_lat'] : $summit['latitude'];
+    $dest_lng = !empty($summit['trailhead_lng']) ? $summit['trailhead_lng'] : $summit['longitude'];
+    $auto_drive = calculateDriveTime($selected_address['address'], $dest_lat, $dest_lng);
+    if ($auto_drive !== null) {
+        $auto_drive_rt = $auto_drive * 2;
+        $db->prepare("UPDATE summits SET drive_time_min = ? WHERE id = ?")
+           ->execute([$auto_drive_rt, $summit_id]);
+        $summit['drive_time_min'] = $auto_drive_rt;
+    }
+}
+
 // Track type determines how one-way GPX tracks are used for round-trip planning
 $track_type = $gpx_data['track_type'] ?? 'round-trip';
 $gpx_download_name = $gpx_data ? preg_replace('/[^a-zA-Z0-9]+/', '-', $summit['name'] ?? 'summit')
@@ -1109,9 +1127,15 @@ if ($tl_show) {
           <?php if ($drive_rt): ?>
             <div class="stat-cell-val"><?= floor($drive_rt/60) ?>h <?= $drive_rt%60 ?>m</div>
             <div class="stat-cell-sub"><?= $selected_address ? htmlspecialchars($selected_address['label'] ?: 'from base') : 'round-trip' ?></div>
+          <?php elseif ($selected_address): ?>
+            <div class="stat-cell-val" style="color:var(--ink-3); font-size:0.875rem;">—</div>
+            <button type="submit" name="calculate_drive_time"
+                    style="margin-top:0.35rem; background:var(--accent); color:#fff; border:none; border-radius:var(--r-sm); padding:0.2rem 0.55rem; font-size:0.68rem; font-weight:600; cursor:pointer; font-family:var(--font-sans); white-space:nowrap;">
+                Calculate
+            </button>
           <?php else: ?>
             <div class="stat-cell-val" style="color:var(--ink-3); font-size:0.875rem;">—</div>
-            <div class="stat-cell-sub">Not set</div>
+            <div class="stat-cell-sub"><a href="planning_groups.php" style="color:var(--ink-4);">Add address</a></div>
           <?php endif; ?>
         </div>
         <div class="stat-cell">
@@ -1307,8 +1331,8 @@ if ($tl_show) {
 
       <div style="display:flex; gap:0.75rem; padding-top:1rem; border-top:1px solid var(--border);">
         <button type="submit" name="update_summit" class="btn btn-primary">Save Changes</button>
-        <?php if ($selected_address): ?>
-          <button type="submit" name="calculate_drive_time" class="btn btn-secondary">Calculate Drive Time</button>
+        <?php if ($selected_address && $drive_rt): ?>
+          <button type="submit" name="calculate_drive_time" class="btn btn-ghost btn-sm" style="align-self:center;">Recalculate Drive Time</button>
         <?php endif; ?>
       </div>
     </div>

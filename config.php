@@ -1,5 +1,5 @@
 <?php
-define('APP_VERSION', '1.1.0');
+define('APP_VERSION', '1.2.0');
 
 // Enable error reporting for debugging
 error_reporting(E_ALL);
@@ -91,13 +91,16 @@ function calculateDriveTime($origin_address, $dest_lat, $dest_lng) {
     
     if ($http_code === 200 && $response) {
         $data = json_decode($response, true);
-        
-        if ($data['status'] === 'OK' && isset($data['rows'][0]['elements'][0]['duration'])) {
+
+        if (isset($data['status']) && $data['status'] === 'OK' && isset($data['rows'][0]['elements'][0]['duration'])) {
             $duration_seconds = $data['rows'][0]['elements'][0]['duration']['value'];
             return round($duration_seconds / 60);
         }
+        error_log("SOTA Maps API non-OK: " . substr($response, 0, 500));
+        return null;
     }
-    
+
+    error_log("SOTA Maps API HTTP $http_code: " . substr($response, 0, 200));
     return null;
 }
 

@@ -172,9 +172,8 @@ if (isset($_GET['code'])) {
     $groups = $stmt->fetchAll();
 
     if (empty($groups)) {
-        // New user — send to groups page to create their first group
-        $_SESSION['onboarding'] = true;
-        header('Location: planning_groups.php');
+        // New user — send to onboarding wizard
+        header('Location: onboarding.php');
         exit;
     }
 

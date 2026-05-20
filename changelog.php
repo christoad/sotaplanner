@@ -230,12 +230,26 @@ session_start();
         <p>Release history and update notes for SOTA Planner</p>
     </div>
 
-    <!-- v1.1.0 -->
+    <!-- v1.2.0 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.2.0</span>
+            <span class="version-date">May 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Smoother onboarding and smarter drive time.</p>
+        <ul>
+            <li>New users are walked through creating a group and adding a starting address step-by-step</li>
+            <li>Drive time now auto-calculates the first time you open a summit detail page, no button press needed</li>
+            <li>Groups &amp; Addresses page automatically opens your group if you only belong to one</li>
+        </ul>
+    </div>
+
+    <!-- v1.1.0 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.1.0</span>
             <span class="version-date">May 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Sign in with your SOTA account.</p>
         <ul>
