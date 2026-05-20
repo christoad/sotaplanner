@@ -204,6 +204,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
                         }
                     }
                     
+                    logActivity($db, 'Summit nominated', $sota_ref, $summit_data['name'] ?? '', $current_group['name'] ?? '');
                     header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&nominated=1");
                     exit;
                 }

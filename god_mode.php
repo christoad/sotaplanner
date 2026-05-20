@@ -213,51 +213,20 @@ $la_rows = $db->query("
 $last_activity = [];
 foreach ($la_rows as $r) $last_activity[$r['actor']] = $r['last_activity'];
 
-$activity_feed = $db->query("
-    SELECT * FROM (
-        SELECT s.updated_at AS event_time,
-               CONVERT('Summit edited' USING utf8mb4) COLLATE utf8mb4_general_ci AS event_type,
-               CONVERT(s.name USING utf8mb4) COLLATE utf8mb4_general_ci AS subject,
-               CONVERT(s.sota_ref USING utf8mb4) COLLATE utf8mb4_general_ci AS detail,
-               CONVERT(COALESCE(s.nominated_by,'—') USING utf8mb4) COLLATE utf8mb4_general_ci AS actor,
-               CONVERT(pg.name USING utf8mb4) COLLATE utf8mb4_general_ci AS group_name
-        FROM summits s JOIN planning_groups pg ON s.planning_group_id = pg.id
-        WHERE s.updated_at IS NOT NULL AND s.updated_at != s.created_at
-        UNION ALL
-        SELECT s.created_at,
-               CONVERT('Nominated' USING utf8mb4) COLLATE utf8mb4_general_ci,
-               CONVERT(s.name USING utf8mb4) COLLATE utf8mb4_general_ci,
-               CONVERT(s.sota_ref USING utf8mb4) COLLATE utf8mb4_general_ci,
-               CONVERT(COALESCE(s.nominated_by,'—') USING utf8mb4) COLLATE utf8mb4_general_ci,
-               CONVERT(pg.name USING utf8mb4) COLLATE utf8mb4_general_ci
-        FROM summits s JOIN planning_groups pg ON s.planning_group_id = pg.id
-        UNION ALL
-        SELECT a.created_at,
-               CONVERT('Activation' USING utf8mb4) COLLATE utf8mb4_general_ci,
-               CONVERT(s.name USING utf8mb4) COLLATE utf8mb4_general_ci,
-               CONVERT(s.sota_ref USING utf8mb4) COLLATE utf8mb4_general_ci,
-               CONVERT(a.callsigns USING utf8mb4) COLLATE utf8mb4_general_ci,
-               CONVERT(pg.name USING utf8mb4) COLLATE utf8mb4_general_ci
-        FROM activations a JOIN summits s ON a.summit_id = s.id JOIN planning_groups pg ON a.planning_group_id = pg.id
-        UNION ALL
-        SELECT g.uploaded_date,
-               CONVERT('GPX upload' USING utf8mb4) COLLATE utf8mb4_general_ci,
-               CONVERT(s.name USING utf8mb4) COLLATE utf8mb4_general_ci,
-               CONVERT(s.sota_ref USING utf8mb4) COLLATE utf8mb4_general_ci,
-               CONVERT(COALESCE(g.uploaded_by,'—') USING utf8mb4) COLLATE utf8mb4_general_ci,
-               CONVERT(pg.name USING utf8mb4) COLLATE utf8mb4_general_ci
-        FROM gpx_tracks g JOIN summits s ON g.summit_id = s.id JOIN planning_groups pg ON g.planning_group_id = pg.id
-        UNION ALL
-        SELECT n.created_at,
-               CONVERT('Note' USING utf8mb4) COLLATE utf8mb4_general_ci,
-               CONVERT(s.name USING utf8mb4) COLLATE utf8mb4_general_ci,
-               CONVERT(s.sota_ref USING utf8mb4) COLLATE utf8mb4_general_ci,
-               CONVERT(n.user_callsign USING utf8mb4) COLLATE utf8mb4_general_ci,
-               CONVERT(pg.name USING utf8mb4) COLLATE utf8mb4_general_ci
-        FROM summit_notes n JOIN summits s ON n.summit_id = s.id JOIN planning_groups pg ON s.planning_group_id = pg.id
-    ) feed
-    ORDER BY event_time DESC LIMIT 40
-")->fetchAll();
+// Try the structured activity_log table first; fall back to derived query if table doesn't exist yet
+try {
+    $activity_feed = $db->query("
+        SELECT event_time, callsign AS actor, login_type, event_type, subject, detail, group_name
+        FROM activity_log
+        ORDER BY event_time DESC
+        LIMIT 200
+    ")->fetchAll();
+    $activity_feed_source = 'log';
+} catch (PDOException $e) {
+    // Table not yet created — run db_migrate.php
+    $activity_feed = [];
+    $activity_feed_source = 'none';
+}
 
 $gpx_dir      = __DIR__ . '/gpx_files';
 $orphaned_gpx = [];
@@ -690,30 +659,42 @@ select.form-input { cursor: pointer; }
 
         <div class="section-head">
             <div>
-                <h2>Recent Activity</h2>
-                <p>Last 40 events sitewide</p>
+                <h2>Activity Log</h2>
+                <p>Last 200 logged events — includes callsign and login method. Persistent log file also at <code>~/logs/sotaplanner_activity.log</code>.</p>
             </div>
         </div>
+        <?php if ($activity_feed_source === 'none'): ?>
+        <div class="card" style="background:var(--orange-bg); border-color:var(--orange);">
+            <strong style="color:var(--orange);">activity_log table not yet created.</strong>
+            Run <a href="db_migrate.php" style="color:var(--orange);">db_migrate.php</a> to create it, then events will be tracked here.
+        </div>
+        <?php else: ?>
         <div class="card">
             <?php if (empty($activity_feed)): ?>
-                <div class="empty">No activity recorded yet.</div>
+                <div class="empty">No events logged yet. Activity will appear here as users make changes.</div>
             <?php else: ?>
                 <?php foreach ($activity_feed as $ev): ?>
                 <div class="feed-row">
                     <span class="feed-type"><?= htmlspecialchars($ev['event_type']) ?></span>
                     <span class="feed-subject">
                         <?= htmlspecialchars($ev['subject']) ?>
-                        <?php if ($ev['detail'] && $ev['detail'] !== $ev['subject']): ?>
+                        <?php if (!empty($ev['detail']) && $ev['detail'] !== $ev['subject']): ?>
                             <span class="muted" style="font-size:0.78rem;"> — <?= htmlspecialchars($ev['detail']) ?></span>
                         <?php endif; ?>
                     </span>
-                    <span class="feed-actor"><?= htmlspecialchars($ev['actor']) ?></span>
+                    <span class="feed-actor" title="<?= htmlspecialchars($ev['login_type'] ?? '') ?>">
+                        <?= htmlspecialchars($ev['actor']) ?>
+                        <?php if (!empty($ev['login_type']) && $ev['login_type'] === 'sota_oauth'): ?>
+                            <span style="font-size:0.65rem; color:var(--green); font-weight:600; margin-left:3px;">SSO</span>
+                        <?php endif; ?>
+                    </span>
                     <span class="feed-group"><?= htmlspecialchars($ev['group_name']) ?></span>
                     <span class="feed-time"><?= $ev['event_time'] ? date('M j, g:ia', strtotime($ev['event_time'])) : '—' ?></span>
                 </div>
                 <?php endforeach; ?>
             <?php endif; ?>
         </div>
+        <?php endif; ?>
 
     <!-- ── CLEANUP ── -->
     <?php elseif ($active_tab === 'cleanup'): ?>

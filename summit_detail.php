@@ -48,6 +48,17 @@ if (isset($_GET['geocoded'])) {
 }
 
 
+// Quick summit/group name lookup used for activity logging on POST
+if ($_SERVER['REQUEST_METHOD'] === 'POST' || !empty($_FILES['gpx_file'])) {
+    $_ls = $db->prepare("SELECT s.name, s.sota_ref, pg.name AS grp FROM summits s LEFT JOIN planning_groups pg ON s.planning_group_id = pg.id WHERE s.id = ?");
+    $_ls->execute([$summit_id]);
+    $_li = $_ls->fetch() ?: [];
+    $log_summit_name = $_li['name']     ?? "Summit #$summit_id";
+    $log_sota_ref    = $_li['sota_ref'] ?? '';
+    $log_group_name  = $_li['grp']      ?? ($current_group['name'] ?? '');
+    unset($_ls, $_li);
+}
+
 // ========== GPX UPLOAD HANDLER ==========
 if (isset($_FILES['gpx_file']) && $_FILES['gpx_file']['error'] === UPLOAD_ERR_OK) {
     $error_msg = '';
@@ -141,6 +152,7 @@ if (isset($_FILES['gpx_file']) && $_FILES['gpx_file']['error'] === UPLOAD_ERR_OK
                                 $message = "✓ GPX uploaded (route/track only — no timestamps). Map and elevation data saved; hike time not enabled.";
                             }
                             
+                            logActivity($db, 'GPX uploaded', $log_summit_name, $log_sota_ref, $log_group_name);
                             header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&gpx=1");
                             exit;
                         } catch (Exception $e) {
@@ -211,7 +223,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $summit_id,
             $_POST['activation_date']
         ]);
-        
+
+        logActivity($db, 'Activation logged', $log_summit_name, $log_sota_ref, $log_group_name);
         header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
         exit;
     }
@@ -424,7 +437,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = $db->prepare("UPDATE summits SET hike_time_up_min = ?, hike_time_down_min = ? WHERE id = ?");
                 $stmt->execute([$time_up, $time_down, $summit_id]);
             }
-            
+
+            logActivity($db, 'Summit edited', $log_summit_name, $log_sota_ref, $log_group_name);
             header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
             exit;
         } catch (PDOException $e) {
@@ -436,6 +450,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['add_note'])) {
         $stmt = $db->prepare("INSERT INTO summit_notes (summit_id, note) VALUES (?, ?)");
         $stmt->execute([$summit_id, $_POST['note']]);
+        logActivity($db, 'Note added', $log_summit_name, $log_sota_ref, $log_group_name);
         header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
         exit;
     }
@@ -467,6 +482,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_POST['travel_notes'] ?: null,
                 $_POST['location_link'] ?: null
             ]);
+            logActivity($db, 'Activation scheduled', $log_summit_name, $log_sota_ref, $log_group_name);
             header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
             exit;
         }
@@ -481,6 +497,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
             exit;
         }
+    }
+
+    // Reset trailhead
+    if (isset($_POST['reset_trailhead'])) {
+        $stmt = $db->prepare("UPDATE summits SET trailhead_lat = NULL, trailhead_lng = NULL, trailhead_manual = FALSE WHERE id = ?");
+        $stmt->execute([$summit_id]);
+        logActivity($db, 'Trailhead reset', $log_summit_name, $log_sota_ref, $log_group_name);
+        header("Location: summit_detail.php?id=" . $summit_id . "&group=" . ($current_group['id'] ?? '') . "&saved=1");
+        exit;
     }
 
     // Edit planned activation
@@ -734,6 +759,8 @@ if ($tl_show) {
     .btn-danger { background: var(--red-bg); color: var(--red); border: 1px solid #e8baba; }
     .btn-danger:hover { background: #f5d5d5; }
     .btn-sm { height: 30px; padding: 0 0.75rem; font-size: 0.8rem; }
+    .btn-map-active { background: #6B6865; color: #fff; }
+    .btn-map-active:hover { background: #5C5956; color: #fff; }
     .btn-lg { height: 44px; padding: 0 1.5rem; font-size: 1rem; }
     .user-chip {
         position: relative; display: flex; align-items: center; gap: 0.35rem;
@@ -974,6 +1001,12 @@ if ($tl_show) {
       <?php if ($summit['sota_ref']): ?>
         <a href="https://sotl.as/summits/<?= str_replace('%2F', '/', urlencode($summit['sota_ref'])) ?>" target="_blank" class="btn btn-ghost btn-sm">SOTLAS ↗</a>
       <?php endif; ?>
+      <?php if (!empty($summit['trail_link'])): ?>
+        <a href="<?= htmlspecialchars($summit['trail_link']) ?>" target="_blank" class="btn btn-ghost btn-sm">Trail ↗</a>
+      <?php endif; ?>
+      <?php if ($selected_address && $directions_lat && $directions_lng): ?>
+        <a href="https://www.google.com/maps/dir/?api=1&origin=<?= urlencode($selected_address['address']) ?>&destination=<?= $directions_lat ?>,<?= $directions_lng ?>&travelmode=driving" target="_blank" class="btn btn-ghost btn-sm">Directions ↗</a>
+      <?php endif; ?>
       <?php if (!empty($planned_activations_list)): ?>
         <?php
           $pa0 = $planned_activations_list[0];
@@ -1096,7 +1129,7 @@ if ($tl_show) {
           <div class="stat-cell-val"><?= $act_time ?>m</div>
           <div class="stat-cell-sub">planned</div>
         </div>
-        <div class="stat-cell" style="background:var(--ink);">
+        <div class="stat-cell" style="background:#6B6865;">
           <div class="stat-cell-label" style="color:rgba(255,255,255,0.45);">Total (RT)</div>
           <?php if ($total_min): ?>
             <div class="stat-cell-val" style="color:#fff;"><?= floor($total_min/60) ?>h <?= $total_min%60 ?>m</div>
@@ -1145,7 +1178,7 @@ if ($tl_show) {
       <!-- Map -->
       <div id="summit-map"></div>
       <div class="map-buttons">
-        <button type="button" id="btn-base-street"    class="btn btn-sm btn-primary"    onclick="switchBase('street')">Street</button>
+        <button type="button" id="btn-base-street"    class="btn btn-sm btn-map-active"  onclick="switchBase('street')">Street</button>
         <button type="button" id="btn-base-topo"      class="btn btn-sm btn-secondary"  onclick="switchBase('topo')">Topo</button>
         <button type="button" id="btn-base-satellite" class="btn btn-sm btn-secondary"  onclick="switchBase('satellite')">Satellite</button>
         <span class="map-divider"></span>
@@ -1215,28 +1248,41 @@ if ($tl_show) {
         </select>
       </div>
 
-      <!-- Trailhead geocoder -->
-      <div class="geocoder-box">
-        <div style="font-size:0.8rem; font-weight:600; color:var(--ink); margin-bottom:0.5rem;">Set Trailhead Location</div>
-        <div style="display:flex; gap:0.5rem; margin-bottom:0.4rem;">
-          <input type="text" class="form-input" id="geocode_address" placeholder="Paste lat,lng or an address" style="flex:1; height:36px; padding:0.5rem 0.75rem;">
-          <button type="button" class="btn btn-accent btn-sm" onclick="geocodeAddress()">Find</button>
+      <!-- Trailhead location -->
+      <?php if (!empty($summit['trailhead_lat']) && !empty($summit['trailhead_lng'])): ?>
+        <div style="background:var(--green-bg); border:1px solid #b8d9c9; border-radius:var(--r-md); padding:0.75rem 1rem; margin-bottom:1rem; display:flex; align-items:center; justify-content:space-between; gap:1rem;">
+          <div>
+            <div style="font-size:0.8rem; font-weight:600; color:var(--green);">Trailhead Set</div>
+            <div style="font-size:0.72rem; color:var(--ink-2); font-family:var(--font-mono); margin-top:2px;"><?= htmlspecialchars($summit['trailhead_lat']) ?>, <?= htmlspecialchars($summit['trailhead_lng']) ?></div>
+          </div>
+          <form method="POST" style="margin:0;">
+            <button type="submit" name="reset_trailhead" class="btn btn-danger btn-sm" onclick="return confirm('Clear the saved trailhead coordinates?')">Reset</button>
+          </form>
         </div>
-        <div class="form-hint" style="margin:0;">e.g. 34.168, -118.236 or a street address</div>
-      </div>
-
-      <div class="field-row-2" style="margin-bottom:1rem;">
-        <div class="form-group" style="margin:0;">
-          <label class="form-label">Trailhead Lat</label>
-          <input type="number" class="form-input" id="trailhead_lat" name="trailhead_lat" step="0.000001"
-                 value="<?= htmlspecialchars($summit['trailhead_lat'] ?? '') ?>" placeholder="34.168300">
+        <input type="hidden" name="trailhead_lat" value="<?= htmlspecialchars($summit['trailhead_lat']) ?>">
+        <input type="hidden" name="trailhead_lng" value="<?= htmlspecialchars($summit['trailhead_lng']) ?>">
+      <?php else: ?>
+        <div class="geocoder-box">
+          <div style="font-size:0.8rem; font-weight:600; color:var(--ink); margin-bottom:0.5rem;">Set Trailhead Location</div>
+          <div style="display:flex; gap:0.5rem; margin-bottom:0.4rem;">
+            <input type="text" class="form-input" id="geocode_address" placeholder="Paste lat,lng or an address" style="flex:1; height:36px; padding:0.5rem 0.75rem;">
+            <button type="button" class="btn btn-accent btn-sm" onclick="geocodeAddress()">Find</button>
+          </div>
+          <div class="form-hint" style="margin:0;">e.g. 34.168, -118.236 or a street address</div>
         </div>
-        <div class="form-group" style="margin:0;">
-          <label class="form-label">Trailhead Lng</label>
-          <input type="number" class="form-input" id="trailhead_lng" name="trailhead_lng" step="0.000001"
-                 value="<?= htmlspecialchars($summit['trailhead_lng'] ?? '') ?>" placeholder="-118.236200">
+        <div class="field-row-2" style="margin-bottom:1rem;">
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">Trailhead Lat</label>
+            <input type="number" class="form-input" id="trailhead_lat" name="trailhead_lat" step="0.000001"
+                   value="" placeholder="34.168300">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">Trailhead Lng</label>
+            <input type="number" class="form-input" id="trailhead_lng" name="trailhead_lng" step="0.000001"
+                   value="" placeholder="-118.236200">
+          </div>
         </div>
-      </div>
+      <?php endif; ?>
 
       <div class="form-group" style="margin-bottom:1rem;">
         <label class="form-label">Trail Reference Link</label>
@@ -1288,7 +1334,7 @@ if ($tl_show) {
         </div>
         <div class="info-row">
           <span class="info-label">Coordinates</span>
-          <span class="info-val" style="font-family:var(--font-mono); font-size:0.72rem;"><?= $summit['latitude'] ?>°N, <?= abs($summit['longitude']) ?>°W</span>
+          <span class="info-val" style="font-family:var(--font-mono); font-size:0.72rem;"><?= number_format((float)$summit['latitude'], 4) ?>°N, <?= number_format(abs((float)$summit['longitude']), 4) ?>°W</span>
         </div>
         <?php if ($distance_display_mi): ?>
         <div class="info-row">
@@ -1309,37 +1355,6 @@ if ($tl_show) {
         <div class="info-row" style="border-bottom:none; padding-bottom:0;">
           <span class="info-label">Last Activated</span>
           <span class="info-val"><?= $summit['last_activated_date'] ? date('M j, Y', strtotime($summit['last_activated_date'])) : 'Never' ?></span>
-        </div>
-      </div>
-
-      <!-- Quick actions -->
-      <div class="card" style="margin-bottom:1rem;">
-        <div style="font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3); margin-bottom:0.875rem;">Quick Actions</div>
-        <div style="display:flex; flex-direction:column; gap:0.5rem;">
-          <?php if (!in_array($summit['status'], ['ready','activated'])): ?>
-            <form method="POST" style="margin:0;">
-              <input type="hidden" name="update_summit" value="1">
-              <input type="hidden" name="status" value="ready">
-              <input type="hidden" name="difficulty" value="<?= htmlspecialchars($summit['difficulty'] ?? '') ?>">
-              <input type="hidden" name="hike_distance_mi" value="<?= htmlspecialchars($summit['hike_distance_mi'] ?? '') ?>">
-              <input type="hidden" name="hike_elevation_gain_ft" value="<?= htmlspecialchars($summit['hike_elevation_gain_ft'] ?? '') ?>">
-              <input type="hidden" name="trail_link" value="<?= htmlspecialchars($summit['trail_link'] ?? '') ?>">
-              <input type="hidden" name="trailhead_lat" value="<?= htmlspecialchars($summit['trailhead_lat'] ?? '') ?>">
-              <input type="hidden" name="trailhead_lng" value="<?= htmlspecialchars($summit['trailhead_lng'] ?? '') ?>">
-              <input type="hidden" name="cell_service" value="<?= htmlspecialchars($summit['cell_service'] ?? '') ?>">
-              <button type="submit" class="btn btn-primary btn-full">Mark as Ready</button>
-            </form>
-          <?php endif; ?>
-          <a href="#planned-activations" class="btn btn-secondary btn-full">Schedule Activation</a>
-          <?php if ($summit['sota_ref']): ?>
-            <a href="https://sotl.as/summits/<?= str_replace('%2F', '/', urlencode($summit['sota_ref'])) ?>" target="_blank" class="btn btn-ghost btn-full">View on SOTLAS</a>
-          <?php endif; ?>
-          <?php if (!empty($summit['trail_link'])): ?>
-            <a href="<?= htmlspecialchars($summit['trail_link']) ?>" target="_blank" class="btn btn-ghost btn-full">View Trail</a>
-          <?php endif; ?>
-          <?php if ($selected_address && $directions_lat && $directions_lng): ?>
-            <a href="https://www.google.com/maps/dir/?api=1&origin=<?= urlencode($selected_address['address']) ?>&destination=<?= $directions_lat ?>,<?= $directions_lng ?>&travelmode=driving" target="_blank" class="btn btn-ghost btn-full">Get Directions</a>
-          <?php endif; ?>
         </div>
       </div>
 
@@ -1477,11 +1492,14 @@ if ($tl_show) {
         <div style="height:0.75rem;"></div>
       <?php endif; ?>
 
-      <details <?= empty($planned_activations_list) ? 'open' : '' ?>>
+      <details>
         <summary style="cursor:pointer; font-size:0.875rem; font-weight:600; color:var(--accent); margin-bottom:0.875rem; display:inline-flex; align-items:center; gap:0.4rem;">
           + Schedule a New Activation
         </summary>
-        <form method="POST" style="margin-top:0.875rem;">
+        <div style="background:var(--accent-bg); border:1px solid var(--accent-border); border-radius:var(--r-md); padding:0.7rem 0.875rem; margin-bottom:1rem; font-size:0.8rem; color:var(--accent-2); line-height:1.5;">
+          <strong>Note:</strong> Scheduling an activation here is for your own planning only. SOTAWatch alert posting is coming soon — we'll add that once the SOTA API integration is complete.
+        </div>
+        <form method="POST" style="margin-top:0;">
           <div class="field-row-2" style="margin-bottom:1rem;">
             <div class="form-group" style="margin:0;">
               <label class="form-label">Date</label>
@@ -1663,7 +1681,7 @@ function switchBase(name) {
   ['street','topo','satellite'].forEach(n => {
     const b = document.getElementById('btn-base-' + n);
     if (!b) return;
-    b.className = 'btn btn-sm ' + (n === name ? 'btn-primary' : 'btn-secondary');
+    b.className = 'btn btn-sm ' + (n === name ? 'btn-map-active' : 'btn-secondary');
   });
 }
 
@@ -1922,6 +1940,20 @@ function escHtml(str) {
   return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ── Floating save / top widget ──────────────────────────────────────────────
+// DOMContentLoaded ensures the widget div (placed after this script block) is in the DOM.
+document.addEventListener('DOMContentLoaded', function() {
+  const widget = document.getElementById('float-widget');
+  if (!widget) return;
+  function checkScroll() {
+    const show = window.scrollY > 280;
+    widget.style.opacity = show ? '1' : '0';
+    widget.style.pointerEvents = show ? 'auto' : 'none';
+  }
+  window.addEventListener('scroll', checkScroll, { passive: true });
+  checkScroll();
+});
+
 // Auto-dismiss flash
 const flash = document.getElementById('flash-msg');
 if (flash) setTimeout(() => { flash.style.transition = 'opacity 0.5s'; flash.style.opacity = '0'; setTimeout(() => flash.remove(), 500); }, 4000);
@@ -1934,5 +1966,39 @@ if (flash) setTimeout(() => { flash.style.transition = 'opacity 0.5s'; flash.sty
     document.addEventListener('click', function() { chip.classList.remove('open'); });
 })();
 </script>
+
+<!-- Floating save / top widget -->
+<div id="float-widget" style="
+  position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 150;
+  display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-end;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s ease;
+">
+  <button type="submit" form="main-edit-form" name="update_summit" style="
+    background: #6B6865; color: #fff; border: none;
+    border-radius: var(--r-md); height: 40px; padding: 0 1.1rem;
+    font-family: var(--font-sans); font-size: 0.875rem; font-weight: 600;
+    cursor: pointer; white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.22);
+    display: flex; align-items: center; gap: 0.4rem;
+    transition: background 0.15s;
+  " onmouseover="this.style.background='#5C5956'" onmouseout="this.style.background='#6B6865'">
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 8.5v1.5a1 1 0 01-1 1H3a1 1 0 01-1-1V8.5"/><polyline points="9,4.5 6.5,2 4,4.5"/><line x1="6.5" y1="2" x2="6.5" y2="8.5"/></svg>
+    Save Changes
+  </button>
+  <button type="button" onclick="window.scrollTo({top:0,behavior:'smooth'})" style="
+    background: var(--surface); color: var(--ink-2);
+    border: 1px solid var(--border); border-radius: var(--r-md);
+    height: 34px; padding: 0 0.875rem;
+    font-family: var(--font-sans); font-size: 0.8rem; font-weight: 500;
+    cursor: pointer; white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    display: flex; align-items: center; gap: 0.35rem;
+    transition: background 0.15s;
+  " onmouseover="this.style.background='var(--bg-2)'" onmouseout="this.style.background='var(--surface)'">
+    <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,7 5.5,3.5 9,7"/></svg>
+    Back to Top
+  </button>
+</div>
 </body>
 </html>

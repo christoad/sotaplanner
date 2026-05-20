@@ -471,6 +471,15 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
             <div class="error-msg"><?= htmlspecialchars($error) ?></div>
         <?php endif; ?>
 
+        <!-- No-registration callout -->
+        <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:0.85rem 1rem; margin-bottom:1.25rem; display:flex; gap:0.6rem; align-items:flex-start;">
+            <span style="font-size:1.1rem; line-height:1.3; flex-shrink:0; color:#16a34a;">✓</span>
+            <div>
+                <strong style="font-size:0.88rem; color:#166534; display:block; margin-bottom:0.15rem;">No new account to create</strong>
+                <p style="font-size:0.8rem; color:#166534; line-height:1.45; margin:0;">Already registered on the SOTA database? You're all set. Click the button below to sign in with your existing SOTA credentials.</p>
+            </div>
+        </div>
+
         <!-- SOTA SSO -->
         <?php if ($sota_oauth_enabled): ?>
             <a href="oauth_callback.php?action=login" class="sota-btn sota-btn-main">

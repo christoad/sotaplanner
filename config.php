@@ -559,6 +559,30 @@ function point_in_polygon($lat, $lon, $polygon) {
     return $inside;
 }
 
+function logActivity($db, $event_type, $subject = '', $detail = '', $group_name = '') {
+    $callsign   = $_SESSION['sota_callsign']   ?? '?';
+    $login_type = $_SESSION['sota_login_type'] ?? 'unknown';
+    $ip         = $_SERVER['REMOTE_ADDR']      ?? '';
+
+    try {
+        $db->prepare("
+            INSERT INTO activity_log (callsign, login_type, event_type, subject, detail, group_name, ip_address)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ")->execute([$callsign, $login_type, $event_type,
+                     substr($subject, 0, 255), substr($detail, 0, 255),
+                     substr($group_name, 0, 255), $ip]);
+    } catch (PDOException $e) { /* table may not exist yet — run db_migrate.php */ }
+
+    // Flat log file outside web root — never truncated, survives DB resets
+    $log_path = dirname(__DIR__) . '/logs/sotaplanner_activity.log';
+    @mkdir(dirname($log_path), 0750, true);
+    @file_put_contents(
+        $log_path,
+        implode("\t", [date('Y-m-d H:i:s'), $callsign, $login_type, $event_type, $subject, $detail, $group_name, $ip]) . "\n",
+        FILE_APPEND | LOCK_EX
+    );
+}
+
 function format_time_duration($seconds) {
     if ($seconds < 60) {
         return $seconds . 's';
