@@ -22,3 +22,6 @@ gpx_files/
 *.swp
 *.swo
 /screenshots
+
+# Playwright browser session artifacts
+.playwright-mcp/

@@ -181,36 +181,85 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--ink); 
 }
 
 /* ── Step indicator ── */
+.setup-header {
+    text-align: center;
+    padding: 2rem 1rem 0;
+}
+.setup-title {
+    font-size: 0.8rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--ink-3);
+}
+
 .step-bar {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
-    gap: 0.5rem;
-    padding: 1.75rem 1rem 0;
+    padding: 1.5rem 2rem 0;
+    max-width: 560px;
+    margin: 0 auto;
 }
-.step-pill {
-    display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.3rem 0.875rem;
-    border-radius: 100px;
-    font-size: 0.78rem; font-weight: 600;
-    border: 1.5px solid var(--border);
-    color: var(--ink-4);
+.step-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+}
+.step-circle {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.1rem; font-weight: 700;
+    font-family: var(--font-mono);
+    border: 2px solid var(--border-2);
     background: var(--surface);
+    color: var(--ink-4);
+    position: relative; z-index: 1;
+    flex-shrink: 0;
     transition: all 0.2s;
 }
-.step-pill.done {
+.step-circle.done {
     background: var(--green-bg);
-    border-color: oklch(78% 0.09 155);
+    border-color: oklch(72% 0.12 155);
     color: var(--green);
+    border-width: 2px;
 }
-.step-pill.active {
+.step-circle.active {
     background: var(--ink);
     border-color: var(--ink);
     color: #fff;
+    box-shadow: 0 0 0 5px oklch(88% 0.05 50 / 0.35);
 }
-.step-connector {
-    width: 2rem; height: 1.5px;
-    background: var(--border);
+.step-label {
+    font-size: 0.75rem; font-weight: 600;
+    text-align: center;
+    margin-top: 0.5rem;
+    color: var(--ink-4);
+    line-height: 1.3;
+    padding: 0 0.25rem;
+}
+.step-label.active { color: var(--ink); }
+.step-label.done   { color: var(--green); }
+.step-sublabel {
+    font-size: 0.68rem; font-weight: 400;
+    color: var(--ink-4); text-align: center;
+    margin-top: 0.2rem; line-height: 1.2;
+    padding: 0 0.25rem;
+}
+.step-sublabel.active { color: var(--ink-3); }
+.step-connector-wrap {
+    flex: 1;
+    padding-top: 24px; /* vertically center with circle */
+    min-width: 1rem;
+}
+.step-connector-line {
+    height: 2px;
+    background: var(--border-2);
+    transition: background 0.3s;
+}
+.step-connector-line.done {
+    background: oklch(72% 0.12 155);
 }
 
 /* ── Main layout ── */
@@ -385,11 +434,32 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--ink); 
     .form-row { flex-direction: column; }
     .top-strip { padding: 0.875rem 1rem; }
     .onboarding-wrap { margin-top: 1.75rem; }
+    .step-bar { padding: 1.25rem 1rem 0; }
+    .step-circle { width: 40px; height: 40px; font-size: 0.95rem; }
+    .step-connector-wrap { padding-top: 20px; }
+    .step-label { font-size: 0.7rem; }
+    .step-sublabel { display: none; }
 }
     </style>
 </head>
 <body>
-<script>if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; window.scrollTo(0, 0);</script>
+<script>
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+window.scrollTo(0, 0);
+function snapTopAndFocus() {
+    window.scrollTo(0, 0);
+    var input = document.querySelector('.hero-card .form-input');
+    if (input) input.focus({ preventScroll: true });
+}
+document.addEventListener('DOMContentLoaded', function() {
+    window.scrollTo(0, 0);
+    requestAnimationFrame(function() {
+        window.scrollTo(0, 0);
+        requestAnimationFrame(snapTopAndFocus);
+    });
+});
+window.addEventListener('pageshow', snapTopAndFocus);
+</script>
 
 <!-- Top strip with logo -->
 <div class="top-strip">
@@ -401,29 +471,49 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--ink); 
 </div>
 
 <!-- Step indicator -->
+<div class="setup-header">
+    <div class="setup-title">3 steps to get started</div>
+</div>
 <div class="step-bar">
-    <div class="step-pill <?= $step > 1 ? 'done' : 'active' ?>">
-        <?php if ($step > 1): ?>
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <?php else: ?>
-            <span style="font-family:var(--font-mono);font-size:0.72rem;">1</span>
-        <?php endif; ?>
-        Planning Group
+
+    <div class="step-item">
+        <div class="step-circle <?= $step > 1 ? 'done' : 'active' ?>">
+            <?php if ($step > 1): ?>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8l4 4 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <?php else: ?>
+                1
+            <?php endif; ?>
+        </div>
+        <div class="step-label <?= $step > 1 ? 'done' : 'active' ?>">Create Group</div>
+        <div class="step-sublabel <?= $step === 1 ? 'active' : '' ?>">Name your workspace</div>
     </div>
-    <div class="step-connector"></div>
-    <div class="step-pill <?= $step === 2 ? 'active' : ($step > 2 ? 'done' : '') ?>">
-        <?php if ($step > 2): ?>
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <?php else: ?>
-            <span style="font-family:var(--font-mono);font-size:0.72rem;">2</span>
-        <?php endif; ?>
-        Your Crew
+
+    <div class="step-connector-wrap">
+        <div class="step-connector-line <?= $step > 1 ? 'done' : '' ?>"></div>
     </div>
-    <div class="step-connector"></div>
-    <div class="step-pill <?= $step >= 3 ? 'active' : '' ?>">
-        <span style="font-family:var(--font-mono);font-size:0.72rem;">3</span>
-        Starting Address
+
+    <div class="step-item">
+        <div class="step-circle <?= $step === 2 ? 'active' : ($step > 2 ? 'done' : '') ?>">
+            <?php if ($step > 2): ?>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8l4 4 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <?php else: ?>
+                2
+            <?php endif; ?>
+        </div>
+        <div class="step-label <?= $step === 2 ? 'active' : ($step > 2 ? 'done' : '') ?>">Add Crew</div>
+        <div class="step-sublabel <?= $step === 2 ? 'active' : '' ?>">Optional</div>
     </div>
+
+    <div class="step-connector-wrap">
+        <div class="step-connector-line <?= $step > 2 ? 'done' : '' ?>"></div>
+    </div>
+
+    <div class="step-item">
+        <div class="step-circle <?= $step >= 3 ? 'active' : '' ?>">3</div>
+        <div class="step-label <?= $step >= 3 ? 'active' : '' ?>">Set Location</div>
+        <div class="step-sublabel <?= $step === 3 ? 'active' : '' ?>">For drive times</div>
+    </div>
+
 </div>
 
 <!-- Main content -->
@@ -480,7 +570,6 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--ink); 
                         class="form-input"
                         placeholder="e.g., KI6CR Crew, Pacific Northwest Activators, My Summits"
                         value="<?= htmlspecialchars($_POST['group_name'] ?? '') ?>"
-                        autofocus
                         required
                     >
                     <div class="form-hint">Name it after your callsign, your crew, or wherever you activate most.</div>
@@ -559,7 +648,6 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--ink); 
                         class="form-input"
                         placeholder="e.g., K3MGM, N6ARA, W6CMY"
                         autocapitalize="characters"
-                        autofocus
                     >
                     <div class="form-hint">Separate multiple callsigns with commas.</div>
                 </div>
@@ -647,7 +735,6 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--ink); 
                         class="form-input"
                         placeholder="e.g., 91601, Biloxi &amp; Burbank Blvd, Moby's Coffee &amp; Tea"
                         value="<?= htmlspecialchars($_POST['address'] ?? '') ?>"
-                        autofocus
                         required
                     >
                     <div class="form-hint">Anything Google Maps can find works — a zip code, a local business, cross streets, or a full address.</div>
