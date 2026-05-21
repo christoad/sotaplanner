@@ -12,6 +12,24 @@ Context: VK3ARR (SOTA team) granted an SSO client for identity login. Chris sent
 
 ---
 
+## Development Workflow
+
+### Branches
+- **`main`** — production branch. Only merge here when a feature is tested and confirmed working.
+- **`dev`** — development branch. All new work happens here.
+
+### Staging Environment
+- **URL:** christopherreddick.com/sotaplanner/
+- **Server path:** `/home/chrisr069/christopherreddick.com/sotaplanner/`
+- **Database:** Same production DB (shared — no schema changes without care)
+- **Deploy dev to staging:**
+  ```
+  rsync -avz --exclude='.git' --exclude='.claude' --exclude='.playwright-mcp' --exclude='screenshots' "/Users/chris/Dropbox/ham - amateur radio/sotaplanner/" dreamhost-sota:/home/chrisr069/christopherreddick.com/sotaplanner/
+  ```
+- After confirming on staging, merge `dev` → `main` in GitHub Desktop, then deploy to production as usual.
+
+---
+
 
 ## What This Site Does
 
