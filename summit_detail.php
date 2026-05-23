@@ -452,8 +452,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // Add note
     if (isset($_POST['add_note'])) {
-        $stmt = $db->prepare("INSERT INTO summit_notes (summit_id, note) VALUES (?, ?)");
-        $stmt->execute([$summit_id, $_POST['note']]);
+        $stmt = $db->prepare("INSERT INTO summit_notes (summit_id, user_callsign, note) VALUES (?, ?, ?)");
+        $stmt->execute([$summit_id, $_SESSION['sota_callsign'], $_POST['note']]);
         logActivity($db, 'Note added', $log_summit_name, $log_sota_ref, $log_group_name);
         header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
         exit;
@@ -891,10 +891,10 @@ if ($tl_show) {
     .stat-cell-sub   { font-size: 0.72rem; color: var(--ink-3); margin-top: 3px; }
 
     /* Time bar */
-    .time-bar { height: 8px; border-radius: 100px; overflow: hidden; display: flex; gap: 2px; margin-bottom: 6px; }
-    .time-legend { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
-    .time-legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--ink-3); }
-    .time-legend-dot  { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+    .time-bar { height: 44px; border-radius: var(--r-md); overflow: hidden; display: flex; gap: 2px; margin-bottom: 6px; }
+    .time-bar-seg { display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; min-width: 0; padding: 0 6px; }
+    .time-bar-label { color: rgba(255,255,255,0.95); font-size: 0.7rem; font-weight: 600; white-space: nowrap; line-height: 1.25; }
+    .time-bar-time  { color: rgba(255,255,255,0.8);  font-size: 0.65rem; font-weight: 400; white-space: nowrap; line-height: 1.25; }
 
     /* Map */
     .map-wrap { position: relative; }
@@ -1246,31 +1246,36 @@ if ($tl_show) {
       <div style="margin-bottom:1.25rem;">
         <div class="time-bar">
           <?php if ($tl_drive_pct > 0): ?>
-            <div style="flex:<?= $tl_drive_one ?>; background:#8B73A8; border-radius:100px 0 0 100px;"></div>
+            <div class="time-bar-seg" style="flex:<?= $tl_drive_one ?>; background:#7A6858;">
+              <span class="time-bar-label">Drive</span>
+              <span class="time-bar-time"><?= $tl_drive_one ?>m</span>
+            </div>
           <?php endif; ?>
           <?php if ($tl_hike_up_pct > 0): ?>
-            <div style="flex:<?= $tl_hike_up ?>; background:var(--accent); <?= $tl_drive_pct == 0 ? 'border-radius:100px 0 0 100px;' : '' ?>"></div>
+            <div class="time-bar-seg" style="flex:<?= $tl_hike_up ?>; background:#6E8155;">
+              <span class="time-bar-label">Hike Up</span>
+              <span class="time-bar-time"><?= formatTime($tl_hike_up) ?></span>
+            </div>
           <?php endif; ?>
-          <div style="flex:<?= $tl_activation ?>; background:var(--green);"></div>
+          <div class="time-bar-seg" style="flex:<?= $tl_activation ?>; background:#C07840;">
+            <span class="time-bar-label">Radio</span>
+            <span class="time-bar-time"><?= formatTime($tl_activation) ?></span>
+          </div>
           <?php if ($tl_hike_down_pct > 0): ?>
-            <div style="flex:<?= $tl_hike_down ?>; background:#5BA4B8;"></div>
+            <div class="time-bar-seg" style="flex:<?= $tl_hike_down ?>; background:#6E8155;">
+              <span class="time-bar-label">Hike Down</span>
+              <span class="time-bar-time"><?= formatTime($tl_hike_down) ?></span>
+            </div>
           <?php endif; ?>
           <?php if ($tl_drive_pct > 0): ?>
-            <div style="flex:<?= $tl_drive_one ?>; background:#8B73A8; border-radius:0 100px 100px 0;"></div>
+            <div class="time-bar-seg" style="flex:<?= $tl_drive_one ?>; background:#7A6858;">
+              <span class="time-bar-label">Return</span>
+              <span class="time-bar-time"><?= $tl_drive_one ?>m</span>
+            </div>
           <?php endif; ?>
         </div>
-        <div class="time-legend">
-          <?php if ($tl_drive_pct > 0): ?>
-            <div class="time-legend-item"><span class="time-legend-dot" style="background:#8B73A8;"></span>Drive (<?= $tl_drive_one ?>m each way)</div>
-          <?php endif; ?>
-          <?php if ($tl_hike_up_pct > 0): ?>
-            <div class="time-legend-item"><span class="time-legend-dot" style="background:var(--accent);"></span>Hike Up (<?= formatTime($tl_hike_up) ?>)</div>
-          <?php endif; ?>
-          <div class="time-legend-item"><span class="time-legend-dot" style="background:var(--green);"></span>Radio (<?= formatTime($tl_activation) ?>)</div>
-          <?php if ($tl_hike_down_pct > 0): ?>
-            <div class="time-legend-item"><span class="time-legend-dot" style="background:#5BA4B8;"></span>Hike Down (<?= formatTime($tl_hike_down) ?>)</div>
-          <?php endif; ?>
-          <div class="time-legend-item" style="font-weight:600; color:var(--ink);">Total: <?= formatTime($tl_total) ?></div>
+        <div style="font-size:0.75rem; color:var(--ink-3); margin-bottom:1.25rem;">
+          Total: <strong style="color:var(--ink);"><?= formatTime($tl_total) ?></strong>
         </div>
       </div>
       <?php endif; ?>
@@ -1535,7 +1540,13 @@ if ($tl_show) {
               <div class="note-item">
                 <div class="note-text"><?= htmlspecialchars($note['note']) ?></div>
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
-                  <span class="note-meta"><?= date('M j, Y', strtotime($note['created_at'])) ?></span>
+                  <span class="note-meta">
+                    <?php if (!empty($note['user_callsign'])): ?>
+                      <span style="font-family:var(--font-mono); font-weight:600;"><?= htmlspecialchars($note['user_callsign']) ?></span>
+                      &middot;
+                    <?php endif; ?>
+                    <?= date('M j, Y g:ia', strtotime($note['created_at'])) ?>
+                  </span>
                   <form method="POST" style="margin:0;" onsubmit="return confirm('Delete this note?');">
                     <input type="hidden" name="note_id" value="<?= $note['id'] ?>">
                     <button type="submit" name="delete_note" class="btn btn-danger btn-sm" style="height:24px; padding:0 8px; font-size:0.72rem;">Delete</button>

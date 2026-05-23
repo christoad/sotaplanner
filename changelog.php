@@ -230,8 +230,22 @@ session_start();
         <p>Release history and update notes for SOTA Planner</p>
     </div>
 
-    <!-- v1.3.0 -->
+    <!-- v1.3.1 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.3.1</span>
+            <span class="version-date">May 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Improved day timeline and notes.</p>
+        <ul>
+            <li>The day timeline bar is taller and now shows each activity's label and duration directly inside the colored segment — no more reading a separate legend</li>
+            <li>Notes on the summit detail page now show which group member wrote them</li>
+        </ul>
+    </div>
+
+    <!-- v1.3.0 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.3.0</span>
             <span class="version-date">May 2026</span>
