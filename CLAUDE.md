@@ -558,3 +558,7 @@ The changelog is **user-facing and feature-focused**. Keep it high-level and rea
 - Bug fixes, PHP errors, internal refactors, cosmetic tweaks, technical debt cleanup — none of this belongs in the public changelog
 
 **Format per version block:** version number, month+year date, "Current" badge on the latest only, one-sentence description of the release theme, then a short plain-English bullet list (no tags, no technical jargon). Each bullet should describe what the user can now *do* or *see*, not what changed in the code.
+
+## Version bumping
+
+Only bump `APP_VERSION` in `config.php` (and add a changelog entry) when the commit contains a new feature or a meaningful UX improvement. **Do not bump the version for cosmetic changes, design polish, dead-code removal, or internal refactors.** Those ship silently under the current version number.
