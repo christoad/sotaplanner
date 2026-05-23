@@ -230,12 +230,27 @@ session_start();
         <p>Release history and update notes for SOTA Planner</p>
     </div>
 
-    <!-- v1.2.0 -->
+    <!-- v1.3.0 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.3.0</span>
+            <span class="version-date">May 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Summit search and a cleaner detail page.</p>
+        <ul>
+            <li>Nominate a summit by searching its name — type "Mount Wilson" or "Mt Adams" and pick from results, no need to know the SOTA reference code</li>
+            <li>Summit detail page form is more compact — distance, gain, and difficulty sit in one row; trailhead and cell service share a row</li>
+            <li>Trail app links (AllTrails, Gaia, CalTopo, etc.) are now tucked behind a toggle so they don't clutter the page</li>
+            <li>Activation Zone map button now toggles — click once to zoom to the activation zone, click again to zoom back out to the full GPX track</li>
+        </ul>
+    </div>
+
+    <!-- v1.2.0 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.2.0</span>
             <span class="version-date">May 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Smoother onboarding and smarter drive time.</p>
         <ul>

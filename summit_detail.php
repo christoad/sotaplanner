@@ -805,7 +805,7 @@ if ($tl_show) {
 
     /* Forms */
     .form-group { margin-bottom: 1.25rem; }
-    .form-label { display: block; font-size: 0.8rem; font-weight: 500; color: var(--ink-2); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    .form-label { display: block; font-size: 0.72rem; font-weight: 600; color: var(--ink-3); margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em; }
     .form-input, .form-select, .form-textarea { display: block; width: 100%; padding: 0.625rem 0.875rem; background: var(--surface); border: 1px solid var(--border-2); border-radius: var(--r-md); font-family: var(--font-sans); font-size: 0.9rem; color: var(--ink); transition: border-color 0.15s, box-shadow 0.15s; outline: none; -webkit-appearance: none; }
     .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(43,142,142,0.15); }
     .form-input::placeholder { color: var(--ink-4); }
@@ -898,15 +898,13 @@ if ($tl_show) {
 
     /* Field grid */
     .field-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .field-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
 
     /* Difficulty selector */
-    .diff-btns { display: flex; gap: 0.5rem; }
-    .diff-btn { flex: 1; padding: 0.5rem 0.25rem; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface); color: var(--ink-3); font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.1s; text-transform: capitalize; font-family: var(--font-sans); }
-    .diff-btn:hover { border-color: var(--border-2); color: var(--ink); }
-    .diff-btn.active-easy     { border-color: var(--green); background: var(--green-bg); color: var(--green); }
-    .diff-btn.active-moderate { border-color: var(--orange); background: var(--orange-bg); color: var(--orange); }
-    .diff-btn.active-hard     { border-color: var(--red); background: var(--red-bg); color: var(--red); }
-    .diff-btn.active-drive-up { border-color: var(--blue); background: var(--blue-bg); color: var(--blue); }
+    .diff-select option[value="easy"]     { color: var(--green); }
+    .diff-select option[value="moderate"] { color: var(--orange); }
+    .diff-select option[value="hard"]     { color: var(--red); }
+    .diff-select option[value="drive-up"] { color: var(--blue); }
 
     /* GPX drop */
     .gpx-drop { border: 2px dashed var(--border-2); border-radius: var(--r-lg); padding: 1.5rem; text-align: center; background: var(--bg-2); cursor: pointer; transition: border-color 0.15s, background 0.15s; display: block; }
@@ -919,6 +917,12 @@ if ($tl_show) {
     .info-val   { font-size: 0.8rem; font-weight: 500; color: var(--ink); text-align: right; }
 
     /* Trail search links */
+    .trail-search-toggle { background: none; border: none; font-family: var(--font-sans); font-size: 0.75rem; font-weight: 500; color: var(--ink-3); cursor: pointer; padding: 0; display: inline-flex; align-items: center; gap: 0.25rem; }
+    .trail-search-toggle:hover { color: var(--ink); }
+    .trail-search-toggle .chevron { transition: transform 0.15s; display: inline-block; }
+    .trail-search-toggle.open .chevron { transform: rotate(90deg); }
+    .trail-search-links { display: none; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
+    .trail-search-links.open { display: flex; }
     .trail-search-btn { display: inline-flex; align-items: center; height: 26px; padding: 0 0.625rem; font-size: 0.75rem; font-weight: 500; border-radius: var(--r-sm); background: var(--bg-2); border: 1px solid var(--border-2); color: var(--ink-2); text-decoration: none; transition: all 0.12s; white-space: nowrap; }
     .trail-search-btn:hover { border-color: var(--accent-border); color: var(--ink); background: var(--accent-bg); text-decoration: none; }
 
@@ -959,8 +963,8 @@ if ($tl_show) {
       .detail-layout { grid-template-columns: 1fr; }
       .stat-grid-4 { grid-template-columns: 1fr 1fr; }
       .field-row-2 { grid-template-columns: 1fr; }
+      .field-row-3 { grid-template-columns: 1fr; }
       .page-header { flex-direction: column; gap: 0.75rem; }
-      .diff-btns { flex-wrap: wrap; }
     }
   </style>
 </head>
@@ -1211,7 +1215,7 @@ if ($tl_show) {
         <button type="button" id="btn-att"     class="carrier-btn" style="border-color:#00A8E0; color:#00A8E0; background:#fff;" onclick="toggleCarrier('att')">AT&amp;T</button>
         <?php if (!empty($summit['sota_ref'])): ?>
           <span class="map-divider"></span>
-          <button type="button" id="btn-actzone" class="btn btn-sm btn-secondary" onclick="zoomToActivationZone()" disabled style="opacity:0.4;">Activation Zone</button>
+          <button type="button" id="btn-actzone" class="btn btn-sm btn-secondary" onclick="toggleActivationZone()" disabled style="opacity:0.4;">Activation Zone</button>
         <?php endif; ?>
         <span class="map-divider"></span>
         <a href="https://www.google.com/maps/search/?api=1&query=<?= $summit['latitude'] ?>,<?= $summit['longitude'] ?>" target="_blank" class="btn btn-sm btn-ghost">Maps ↗</a>
@@ -1237,74 +1241,60 @@ if ($tl_show) {
         <span class="section-head-title">Trail Research</span>
       </div>
 
-      <div class="field-row-2" style="margin-bottom:1rem;">
+      <!-- Distance · Gain · Difficulty in one row -->
+      <div class="field-row-3" style="margin-bottom:1rem;">
         <div class="form-group" style="margin:0;">
           <label class="form-label">Distance (<?= getDistanceUnit($current_group['units']) ?>, RT)</label>
           <input type="number" class="form-input" name="hike_distance_mi" step="0.01" min="0"
                  value="<?= htmlspecialchars($summit['hike_distance_mi'] ?? '') ?>" placeholder="0.0">
         </div>
         <div class="form-group" style="margin:0;">
-          <label class="form-label">Elevation Gain (<?= getElevationUnit($current_group['units']) ?>)</label>
+          <label class="form-label">Elev. Gain (<?= getElevationUnit($current_group['units']) ?>)</label>
           <input type="number" class="form-input" name="hike_elevation_gain_ft" min="0"
                  value="<?= htmlspecialchars($summit['hike_elevation_gain_ft'] ?? '') ?>" placeholder="0">
         </div>
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">Hike Difficulty</label>
+          <select class="form-select diff-select" name="difficulty" id="difficulty-input">
+            <option value="">— not set —</option>
+            <option value="easy"     <?= ($summit['difficulty'] ?? '') === 'easy'     ? 'selected' : '' ?>>Easy</option>
+            <option value="moderate" <?= ($summit['difficulty'] ?? '') === 'moderate' ? 'selected' : '' ?>>Moderate</option>
+            <option value="hard"     <?= ($summit['difficulty'] ?? '') === 'hard'     ? 'selected' : '' ?>>Hard</option>
+            <option value="drive-up" <?= ($summit['difficulty'] ?? '') === 'drive-up' ? 'selected' : '' ?>>Drive Up</option>
+          </select>
+        </div>
       </div>
 
-      <div class="form-group" style="margin-bottom:1rem;">
-        <label class="form-label">Difficulty</label>
-        <div class="diff-btns">
-          <?php foreach (['drive-up','easy','moderate','hard'] as $d): ?>
-            <button type="button" class="diff-btn<?= ($summit['difficulty'] === $d) ? ' active-'.$d : '' ?>"
-                    onclick="setDifficulty('<?= $d ?>')" data-diff="<?= $d ?>"><?= ucfirst($d) ?></button>
-          <?php endforeach; ?>
+      <!-- Cell Service · Trailhead in one row -->
+      <div class="field-row-2" style="margin-bottom:1rem;">
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">Cell Service</label>
+          <select class="form-select" name="cell_service">
+            <option value="">Unknown</option>
+            <option value="full"         <?= ($summit['cell_service'] ?? '') === 'full'         ? 'selected' : '' ?>>Full Coverage</option>
+            <option value="intermittent" <?= ($summit['cell_service'] ?? '') === 'intermittent' ? 'selected' : '' ?>>Intermittent</option>
+            <option value="summit_only"  <?= ($summit['cell_service'] ?? '') === 'summit_only'  ? 'selected' : '' ?>>Summit Only</option>
+            <option value="none"         <?= ($summit['cell_service'] ?? '') === 'none'         ? 'selected' : '' ?>>No Service</option>
+          </select>
         </div>
-        <input type="hidden" name="difficulty" id="difficulty-input" value="<?= htmlspecialchars($summit['difficulty'] ?? '') ?>">
+        <!-- Trailhead location -->
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">Trailhead</label>
+          <?php if (!empty($summit['trailhead_lat']) && !empty($summit['trailhead_lng'])): ?>
+            <div style="background:var(--green-bg); border:1px solid #b8d9c9; border-radius:var(--r-md); padding:0.45rem 0.75rem; display:flex; align-items:center; justify-content:space-between; gap:0.5rem; height:36px;">
+              <span style="font-family:var(--font-mono); font-size:0.7rem; color:var(--ink-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><?= htmlspecialchars($summit['trailhead_lat']) ?>, <?= htmlspecialchars($summit['trailhead_lng']) ?></span>
+              <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0; height:26px; padding:0 0.5rem; font-size:0.75rem;" onclick="resetTrailhead()">Reset</button>
+            </div>
+            <input type="hidden" name="trailhead_lat" value="<?= htmlspecialchars($summit['trailhead_lat']) ?>">
+            <input type="hidden" name="trailhead_lng" value="<?= htmlspecialchars($summit['trailhead_lng']) ?>">
+          <?php else: ?>
+            <div style="display:flex; gap:0.5rem;">
+              <input type="text" class="form-input" id="geocode_address" placeholder="lat,lng or address" style="flex:1; height:36px; padding:0.5rem 0.75rem;">
+              <button type="button" class="btn btn-accent btn-sm" style="flex-shrink:0;" onclick="geocodeAddress()">Find</button>
+            </div>
+          <?php endif; ?>
+        </div>
       </div>
-
-      <div class="form-group" style="margin-bottom:1rem;">
-        <label class="form-label">Cell Service</label>
-        <select class="form-select" name="cell_service">
-          <option value="">Unknown</option>
-          <option value="full"         <?= ($summit['cell_service'] ?? '') === 'full'         ? 'selected' : '' ?>>Full Coverage</option>
-          <option value="intermittent" <?= ($summit['cell_service'] ?? '') === 'intermittent' ? 'selected' : '' ?>>Intermittent</option>
-          <option value="summit_only"  <?= ($summit['cell_service'] ?? '') === 'summit_only'  ? 'selected' : '' ?>>Summit Only</option>
-          <option value="none"         <?= ($summit['cell_service'] ?? '') === 'none'         ? 'selected' : '' ?>>No Service</option>
-        </select>
-      </div>
-
-      <!-- Trailhead location -->
-      <?php if (!empty($summit['trailhead_lat']) && !empty($summit['trailhead_lng'])): ?>
-        <div style="background:var(--green-bg); border:1px solid #b8d9c9; border-radius:var(--r-md); padding:0.75rem 1rem; margin-bottom:1rem; display:flex; align-items:center; justify-content:space-between; gap:1rem;">
-          <div>
-            <div style="font-size:0.8rem; font-weight:600; color:var(--green);">Trailhead Set</div>
-            <div style="font-size:0.72rem; color:var(--ink-2); font-family:var(--font-mono); margin-top:2px;"><?= htmlspecialchars($summit['trailhead_lat']) ?>, <?= htmlspecialchars($summit['trailhead_lng']) ?></div>
-          </div>
-          <button type="button" class="btn btn-danger btn-sm" onclick="resetTrailhead()">Reset</button>
-        </div>
-        <input type="hidden" name="trailhead_lat" value="<?= htmlspecialchars($summit['trailhead_lat']) ?>">
-        <input type="hidden" name="trailhead_lng" value="<?= htmlspecialchars($summit['trailhead_lng']) ?>">
-      <?php else: ?>
-        <div class="geocoder-box">
-          <div style="font-size:0.8rem; font-weight:600; color:var(--ink); margin-bottom:0.5rem;">Set Trailhead Location</div>
-          <div style="display:flex; gap:0.5rem; margin-bottom:0.4rem;">
-            <input type="text" class="form-input" id="geocode_address" placeholder="Paste lat,lng or an address" style="flex:1; height:36px; padding:0.5rem 0.75rem;">
-            <button type="button" class="btn btn-accent btn-sm" onclick="geocodeAddress()">Find</button>
-          </div>
-          <div class="form-hint" style="margin:0;">e.g. 34.168, -118.236 or a street address</div>
-        </div>
-        <div class="field-row-2" style="margin-bottom:1rem;">
-          <div class="form-group" style="margin:0;">
-            <label class="form-label">Trailhead Lat</label>
-            <input type="number" class="form-input" id="trailhead_lat" name="trailhead_lat" step="0.000001"
-                   value="" placeholder="34.168300">
-          </div>
-          <div class="form-group" style="margin:0;">
-            <label class="form-label">Trailhead Lng</label>
-            <input type="number" class="form-input" id="trailhead_lng" name="trailhead_lng" step="0.000001"
-                   value="" placeholder="-118.236200">
-          </div>
-        </div>
-      <?php endif; ?>
 
       <div class="form-group" style="margin-bottom:1rem;">
         <label class="form-label">Trail Reference Link</label>
@@ -1315,8 +1305,10 @@ if ($tl_show) {
           $search_lat  = $summit['latitude'] ?? '';
           $search_lng  = $summit['longitude'] ?? '';
         ?>
-        <div style="display:flex; flex-wrap:wrap; gap:0.4rem; margin-top:0.5rem;">
-          <span style="font-size:0.75rem; color:var(--ink-3); align-self:center;">Search:</span>
+        <button type="button" class="trail-search-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+          <span class="chevron">▶</span> Find on trail apps
+        </button>
+        <div class="trail-search-links">
           <a href="https://www.alltrails.com/explore?q=<?= $search_name ?>" target="_blank" class="trail-search-btn">AllTrails</a>
           <a href="https://www.gaiagps.com/map/?search=<?= $search_name ?>" target="_blank" class="trail-search-btn">Gaia GPS</a>
           <a href="https://caltopo.com/map.html#ll=<?= $search_lat ?>,<?= $search_lng ?>&z=14&b=t" target="_blank" class="trail-search-btn">CalTopo</a>
@@ -1648,15 +1640,6 @@ if ($tl_show) {
 </footer>
 
 <script>
-// ── Difficulty selector ─────────────────────────────────────────────────────
-function setDifficulty(val) {
-  document.getElementById('difficulty-input').value = val;
-  document.querySelectorAll('.diff-btn').forEach(btn => {
-    const d = btn.getAttribute('data-diff');
-    btn.className = 'diff-btn' + (d === val ? ' active-' + d : '');
-  });
-}
-
 // ── Reset trailhead ─────────────────────────────────────────────────────────
 function resetTrailhead() {
   if (!confirm('Clear the saved trailhead coordinates?')) return;
@@ -1767,9 +1750,23 @@ function setActivationZoneFallback() {
   const az = document.getElementById('az-methodology');
   if (az) az.textContent = 'Activation Zone: API unavailable — showing estimated 50m radius.';
 }
-function zoomToActivationZone() {
-  if (!activationZoneLayer) return;
-  map.fitBounds(activationZoneLayer.getBounds(), { padding: [40, 40] });
+let azZoomed = false;
+function toggleActivationZone() {
+  const btn = document.getElementById('btn-actzone');
+  if (!azZoomed) {
+    if (!activationZoneLayer) return;
+    map.fitBounds(activationZoneLayer.getBounds(), { padding: [40, 40] });
+    azZoomed = true;
+    btn.textContent = 'Full GPX Track';
+  } else {
+    if (gpxPolyline) {
+      map.fitBounds(gpxPolyline.getBounds(), { padding: [50, 50] });
+    } else {
+      map.setView([sumLat, sumLng], 13);
+    }
+    azZoomed = false;
+    btn.textContent = 'Activation Zone';
+  }
 }
 
 <?php if ($gpx_data): ?>
