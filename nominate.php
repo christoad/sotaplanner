@@ -3,8 +3,23 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
 require_once 'config.php';
+require_once 'sota_cache_helper.php';
 session_start();
 requireLogin();
+
+// ── AJAX search endpoint ─────────────────────────────────────────────────────
+if (isset($_GET['action']) && $_GET['action'] === 'search') {
+    header('Content-Type: application/json');
+    $q = trim($_GET['q'] ?? '');
+    if (strlen($q) < 2) { echo json_encode([]); exit; }
+    $hits = search_sota_cache($q);
+    if (isset($hits['_no_cache'])) {
+        echo json_encode(['error' => 'Summit search cache not built yet. Please contact the site admin.']);
+    } else {
+        echo json_encode($hits);
+    }
+    exit;
+}
 
 $db = getDbConnection();
 
@@ -220,280 +235,394 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nominate Summit - SOTA Planner</title>
-    <link href="https://fonts.googleapis.com/css2?family=Overpass:wght@300;600;800&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --navy: #1E3A5F;
-            --teal: #9B6328;
-            --light-blue: #B8874A;
-            --gold: #E6B84A;
-            --tan: #D4A574;
-            --snow: #F5F5F0;
-            /* Aliases */
-            --peak-brown: #1E3A5F;
-            --trail-green: #9B6328;
-            --forest-dark: #1E3A5F;
-            --summit-gold: #E6B84A;
-            --earth-tan: #D4A574;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Overpass', sans-serif;
-            background: linear-gradient(135deg, #F5F5F0 0%, #E8E4D8 100%);
-            color: var(--forest-dark);
-            min-height: 100vh;
-            padding: 2rem;
-        }
-
-        .container {
-            max-width: 700px;
-            margin: 0 auto;
-        }
-
-        h1 {
-            font-size: 2.5rem;
-            font-weight: 800;
-            color: var(--peak-brown);
-            margin-bottom: 0.5rem;
-        }
-
-        .back-link {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            color: white;
-            background: var(--trail-green);
-            border: 2px solid var(--trail-green);
-            text-decoration: none;
-            font-weight: 700;
-            font-size: 0.95rem;
-            padding: 0.55rem 1.2rem;
-            border-radius: 8px;
-            transition: opacity 0.2s;
-            margin-bottom: 1.25rem;
-        }
-        .back-link:hover {
-            opacity: 0.85;
-        }
-
-        .card {
-            background: white;
-            border-radius: 12px;
-            padding: 2rem;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-            margin-bottom: 2rem;
-        }
-
-        .message {
-            padding: 1rem;
-            border-radius: 6px;
-            margin-bottom: 1.5rem;
-            font-weight: 600;
-        }
-
-        .message.success {
-            background: #E6F4EA;
-            color: #1E7E34;
-            border-left: 4px solid #1E7E34;
-        }
-
-        .message.error {
-            background: #FDECEA;
-            color: #C62828;
-            border-left: 4px solid #C62828;
-        }
-
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-
-        label {
-            display: block;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            color: var(--forest-dark);
-            text-transform: uppercase;
-            font-size: 0.85rem;
-            letter-spacing: 0.05em;
-        }
-
-        input[type="text"] {
-            width: 100%;
-            padding: 1rem;
-            border: 2px solid var(--earth-tan);
-            border-radius: 6px;
-            font-family: 'Overpass', sans-serif;
-            font-size: 1.2rem;
-            transition: all 0.3s ease;
-        }
-
-        input:focus {
-            outline: none;
-            border-color: var(--trail-green);
-            box-shadow: 0 0 0 3px rgba(74, 124, 89, 0.1);
-        }
-
-        .btn {
-            padding: 1rem 2rem;
-            background: linear-gradient(135deg, var(--trail-green) 0%, var(--forest-dark) 100%);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-            width: 100%;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
-        }
-
-        .helper-text {
-            font-size: 0.9rem;
-            color: #666;
-            margin-top: 0.5rem;
-            line-height: 1.6;
-        }
-
-        .info-box {
-            background: #E8F4F8;
-            border-left: 4px solid var(--trail-green);
-            padding: 1.5rem;
-            border-radius: 6px;
-            margin-bottom: 2rem;
-        }
-
-        .info-box h3 {
-            margin-bottom: 1rem;
-            color: var(--forest-dark);
-        }
-
-        .info-box ul {
-            margin-left: 1.5rem;
-            line-height: 1.8;
-        }
-
-        .current-group {
-            background: #FFF4E6;
-            padding: 1rem;
-            border-radius: 6px;
-            margin-bottom: 1.5rem;
-            font-weight: 600;
-        }
-
-    /* ── User chip ── */
-    .user-chip-fixed {
-        position: fixed; top: 1rem; right: 1rem; z-index: 500;
-        display: flex; align-items: center; gap: 0.35rem;
-        cursor: pointer; padding: 0.3rem 0.7rem;
-        border-radius: 6px; font-size: 0.8rem; font-weight: 700;
-        color: var(--forest-dark); background: white;
-        border: 1px solid var(--earth-tan);
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        user-select: none; white-space: nowrap;
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nominate Summit — SOTA Planner</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:            #F7F6F3;
+      --bg-2:          #EFEDE8;
+      --bg-3:          #E5E2DA;
+      --ink:           #1C1B19;
+      --ink-2:         #4A4844;
+      --ink-3:         #8C8A86;
+      --ink-4:         #B8B5B0;
+      --accent:        oklch(52% 0.13 50);
+      --accent-2:      oklch(44% 0.13 50);
+      --accent-bg:     oklch(96% 0.04 65);
+      --accent-border: oklch(84% 0.08 65);
+      --green:         oklch(52% 0.13 155);
+      --green-bg:      oklch(95% 0.04 155);
+      --red:           oklch(52% 0.16 22);
+      --red-bg:        oklch(96% 0.04 22);
+      --surface:       #FFFFFF;
+      --border:        #E5E2DA;
+      --border-2:      #D4D0C8;
+      --font-sans:     'DM Sans', system-ui, sans-serif;
+      --font-mono:     'DM Mono', 'Courier New', monospace;
+      --r-sm: 4px; --r-md: 8px; --r-lg: 12px;
+      --shadow-sm: 0 1px 3px rgba(28,27,25,0.07), 0 1px 2px rgba(28,27,25,0.05);
+      --shadow-md: 0 4px 12px rgba(28,27,25,0.08), 0 2px 4px rgba(28,27,25,0.05);
     }
-    .user-chip-fixed:hover { background: #f5f5f0; }
-    .user-chip-chevron { transition: transform 0.15s; }
-    .user-chip-fixed.open .user-chip-chevron { transform: rotate(180deg); }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+    body { font-family: var(--font-sans); background: var(--bg); color: var(--ink); line-height: 1.5; min-height: 100vh; }
+
+    /* Topbar */
+    .topbar {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      height: 56px; display: flex; align-items: center;
+      padding: 0 2rem; gap: 1rem; position: sticky; top: 0; z-index: 100;
+    }
+    .topbar-logo {
+      display: flex; align-items: center; gap: 0.75rem;
+      text-decoration: none; color: var(--ink);
+      font-weight: 600; font-size: 0.95rem; letter-spacing: -0.01em; flex-shrink: 0;
+    }
+    .topbar-logo:hover { color: var(--ink); text-decoration: none; }
+    .topbar-logo .logo-mark { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .topbar-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+    .topbar-nav { display: flex; align-items: center; gap: 0.25rem; }
+    .topbar-nav a {
+      color: var(--ink-3); font-size: 0.875rem; font-weight: 500;
+      padding: 0.5rem 0.75rem; border-radius: var(--r-sm);
+      transition: color 0.15s, background 0.15s; text-decoration: none; white-space: nowrap;
+    }
+    .topbar-nav a:hover { color: var(--ink); background: var(--bg-2); }
+    .topbar-right { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; flex-shrink: 0; }
+    .user-chip {
+      position: relative; display: flex; align-items: center; gap: 0.35rem;
+      cursor: pointer; padding: 0.25rem 0.6rem; border-radius: var(--r-sm);
+      font-size: 0.8rem; font-weight: 600; color: var(--ink-2);
+      border: 1px solid var(--border); background: var(--bg); user-select: none; white-space: nowrap;
+    }
+    .user-chip:hover { background: var(--bg-2); }
+    .user-chip-chevron { transition: transform 0.15s; flex-shrink: 0; }
+    .user-chip.open .user-chip-chevron { transform: rotate(180deg); }
     .user-dropdown {
-        display: none; position: absolute; top: calc(100% + 6px); right: 0;
-        background: white; border: 1px solid var(--earth-tan);
-        border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-        min-width: 130px; overflow: hidden;
+      display: none; position: absolute; top: calc(100% + 6px); right: 0;
+      background: #fff; border: 1px solid var(--border); border-radius: var(--r-sm);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.10); min-width: 130px; overflow: hidden; z-index: 200;
     }
-    .user-chip-fixed.open .user-dropdown { display: block; }
+    .user-chip.open .user-dropdown { display: block; }
     .user-dropdown a {
-        display: block; padding: 0.6rem 1rem;
-        font-size: 0.82rem; font-weight: 500; color: var(--forest-dark); text-decoration: none;
+      display: block; padding: 0.6rem 1rem;
+      font-size: 0.82rem; font-weight: 500; color: var(--ink-2); text-decoration: none;
     }
-    .user-dropdown a:hover { background: #f5f5f0; }
-    </style>
+    .user-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
+
+    /* Page layout */
+    .page { padding: 2rem; max-width: 620px; margin: 0 auto; }
+
+    /* Card */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r-lg); padding: 1.5rem; box-shadow: var(--shadow-sm);
+      margin-bottom: 1.25rem;
+    }
+
+    /* Messages */
+    .msg {
+      display: flex; align-items: center; gap: 1rem;
+      padding: 0.75rem 1rem; border-radius: var(--r-md);
+      font-size: 0.875rem; font-weight: 500; margin-bottom: 1rem;
+    }
+    .msg-success { background: var(--green-bg); color: var(--green); border: 1px solid oklch(85% 0.07 155); }
+    .msg-error   { background: var(--red-bg);   color: var(--red);   border: 1px solid oklch(85% 0.08 22); }
+
+    /* Form */
+    .form-label {
+      display: block; font-size: 0.75rem; font-weight: 600; color: var(--ink-3);
+      margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .form-input {
+      width: 100%; padding: 0.6rem 0.75rem;
+      border: 1px solid var(--border); border-radius: var(--r-md);
+      font-family: var(--font-sans); font-size: 0.9375rem; color: var(--ink);
+      background: var(--surface); transition: border-color 0.15s; outline: none;
+    }
+    .form-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+    .form-hint { font-size: 0.775rem; color: var(--ink-3); margin-top: 0.35rem; line-height: 1.4; min-height: 1.1rem; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+      padding: 0 1rem; height: 36px; border-radius: var(--r-md);
+      font-family: var(--font-sans); font-size: 0.875rem; font-weight: 500;
+      cursor: pointer; border: none; transition: background 0.15s, opacity 0.15s;
+      text-decoration: none; white-space: nowrap; line-height: 1;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary { background: var(--ink); color: #fff; width: 100%; height: 40px; font-size: 0.9rem; }
+    .btn-primary:hover:not(:disabled) { background: var(--ink-2); }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Group badge */
+    .group-badge {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      background: var(--accent-bg); border: 1px solid var(--accent-border);
+      border-radius: 100px; padding: 0.3rem 0.75rem;
+      font-size: 0.8rem; font-weight: 600; color: var(--accent-2);
+      margin-bottom: 1.25rem;
+    }
+
+    /* Search results */
+    .result-item {
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+      padding: 0.7rem 0.875rem; border: 1px solid var(--border); border-radius: var(--r-md);
+      background: var(--surface); cursor: pointer;
+      transition: background 0.12s, border-color 0.12s; margin-bottom: 0.3rem;
+    }
+    .result-item:hover { background: var(--accent-bg); border-color: var(--accent-border); }
+    .result-name { font-size: 0.875rem; font-weight: 600; color: var(--ink); }
+    .result-ref  { font-family: var(--font-mono); font-size: 0.75rem; color: var(--ink-3); margin-top: 2px; }
+    .result-meta { font-size: 0.775rem; color: var(--ink-3); text-align: right; white-space: nowrap; flex-shrink: 0; }
+    .result-pts  { font-weight: 700; color: var(--accent); }
+    .search-status { padding: 0.75rem 0; color: var(--ink-3); font-size: 0.85rem; }
+    .search-count  { font-size: 0.75rem; color: var(--ink-4); margin-bottom: 0.5rem; }
+
+    /* Selected summit */
+    .selected-box {
+      display: none; background: var(--green-bg); border: 1px solid oklch(85% 0.07 155);
+      border-radius: var(--r-md); padding: 0.875rem 1rem; margin-bottom: 1rem;
+    }
+    .selected-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--green); margin-bottom: 0.3rem; }
+    .selected-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    .selected-name { font-size: 0.9375rem; font-weight: 600; color: var(--ink); }
+    .selected-ref  { font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-3); margin-left: 0.5rem; }
+    .clear-btn { background: none; border: none; color: var(--ink-4); cursor: pointer; font-size: 1rem; line-height: 1; padding: 0.2rem; border-radius: var(--r-sm); }
+    .clear-btn:hover { color: var(--ink-2); background: var(--bg-2); }
+
+    /* Info panel */
+    .info-panel {
+      background: var(--bg-2); border: 1px solid var(--border);
+      border-radius: var(--r-lg); padding: 1rem 1.25rem;
+    }
+    .info-panel p { font-size: 0.8rem; color: var(--ink-3); line-height: 1.6; }
+    .info-panel strong { color: var(--ink-2); }
+  </style>
 </head>
 <body>
-<div class="user-chip-fixed" id="userChip">
-    <?= htmlspecialchars(getCurrentCallsign()) ?>
-    <svg class="user-chip-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="2,3.5 5,6.5 8,3.5"/></svg>
-    <div class="user-dropdown">
+
+<nav class="topbar">
+  <a href="index.php" class="topbar-logo">
+    <span class="logo-mark"><img src="sota-planner-logo.svg" width="32" height="32" alt=""></span>
+    <span>SOTAplanner</span>
+  </a>
+  <div class="topbar-divider"></div>
+  <div class="topbar-nav">
+    <a href="index.php">Dashboard</a>
+    <a href="planning_groups.php">Groups</a>
+  </div>
+  <div class="topbar-right">
+    <div class="user-chip" onclick="this.classList.toggle('open')" id="userChip">
+      <span><?= htmlspecialchars($_SESSION['sota_callsign'] ?? '') ?></span>
+      <svg class="user-chip-chevron" width="10" height="6" viewBox="0 0 10 6" fill="none">
+        <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="user-dropdown">
         <?php if (getCurrentCallsign() === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
-            <a href="god_mode.php">God Mode</a>
+          <a href="god_mode.php">God Mode</a>
         <?php endif; ?>
         <a href="logout.php">Sign Out</a>
+      </div>
     </div>
+  </div>
+</nav>
+
+<div class="page">
+
+  <div style="margin-bottom: 1.5rem;">
+    <h1 style="font-size: 1.375rem; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); margin-bottom: 0.25rem;">Nominate a Summit</h1>
+    <p style="font-size: 0.875rem; color: var(--ink-3);">Add a summit to your planning group to start researching it.</p>
+  </div>
+
+  <?php if ($message): ?>
+    <div class="msg msg-success"><?= htmlspecialchars($message) ?></div>
+  <?php endif; ?>
+  <?php if ($error): ?>
+    <div class="msg msg-error"><?= htmlspecialchars($error) ?></div>
+  <?php endif; ?>
+
+  <div class="group-badge">
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="4" cy="3.5" r="1.5" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="3.5" r="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M1 10c0-1.657 1.343-3 3-3s3 1.343 3 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M8 7c1.105 0 2 1.343 2 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+    Nominating for: <strong><?= htmlspecialchars($current_group['name']) ?></strong>
+  </div>
+
+  <div class="card">
+    <div style="font-size: 0.8rem; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 1rem;">Find a Summit</div>
+    <form method="POST" id="nominate-form">
+      <input type="hidden" id="sota_ref" name="sota_ref">
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="summit_search">Summit Name or Reference</label>
+        <input
+          type="text"
+          class="form-input"
+          id="summit_search"
+          placeholder="Search summit name or designator"
+          autocomplete="off"
+          autofocus
+        >
+        <div class="form-hint" id="search-hint">Type a name to search, or paste a SOTA reference directly.</div>
+      </div>
+
+      <div id="search-results" style="display:none; margin-bottom:1rem;"></div>
+
+      <div class="selected-box" id="selected-summit">
+        <div class="selected-label">Selected Summit</div>
+        <div class="selected-row">
+          <div>
+            <span class="selected-name" id="selected-name"></span>
+            <span class="selected-ref" id="selected-ref"></span>
+          </div>
+          <button type="button" class="clear-btn" onclick="clearSelection()">✕</button>
+        </div>
+      </div>
+
+      <button type="submit" name="nominate" id="nominate-btn" class="btn btn-primary" disabled>Nominate Summit</button>
+    </form>
+  </div>
+
+  <div class="info-panel">
+    <p>
+      <strong>How it works:</strong> Type a name like "Mount Adams" or a reference like "W7O/NC-001".
+      Select a summit from the results, then click Nominate.
+      If another group already researched this summit, you'll inherit their trail data automatically.
+    </p>
+  </div>
+
 </div>
-    <div class="container">
-        <header style="margin-bottom: 2rem;">
-            <a href="index.php" class="back-link">← Back to Dashboard</a>
-            <h1>⛰️ Nominate a Summit</h1>
-        </header>
 
-        <?php if ($message): ?>
-            <div class="message success"><?= htmlspecialchars($message) ?></div>
-        <?php endif; ?>
-
-        <?php if ($error): ?>
-            <div class="message error"><?= htmlspecialchars($error) ?></div>
-        <?php endif; ?>
-
-        <div class="current-group">
-            👥 Nominating for: <strong><?= htmlspecialchars($current_group['name']) ?></strong>
-        </div>
-
-        <div class="card">
-            <h2 style="margin-bottom: 1.5rem; color: var(--peak-brown);">Enter SOTA Reference</h2>
-            <form method="POST">
-                <div class="form-group">
-                    <label for="sota_ref">SOTA Summit Reference</label>
-                    <input 
-                        type="text" 
-                        id="sota_ref" 
-                        name="sota_ref" 
-                        placeholder="e.g., W6/CT-225" 
-                        required
-                        autofocus
-                    >
-                    <p class="helper-text">
-                        Enter the summit's SOTA reference code. You can find this on 
-                        <a href="https://www.sotamaps.org" target="_blank" style="color: var(--trail-green);">SOTAmaps.org</a> or 
-                        <a href="https://sotl.as" target="_blank" style="color: var(--trail-green);">SOTLas</a>.
-                    </p>
-                </div>
-                <button type="submit" name="nominate" class="btn">Nominate Summit</button>
-            </form>
-        </div>
-
-        <div class="info-box">
-            <h3>ℹ️ How It Works</h3>
-            <ul>
-                <li>Summits are shared in the <strong>Community</strong> by default</li>
-                <li>If someone already researched a summit, you'll see their research</li>
-                <li>You can create group-specific versions on the summit detail page</li>
-            </ul>
-        </div>
-    </div>
-<footer style="text-align:center; padding:2rem 1rem 1.5rem; color:#aaa; font-size:0.78rem;">
-    SOTA Planner &nbsp;·&nbsp; <a href="changelog.php" style="color:#aaa; text-decoration:none;">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com" style="color:#aaa; text-decoration:none;">sotaplanner.com</a>
+<footer style="text-align:center; padding:2rem 1rem 1.5rem; color:var(--ink-4); font-size:0.78rem;">
+  SOTA Planner &nbsp;·&nbsp;
+  <a href="changelog.php" style="color:var(--ink-4); text-decoration:none;">v<?= APP_VERSION ?></a>
+  &nbsp;·&nbsp;
+  <a href="https://sotaplanner.com" style="color:var(--ink-4); text-decoration:none;">sotaplanner.com</a>
 </footer>
+
 <script>
-(function() {
-    var chip = document.getElementById('userChip');
-    if (!chip) return;
-    chip.addEventListener('click', function(e) { e.stopPropagation(); this.classList.toggle('open'); });
-    document.addEventListener('click', function() { chip.classList.remove('open'); });
-})();
+document.addEventListener('click', function(e) {
+  var chip = document.getElementById('userChip');
+  if (chip && !chip.contains(e.target)) chip.classList.remove('open');
+});
+
+// ── Summit search ─────────────────────────────────────────────────────────────
+const searchInput  = document.getElementById('summit_search');
+const refInput     = document.getElementById('sota_ref');
+const resultsBox   = document.getElementById('search-results');
+const selectedBox  = document.getElementById('selected-summit');
+const selectedName = document.getElementById('selected-name');
+const selectedRef  = document.getElementById('selected-ref');
+const nominateBtn  = document.getElementById('nominate-btn');
+const searchHint   = document.getElementById('search-hint');
+
+// Matches a complete SOTA reference like W6/CT-225 or W7O/NC-001
+const refPattern = /^[A-Za-z0-9]{1,6}\/[A-Za-z0-9]{1,6}-\d+$/;
+
+let debounceTimer = null;
+
+searchInput.addEventListener('input', function() {
+    const val = this.value.trim();
+    clearTimeout(debounceTimer);
+
+    if (!val) {
+        hideResults();
+        setNominateEnabled(false);
+        searchHint.textContent = 'Type a summit name to search, or enter a SOTA reference directly (e.g., W6/CT-225).';
+        return;
+    }
+
+    if (refPattern.test(val)) {
+        // Looks like a direct reference — select it immediately
+        hideResults();
+        selectSummit(val.toUpperCase(), val.toUpperCase());
+        searchHint.textContent = 'Looks like a SOTA reference — ready to nominate.';
+        return;
+    }
+
+    if (val.length < 2) return;
+
+    searchHint.textContent = 'Searching...';
+    debounceTimer = setTimeout(() => doSearch(val), 380);
+});
+
+function doSearch(q) {
+    resultsBox.style.display = 'block';
+    resultsBox.innerHTML = '<div class="search-status">Searching summit cache...</div>';
+
+    fetch('nominate.php?action=search&q=' + encodeURIComponent(q))
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                resultsBox.innerHTML = '<div class="search-status">' + data.error + '</div>';
+                searchHint.textContent = '';
+                return;
+            }
+            if (!Array.isArray(data) || data.length === 0) {
+                resultsBox.innerHTML = '<div class="search-status">No summits found matching "' + escHtml(q) + '".</div>';
+                searchHint.textContent = 'Try different spelling or enter a SOTA reference directly.';
+                return;
+            }
+            renderResults(data, q);
+        })
+        .catch(() => {
+            resultsBox.innerHTML = '<div class="search-status">Search failed. Try entering a SOTA reference directly.</div>';
+        });
+}
+
+function renderResults(results, q) {
+    const more = results.length === 20 ? ' (showing top 20)' : '';
+    let html = '<div class="search-count">' + results.length + ' summit' + (results.length !== 1 ? 's' : '') + ' found' + more + '</div>';
+    results.forEach(s => {
+        const alt = s.altFt ? (s.altFt.toLocaleString() + ' ft') : '';
+        html += `<div class="result-item" onclick="selectSummit('${escAttr(s.ref)}','${escAttr(s.name)}')">
+            <div>
+                <div class="result-name">${escHtml(s.name)}</div>
+                <div class="result-ref">${escHtml(s.ref)}</div>
+            </div>
+            <div class="result-meta">
+                <div class="result-pts">${s.points} pt${s.points !== 1 ? 's' : ''}</div>
+                ${alt ? '<div>' + alt + '</div>' : ''}
+            </div>
+        </div>`;
+    });
+    resultsBox.innerHTML = html;
+    searchHint.textContent = 'Click a summit to select it.';
+}
+
+function selectSummit(ref, name) {
+    refInput.value = ref;
+    selectedName.textContent = name;
+    selectedRef.textContent  = ref !== name ? ref : '';
+    selectedBox.style.display = 'block';
+    hideResults();
+    setNominateEnabled(true);
+    searchHint.textContent = '';
+}
+
+function clearSelection() {
+    refInput.value = '';
+    selectedBox.style.display = 'none';
+    setNominateEnabled(false);
+    searchInput.value = '';
+    searchInput.focus();
+    searchHint.textContent = 'Type a summit name to search, or enter a SOTA reference directly (e.g., W6/CT-225).';
+}
+
+function hideResults() { resultsBox.style.display = 'none'; resultsBox.innerHTML = ''; }
+function setNominateEnabled(on) { nominateBtn.disabled = !on; nominateBtn.style.opacity = on ? '1' : '0.45'; }
+
+function escHtml(s)  { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escAttr(s)  { return String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+
+// Handle form submit validation
+document.getElementById('nominate-form').addEventListener('submit', function(e) {
+    if (!refInput.value.trim()) {
+        e.preventDefault();
+        alert('Please select a summit first.');
+    }
+});
 </script>
 </body>
 </html>

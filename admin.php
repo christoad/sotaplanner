@@ -881,6 +881,36 @@ foreach ($health_raw as $r) {
             </form>
         </div>
 
+        <!-- Summit Search Cache -->
+        <div class="card" style="margin-bottom: 2rem;">
+            <h2 style="margin-bottom: 0.5rem;">⛰️ Summit Search Cache</h2>
+            <p style="color:#666; margin-bottom:1.25rem; font-size:0.9rem;">
+                The summit search on the Nominate page is powered by a local cache of the SOTA summit database.
+                Rebuild it when it feels stale (monthly is fine — the SOTA summit list rarely changes).
+            </p>
+            <?php
+            require_once __DIR__ . '/sota_cache_helper.php';
+            $ci = get_sota_cache_info();
+            if ($ci):
+            ?>
+            <div style="background:#f5f5f0; border-radius:6px; padding:0.75rem 1rem; margin-bottom:1rem; font-size:0.875rem;">
+                <strong><?= number_format($ci['count']) ?> summits</strong> cached &nbsp;·&nbsp;
+                <?= $ci['size_kb'] ?> KB &nbsp;·&nbsp;
+                Last built: <?= date('M j, Y g:ia', $ci['modified']) ?>
+            </div>
+            <?php else: ?>
+            <div style="background:#FFF4E6; border:1px solid #e6b84a; border-radius:6px; padding:0.75rem 1rem; margin-bottom:1rem; font-size:0.875rem; font-weight:600; color:#7a5a00;">
+                Cache not built yet — summit name search won't work until you run a build.
+            </div>
+            <?php endif; ?>
+            <p style="font-size:0.85rem; color:#888; margin-bottom:0.75rem;">
+                The rebuild downloads ~90 MB from the SOTA API and takes about 30–60 seconds.
+            </p>
+            <a href="rebuild_sota_cache.php?password=sota" target="_blank" class="btn" style="background:var(--navy); color:white;">
+                Rebuild Summit Cache
+            </a>
+        </div>
+
         <!-- DANGER ZONE -->
         <div class="danger-zone">
             <h2 style="color: var(--red); margin-bottom: 1rem;">⚠️ DANGER ZONE</h2>
