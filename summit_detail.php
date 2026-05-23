@@ -512,6 +512,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    // Set trailhead via map right-click (AJAX)
+    if (isset($_POST['set_trailhead'])) {
+        header('Content-Type: application/json');
+        $lat = !empty($_POST['trailhead_lat']) ? (float)$_POST['trailhead_lat'] : null;
+        $lng = !empty($_POST['trailhead_lng']) ? (float)$_POST['trailhead_lng'] : null;
+        if ($lat !== null && $lng !== null) {
+            $stmt = $db->prepare("UPDATE summits SET trailhead_lat = ?, trailhead_lng = ?, trailhead_manual = TRUE WHERE id = ?");
+            $stmt->execute([$lat, $lng, $summit_id]);
+            logActivity($db, 'Trailhead set via map', $log_summit_name, $log_sota_ref, $log_group_name);
+            echo json_encode(['ok' => true]);
+        } else {
+            echo json_encode(['ok' => false, 'error' => 'Invalid coordinates']);
+        }
+        exit;
+    }
+
     // Edit planned activation
     if (isset($_POST['edit_planned_activation'])) {
         if ($current_group) {
@@ -881,10 +897,66 @@ if ($tl_show) {
     .time-legend-dot  { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
 
     /* Map */
+    .map-wrap { position: relative; }
     #summit-map { height: 280px; border-radius: var(--r-lg); border: 1px solid var(--border); overflow: hidden; margin-bottom: 0.75rem; }
     .map-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; align-items: center; }
     .carrier-btn { height: 28px; padding: 0 0.625rem; font-size: 0.75rem; font-weight: 600; border-radius: var(--r-sm); border: 1.5px solid; cursor: pointer; transition: all 0.12s; font-family: var(--font-sans); }
     .map-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+
+    /* Map expand button — styled like a Leaflet control so it's visible on any map tile */
+    .btn-map-expand {
+      position: absolute; top: 10px; right: 10px; z-index: 400;
+      background: #fff; border: 2px solid rgba(0,0,0,0.2);
+      border-radius: 4px; width: 34px; height: 34px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; padding: 0; color: #333;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+      transition: background 0.15s;
+    }
+    .btn-map-expand:hover { background: #f4f4f4; }
+
+    /* Map backdrop — below topbar (z-index 100) */
+    .map-backdrop {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.62); z-index: 88;
+    }
+    .map-backdrop.active { display: block; }
+
+    /* Expanded map overlay — below topbar, above everything else */
+    .map-wrap.map-expanded {
+      position: fixed;
+      top: calc(56px + 0.75rem); left: 1rem; right: 1rem; bottom: 1rem;
+      z-index: 90;
+      border-radius: var(--r-lg);
+      box-shadow: 0 24px 80px rgba(0,0,0,0.4);
+      background: var(--surface);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .map-wrap.map-expanded #summit-map {
+      height: 0 !important; flex: 1; margin-bottom: 0;
+      border-radius: var(--r-lg) var(--r-lg) 0 0; border: none;
+    }
+    .map-wrap.map-expanded .map-buttons {
+      padding: 0.5rem 0.75rem; margin-bottom: 0; flex-shrink: 0;
+      border-top: 1px solid var(--border);
+    }
+
+
+    /* Map right-click context menu */
+    #map-ctx-menu {
+      position: fixed; background: var(--surface);
+      border: 1px solid var(--border); border-radius: var(--r-md);
+      box-shadow: var(--shadow-md); z-index: 3000;
+      overflow: hidden; display: none; min-width: 175px;
+    }
+    #map-ctx-menu button {
+      display: block; width: 100%; padding: 0.55rem 1rem;
+      text-align: left; background: none; border: none;
+      font-size: 0.85rem; font-weight: 500; cursor: pointer;
+      color: var(--ink); font-family: var(--font-sans);
+      transition: background 0.1s;
+    }
+    #map-ctx-menu button:hover { background: var(--bg-2); }
 
     /* Elevation profile */
     .elev-wrap { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; margin-bottom: 0.75rem; }
@@ -1204,25 +1276,29 @@ if ($tl_show) {
       <?php endif; ?>
 
       <!-- Map -->
-      <div id="summit-map"></div>
-      <div class="map-buttons">
-        <button type="button" id="btn-base-street"    class="btn btn-sm btn-map-active"  onclick="switchBase('street')">Street</button>
-        <button type="button" id="btn-base-topo"      class="btn btn-sm btn-secondary"  onclick="switchBase('topo')">Topo</button>
-        <button type="button" id="btn-base-satellite" class="btn btn-sm btn-secondary"  onclick="switchBase('satellite')">Satellite</button>
-        <span class="map-divider"></span>
-        <button type="button" id="btn-tmobile" class="carrier-btn" style="border-color:#E91E8C; color:#E91E8C; background:#fff;" onclick="toggleCarrier('tmobile')">T-Mo</button>
-        <button type="button" id="btn-verizon" class="carrier-btn" style="border-color:#CD040B; color:#CD040B; background:#fff;" onclick="toggleCarrier('verizon')">VZW</button>
-        <button type="button" id="btn-att"     class="carrier-btn" style="border-color:#00A8E0; color:#00A8E0; background:#fff;" onclick="toggleCarrier('att')">AT&amp;T</button>
-        <?php if (!empty($summit['sota_ref'])): ?>
+      <div class="map-wrap" id="map-wrap">
+        <div id="summit-map"></div>
+        <div class="map-buttons">
+          <button type="button" id="btn-base-street"    class="btn btn-sm btn-map-active"  onclick="switchBase('street')">Street</button>
+          <button type="button" id="btn-base-topo"      class="btn btn-sm btn-secondary"  onclick="switchBase('topo')">Topo</button>
+          <button type="button" id="btn-base-satellite" class="btn btn-sm btn-secondary"  onclick="switchBase('satellite')">Satellite</button>
           <span class="map-divider"></span>
-          <button type="button" id="btn-actzone" class="btn btn-sm btn-secondary" onclick="toggleActivationZone()" disabled style="opacity:0.4;">Activation Zone</button>
-        <?php endif; ?>
-        <span class="map-divider"></span>
-        <a href="https://www.google.com/maps/search/?api=1&query=<?= $summit['latitude'] ?>,<?= $summit['longitude'] ?>" target="_blank" class="btn btn-sm btn-ghost">Maps ↗</a>
-        <?php if ($selected_address && $directions_lat && $directions_lng): ?>
-          <a href="https://www.google.com/maps/dir/?api=1&origin=<?= urlencode($selected_address['address']) ?>&destination=<?= $directions_lat ?>,<?= $directions_lng ?>&travelmode=driving" target="_blank" class="btn btn-sm btn-ghost">Directions ↗</a>
-        <?php endif; ?>
+          <button type="button" id="btn-tmobile" class="carrier-btn" style="border-color:#E91E8C; color:#E91E8C; background:#fff;" onclick="toggleCarrier('tmobile')">T-Mo</button>
+          <button type="button" id="btn-verizon" class="carrier-btn" style="border-color:#CD040B; color:#CD040B; background:#fff;" onclick="toggleCarrier('verizon')">VZW</button>
+          <button type="button" id="btn-att"     class="carrier-btn" style="border-color:#00A8E0; color:#00A8E0; background:#fff;" onclick="toggleCarrier('att')">AT&amp;T</button>
+          <?php if (!empty($summit['sota_ref'])): ?>
+            <span class="map-divider"></span>
+            <button type="button" id="btn-actzone" class="btn btn-sm btn-secondary" onclick="toggleActivationZone()" disabled style="opacity:0.4;">Activation Zone</button>
+          <?php endif; ?>
+          <span class="map-divider"></span>
+          <a href="https://www.google.com/maps/search/?api=1&query=<?= $summit['latitude'] ?>,<?= $summit['longitude'] ?>" target="_blank" class="btn btn-sm btn-ghost">Maps ↗</a>
+          <?php if ($selected_address && $directions_lat && $directions_lng): ?>
+            <a href="https://www.google.com/maps/dir/?api=1&origin=<?= urlencode($selected_address['address']) ?>&destination=<?= $directions_lat ?>,<?= $directions_lng ?>&travelmode=driving" target="_blank" class="btn btn-sm btn-ghost">Directions ↗</a>
+          <?php endif; ?>
+        </div>
       </div>
+      <div id="map-backdrop" class="map-backdrop" onclick="toggleMapExpand()"></div>
+      <div id="map-ctx-menu"><button type="button" id="ctx-set-trailhead">Set trailhead here</button></div>
 
       <!-- Elevation profile (only if GPX) -->
       <?php if ($gpx_data): ?>
@@ -1280,19 +1356,25 @@ if ($tl_show) {
         <!-- Trailhead location -->
         <div class="form-group" style="margin:0;">
           <label class="form-label">Trailhead</label>
-          <?php if (!empty($summit['trailhead_lat']) && !empty($summit['trailhead_lng'])): ?>
+          <!-- State: coordinates are set -->
+          <div id="trailhead-set-state" style="display:<?= !empty($summit['trailhead_lat']) ? 'block' : 'none' ?>;">
             <div style="background:var(--green-bg); border:1px solid #b8d9c9; border-radius:var(--r-md); padding:0.45rem 0.75rem; display:flex; align-items:center; justify-content:space-between; gap:0.5rem; height:36px;">
-              <span style="font-family:var(--font-mono); font-size:0.7rem; color:var(--ink-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><?= htmlspecialchars($summit['trailhead_lat']) ?>, <?= htmlspecialchars($summit['trailhead_lng']) ?></span>
+              <span id="trailhead-coords-display" style="font-family:var(--font-mono); font-size:0.7rem; color:var(--ink-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><?= htmlspecialchars($summit['trailhead_lat'] ?? '') ?>, <?= htmlspecialchars($summit['trailhead_lng'] ?? '') ?></span>
               <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0; height:26px; padding:0 0.5rem; font-size:0.75rem;" onclick="resetTrailhead()">Reset</button>
             </div>
-            <input type="hidden" name="trailhead_lat" value="<?= htmlspecialchars($summit['trailhead_lat']) ?>">
-            <input type="hidden" name="trailhead_lng" value="<?= htmlspecialchars($summit['trailhead_lng']) ?>">
-          <?php else: ?>
+            <input type="hidden" name="trailhead_lat" id="trailhead-lat-hidden" value="<?= htmlspecialchars($summit['trailhead_lat'] ?? '') ?>">
+            <input type="hidden" name="trailhead_lng" id="trailhead-lng-hidden" value="<?= htmlspecialchars($summit['trailhead_lng'] ?? '') ?>">
+          </div>
+          <!-- State: no coordinates — show right-click hint + address fallback -->
+          <div id="trailhead-empty-state" style="display:<?= empty($summit['trailhead_lat']) ? 'flex' : 'none' ?>; flex-direction:column; gap:0.4rem;">
+            <div style="background:var(--accent-bg); border:1px solid var(--accent-border); border-radius:var(--r-md); padding:0.45rem 0.75rem; font-size:0.8rem; color:var(--accent-2); font-weight:600; text-align:center; line-height:1.3;">
+              Right-click the map above to set trailhead location
+            </div>
             <div style="display:flex; gap:0.5rem;">
-              <input type="text" class="form-input" id="geocode_address" placeholder="lat,lng or address" style="flex:1; height:36px; padding:0.5rem 0.75rem;">
+              <input type="text" class="form-input" id="geocode_address" placeholder="or enter address / lat,lng" style="flex:1; height:36px; padding:0.5rem 0.75rem; font-size:0.8rem;">
               <button type="button" class="btn btn-accent btn-sm" style="flex-shrink:0;" onclick="geocodeAddress()">Find</button>
             </div>
-          <?php endif; ?>
+          </div>
         </div>
       </div>
 
@@ -1687,6 +1769,23 @@ const baseLayers = {
 };
 let activeBase = 'street';
 baseLayers.street.addTo(map);
+
+// Expand button as a Leaflet control so it renders above map tiles in all browsers
+const EXPAND_ICON   = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const COLLAPSE_ICON = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 1v4H1M13 5V1H9M9 13v-4h4M1 9v4h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const ExpandControl = L.Control.extend({
+  onAdd: function() {
+    const btn = L.DomUtil.create('button', 'btn-map-expand');
+    btn.id = 'btn-map-expand';
+    btn.type = 'button';
+    btn.title = 'Expand map';
+    btn.innerHTML = EXPAND_ICON;
+    L.DomEvent.on(btn, 'click', L.DomEvent.stopPropagation);
+    L.DomEvent.on(btn, 'click', function() { toggleMapExpand(); });
+    return btn;
+  }
+});
+new ExpandControl({ position: 'topright' }).addTo(map);
 let gpxPolyline = null, activationZoneLayer = null;
 
 function switchBase(name) {
@@ -1708,10 +1807,116 @@ L.circleMarker([sumLat, sumLng], { radius: 7, color: '#C03030', fillColor: '#C03
   .bindPopup('<strong><?= htmlspecialchars(addslashes($summit['name'])) ?></strong><br><?= htmlspecialchars(addslashes($summit['sota_ref'] ?? '')) ?>')
   .addTo(map);
 
-// Trailhead marker
+// Trailhead marker (kept in variable so right-click can replace it)
+let trailheadMarker = null;
 if (trailLat !== null && trailLng !== null) {
-  L.circleMarker([trailLat, trailLng], { radius: 6, color: '#2D8653', fillColor: '#2D8653', fillOpacity: 0.9, weight: 2 })
+  trailheadMarker = L.circleMarker([trailLat, trailLng], { radius: 6, color: '#2D8653', fillColor: '#2D8653', fillOpacity: 0.9, weight: 2 })
     .bindPopup('Trailhead').addTo(map);
+}
+
+// ── Map expand toggle ────────────────────────────────────────────────────────
+// Move backdrop and context menu to <body> so they're never inside a stacking context
+document.body.appendChild(document.getElementById('map-backdrop'));
+document.body.appendChild(document.getElementById('map-ctx-menu'));
+
+let _mapWrapParent = null, _mapWrapNextSib = null;
+
+function toggleMapExpand() {
+  const wrap     = document.getElementById('map-wrap');
+  const backdrop = document.getElementById('map-backdrop');
+  const btn      = document.getElementById('btn-map-expand');
+  const expanded = wrap.classList.toggle('map-expanded');
+  if (expanded) {
+    _mapWrapParent  = wrap.parentNode;
+    _mapWrapNextSib = wrap.nextSibling;
+    document.body.appendChild(wrap);
+  } else {
+    if (_mapWrapParent) _mapWrapParent.insertBefore(wrap, _mapWrapNextSib);
+  }
+  backdrop.classList.toggle('active', expanded);
+  if (btn) { btn.innerHTML = expanded ? COLLAPSE_ICON : EXPAND_ICON; btn.title = expanded ? 'Collapse map' : 'Expand map'; }
+  setTimeout(() => map.invalidateSize(), 60);
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    if (document.getElementById('map-wrap').classList.contains('map-expanded')) toggleMapExpand();
+    document.getElementById('map-ctx-menu').style.display = 'none';
+  }
+});
+
+// ── Right-click to set trailhead ─────────────────────────────────────────────
+let ctxLatLng = null;
+const ctxMenu = document.getElementById('map-ctx-menu');
+
+map.on('contextmenu', function(e) {
+  e.originalEvent.preventDefault();
+  ctxLatLng = e.latlng;
+  const mapEl = document.getElementById('summit-map');
+  const rect  = mapEl.getBoundingClientRect();
+  const pt    = map.latLngToContainerPoint(e.latlng);
+  // Position menu, keeping it within viewport
+  const menuW = 180, menuH = 38;
+  const left  = Math.min(rect.left + pt.x + 4, window.innerWidth  - menuW - 8);
+  const top   = Math.min(rect.top  + pt.y + 4, window.innerHeight - menuH - 8);
+  ctxMenu.style.left = left + 'px';
+  ctxMenu.style.top  = top  + 'px';
+  ctxMenu.style.display = 'block';
+});
+
+document.addEventListener('click', function() { ctxMenu.style.display = 'none'; });
+
+document.getElementById('ctx-set-trailhead').addEventListener('click', function() {
+  if (!ctxLatLng) return;
+  ctxMenu.style.display = 'none';
+  const lat = parseFloat(ctxLatLng.lat.toFixed(6));
+  const lng = parseFloat(ctxLatLng.lng.toFixed(6));
+  const coordStr = lat + ', ' + lng;
+
+  // Move marker on map
+  if (trailheadMarker) map.removeLayer(trailheadMarker);
+  trailheadMarker = L.circleMarker([lat, lng], { radius: 6, color: '#2D8653', fillColor: '#2D8653', fillOpacity: 0.9, weight: 2 })
+    .bindPopup('Trailhead').addTo(map);
+
+  // Update the trailhead display section immediately — no page reload needed
+  const setState   = document.getElementById('trailhead-set-state');
+  const emptyState = document.getElementById('trailhead-empty-state');
+  const coordDisp  = document.getElementById('trailhead-coords-display');
+  const latHidden  = document.getElementById('trailhead-lat-hidden');
+  const lngHidden  = document.getElementById('trailhead-lng-hidden');
+  if (coordDisp)  coordDisp.textContent = coordStr;
+  if (latHidden)  latHidden.value = lat;
+  if (lngHidden)  lngHidden.value = lng;
+  if (setState)   setState.style.display = 'block';
+  if (emptyState) emptyState.style.display = 'none';
+
+  // Sync all hidden inputs in other forms on the page (pipeline step forms)
+  document.querySelectorAll('input[name="trailhead_lat"]').forEach(el => el.value = lat);
+  document.querySelectorAll('input[name="trailhead_lng"]').forEach(el => el.value = lng);
+
+  // Persist immediately via AJAX — no "Save Changes" needed
+  const fd = new FormData();
+  fd.append('set_trailhead', '1');
+  fd.append('trailhead_lat', lat);
+  fd.append('trailhead_lng', lng);
+  fetch('summit_detail.php?id=<?= $summit_id ?>', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => showMapToast(d.ok ? '✓ Trailhead saved — no other save needed' : 'Error saving trailhead'))
+    .catch(() => showMapToast('Error saving trailhead'));
+});
+
+function showMapToast(msg) {
+  let t = document.getElementById('map-toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'map-toast';
+    t.style.cssText = 'position:fixed;bottom:2rem;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:0.5rem 1.1rem;border-radius:var(--r-md);font-size:0.85rem;font-weight:500;z-index:4000;transition:opacity 0.4s;pointer-events:none;';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2200);
 }
 
 // Cell coverage layers
