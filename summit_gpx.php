@@ -19,7 +19,7 @@ $summit_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $current_group = getCurrentPlanningGroup($db);
 
 if (!$current_group) {
-    header("Location: choose_group.php");
+    header("Location: index.php");
     exit;
 }
 

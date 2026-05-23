@@ -1,203 +1,257 @@
+<?php
+require_once 'config.php';
+session_start();
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>About - SOTA Planner</title>
-    <link href="https://fonts.googleapis.com/css2?family=Overpass:wght@300;600;800&display=swap" rel="stylesheet">
+    <title>About — SOTA Planner</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --navy: #1E3A5F;
-            --teal: #9B6328;
-            --gold: #E6B84A;
-            --snow: #F5F5F0;
-        }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; -webkit-font-smoothing: antialiased; }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+    :root {
+      --bg:            #F7F6F3;
+      --bg-2:          #EFEDE8;
+      --bg-3:          #E5E2DA;
+      --ink:           #1C1B19;
+      --ink-2:         #4A4844;
+      --ink-3:         #8C8A86;
+      --ink-4:         #B8B5B0;
+      --accent:        oklch(52% 0.13 50);
+      --accent-2:      oklch(44% 0.13 50);
+      --accent-bg:     oklch(96% 0.04 65);
+      --accent-border: oklch(84% 0.08 65);
+      --green:         oklch(52% 0.13 155);
+      --green-bg:      oklch(95% 0.04 155);
+      --surface:       #FFFFFF;
+      --border:        #E5E2DA;
+      --border-2:      #D4D0C8;
+      --font-sans:     'DM Sans', system-ui, sans-serif;
+      --r-sm: 4px; --r-md: 8px; --r-lg: 12px; --r-xl: 16px;
+      --sp-2: 0.5rem; --sp-3: 0.75rem; --sp-4: 1rem;
+      --sp-6: 1.5rem; --sp-8: 2rem;
+      --shadow-sm: 0 1px 3px rgba(28,27,25,0.07), 0 1px 2px rgba(28,27,25,0.05);
+    }
 
-        body {
-            font-family: 'Overpass', sans-serif;
-            background: linear-gradient(135deg, var(--snow) 0%, #E8E4D8 100%);
-            color: var(--navy);
-            padding: 2rem;
-            line-height: 1.6;
-        }
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
 
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-        }
+    /* ── Topbar ── */
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      height: 56px;
+      display: flex;
+      align-items: center;
+      padding: 0 var(--sp-8);
+      gap: var(--sp-4);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .topbar-logo {
+      display: flex; align-items: center; gap: var(--sp-3);
+      text-decoration: none; color: var(--ink);
+      font-weight: 600; font-size: 0.95rem; letter-spacing: -0.01em;
+      flex-shrink: 0;
+    }
+    .topbar-logo:hover { text-decoration: none; color: var(--ink); }
+    .topbar-logo .logo-mark {
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .topbar-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+    .topbar-nav { display: flex; align-items: center; gap: var(--sp-2); }
+    .topbar-nav a {
+      color: var(--ink-3); font-size: 0.875rem; font-weight: 500;
+      padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm);
+      transition: color 0.15s, background 0.15s;
+      text-decoration: none; white-space: nowrap;
+    }
+    .topbar-nav a:hover { color: var(--ink); background: var(--bg-2); }
 
-        header {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
+    /* ── Page ── */
+    .page {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: var(--sp-8) var(--sp-8) 5rem;
+    }
 
-        .logo {
-            height: 80px;
-        }
+    .page-header {
+      margin-bottom: var(--sp-8);
+    }
+    .page-header h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--ink);
+      margin-bottom: 0.25rem;
+    }
+    .page-header p {
+      font-size: 0.875rem;
+      color: var(--ink-3);
+    }
 
-        .back-link {
-            color: var(--teal);
-            text-decoration: none;
-            font-weight: 600;
-        }
+    /* ── Content blocks ── */
+    .about-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+      box-shadow: var(--shadow-sm);
+    }
+    .about-section h2 {
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--ink-3);
+      margin-bottom: 0.875rem;
+    }
+    .about-section p {
+      font-size: 0.9375rem;
+      color: var(--ink-2);
+      line-height: 1.65;
+      margin-bottom: 0.875rem;
+    }
+    .about-section p:last-child { margin-bottom: 0; }
+    .about-section strong { color: var(--ink); font-weight: 600; }
+    .about-section a { color: var(--accent); text-decoration: none; }
+    .about-section a:hover { text-decoration: underline; }
 
-        .content-card {
-            background: white;
-            padding: 3rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-        }
+    .about-section.accent {
+      background: var(--accent-bg);
+      border-color: var(--accent-border);
+    }
 
-        h1 {
-            color: var(--navy);
-            font-size: 2.5rem;
-            font-weight: 800;
-            margin-bottom: 1.5rem;
-        }
+    /* ── Feature list ── */
+    .feature-list {
+      list-style: none;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-top: 0.25rem;
+    }
+    .feature-list li {
+      font-size: 0.9rem;
+      color: var(--ink-2);
+      line-height: 1.55;
+      display: flex;
+      align-items: baseline;
+      gap: 0.6rem;
+    }
+    .feature-list li::before {
+      content: "–";
+      color: var(--ink-4);
+      flex-shrink: 0;
+    }
 
-        h2 {
-            color: var(--navy);
-            font-size: 1.8rem;
-            font-weight: 700;
-            margin-top: 2rem;
-            margin-bottom: 1rem;
-        }
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 1.5rem 1rem;
+      color: var(--ink-4);
+      font-size: 0.78rem;
+    }
+    footer a { color: var(--ink-4); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
 
-        p {
-            margin-bottom: 1.5rem;
-            font-size: 1.1rem;
-        }
-
-        .highlight {
-            background: linear-gradient(135deg, var(--teal) 0%, var(--navy) 100%);
-            color: white;
-            padding: 2rem;
-            border-radius: 8px;
-            margin: 2rem 0;
-        }
-
-        .highlight h2 {
-            color: white;
-            margin-top: 0;
-        }
-
-        a {
-            color: var(--teal);
-            font-weight: 600;
-            text-decoration: none;
-        }
-
-        a:hover {
-            text-decoration: underline;
-        }
-
-        .btn {
-            display: inline-block;
-            padding: 1rem 2rem;
-            background: linear-gradient(135deg, var(--teal) 0%, var(--navy) 100%);
-            color: white;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-top: 2rem;
-            transition: all 0.3s;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-            text-decoration: none;
-        }
-
-        .footer {
-            text-align: center;
-            margin-top: 3rem;
-            padding-top: 2rem;
-            border-top: 2px solid var(--snow);
-            color: #666;
-        }
+    @media (max-width: 600px) {
+      .topbar { padding: 0 var(--sp-4); }
+      .page { padding: var(--sp-6) var(--sp-4) 4rem; }
+    }
     </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <img src="sota-planner-logo.svg" alt="SOTA Planner" class="logo">
-            <a href="index.php" class="back-link">← Back to Dashboard</a>
-        </header>
 
-        <div class="content-card">
-            <h1>About SOTA Planner</h1>
-            
-            <p>
-                <strong>SOTA Planner</strong> was created to help busy radio amateurs plan their SOTA (Summits On The Air) activations with a clear understanding of the <strong>total time commitment, doorstep to doorstep</strong>.
-            </p>
-
-            <div class="highlight">
-                <h2>The Problem</h2>
-                <p style="margin-bottom: 0;">
-                    Planning a SOTA activation involves piecing together information from multiple sources: drive time, hike distance, elevation gain, time on summit, and the return journey. It's hard to know if you have 3 hours or 8 hours before you even start.
-                </p>
-            </div>
-
-            <h2>The Solution</h2>
-            <p>
-                SOTA Planner brings everything together in one place. Set your drive start address, nominate summits you're interested in, research the trails, and instantly see your total time commitment for each activation.
-            </p>
-
-            <p>
-                Whether you're planning a quick activation before work or a full-day adventure, SOTA Planner helps you choose the right summit for the time you have available.
-            </p>
-
-            <h2>Key Features</h2>
-            <ul style="margin-left: 2rem; margin-bottom: 1.5rem; font-size: 1.1rem;">
-                <li><strong>Planning Groups:</strong> Organize activations with your friends or solo</li>
-                <li><strong>Drive Time Calculation:</strong> Automatic routing from your address</li>
-                <li><strong>Hike Time Estimation:</strong> Based on distance and elevation gain</li>
-                <li><strong>Total Time View:</strong> Drive + Hike + Activation time at a glance</li>
-                <li><strong>Activation Tracking:</strong> Keep history of completed activations</li>
-                <li><strong>Shared Research:</strong> Benefit from trail data researched by others</li>
-            </ul>
-
-            <h2>Who Built This?</h2>
-            <p>
-                SOTA Planner was created by <strong>Christopher Reddick, KI6CR</strong>, a casual SOTA activator and occasional chaser who wanted a better way to plan time sensitive activation trips.
-            </p>
-
-            <p>
-                Learn more about Chris and his projects at <a href="https://ki6cr.com" target="_blank">ki6cr.com</a>
-            </p>
-
-            <div class="highlight">
-                <h2>Free & Open</h2>
-                <p style="margin-bottom: 0;">
-                    SOTA Planner is free to use. No signup required, no email needed. Just create a planning group and start planning your activations.
-                </p>
-            </div>
-
-            <h2>Get Started</h2>
-            <p>
-                Ready to plan your next activation? Create a planning group, add an address to use for directions, and start nominating summits.
-            </p>
-
-            <a href="index.php" class="btn">Start Planning Now</a>
-
-            <div class="footer">
-                <p>
-                    <strong>SOTA Planner</strong> &copy; <?= date('Y') ?> Christopher Reddick, KI6CR<br>
-                    Created for the SOTA community with 73s
-                </p>
-            </div>
-        </div>
+<nav class="topbar">
+    <a href="index.php" class="topbar-logo">
+        <span class="logo-mark">
+            <img src="sota-planner-logo.svg" width="32" height="32" alt="">
+        </span>
+        <span>SOTAplanner</span>
+    </a>
+    <div class="topbar-divider"></div>
+    <div class="topbar-nav">
+        <a href="index.php">← Dashboard</a>
     </div>
+</nav>
+
+<div class="page">
+
+    <div class="page-header">
+        <h1>About SOTA Planner</h1>
+        <p>Built for the SOTA community by KI6CR</p>
+    </div>
+
+    <div class="about-section accent">
+        <h2>The Problem</h2>
+        <p>
+            Planning a SOTA activation means piecing together information from multiple sources —
+            drive time, hike distance, elevation gain, time on summit for radio, and the return
+            journey. It's hard to know if you're looking at a 3-hour outing or an 8-hour day
+            before you've even started researching.
+        </p>
+    </div>
+
+    <div class="about-section">
+        <h2>The Solution</h2>
+        <p>
+            <strong>SOTA Planner</strong> brings everything together in one place. Set your
+            starting address, nominate summits you're interested in, research the trails, and
+            instantly see the <strong>total door-to-door time</strong> for each activation —
+            drive up, hike in, radio time on the summit, hike out, drive home.
+        </p>
+        <p>
+            Whether you're squeezing in a quick activation before work or planning a full-day
+            adventure, SOTA Planner helps you match the right summit to the time you actually have.
+        </p>
+    </div>
+
+    <div class="about-section">
+        <h2>Key Features</h2>
+        <ul class="feature-list">
+            <li><strong>Total time estimate</strong> — drive + hike up + activation + hike down + drive back, at a glance</li>
+            <li><strong>Drive time calculation</strong> — automatic routing from your starting address to each trailhead</li>
+            <li><strong>GPX track analysis</strong> — upload a recorded track to extract real-world hike time, activation time, distance, and elevation</li>
+            <li><strong>Planning groups</strong> — collaborate with co-activators; share summit research, GPX tracks, and notes</li>
+            <li><strong>Activation timeline</strong> — shareable invitation page for hiking partners with a visual day schedule</li>
+            <li><strong>Summit search</strong> — find summits by name, no SOTA reference code needed</li>
+            <li><strong>Activation zone overlay</strong> — see the terrain-based activation zone boundary on the summit map</li>
+        </ul>
+    </div>
+
+    <div class="about-section">
+        <h2>Who Built This</h2>
+        <p>
+            SOTA Planner was created by <strong>Christopher Reddick, KI6CR</strong> — a SOTA
+            activator who wanted a better way to plan time-sensitive trips. It's free to use,
+            no email address required.
+        </p>
+        <p>
+            More at <a href="https://ki6cr.com" target="_blank">ki6cr.com</a>
+        </p>
+    </div>
+
+</div>
+
+<footer>
+    SOTA Planner &nbsp;·&nbsp;
+    <a href="changelog.php">v<?= APP_VERSION ?></a>
+    &nbsp;·&nbsp;
+    <a href="https://sotaplanner.com">sotaplanner.com</a>
+</footer>
+
 </body>
 </html>

@@ -225,11 +225,16 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--ink); 
     color: var(--green);
     border-width: 2px;
 }
+@keyframes step-pulse {
+    0%   { box-shadow: 0 0 0 0px oklch(60% 0.10 50 / 0.55); }
+    60%  { box-shadow: 0 0 0 12px oklch(60% 0.10 50 / 0.12); }
+    100% { box-shadow: 0 0 0 20px oklch(60% 0.10 50 / 0); }
+}
 .step-circle.active {
     background: var(--ink);
     border-color: var(--ink);
     color: #fff;
-    box-shadow: 0 0 0 5px oklch(88% 0.05 50 / 0.35);
+    animation: step-pulse 1.8s ease-out infinite;
 }
 .step-label {
     font-size: 0.75rem; font-weight: 600;
@@ -712,20 +717,6 @@ window.addEventListener('pageshow', snapTopAndFocus);
             <div class="form-section">
                 <div class="form-section-title">Where are you starting from?</div>
 
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label" for="addr_label">Nickname <span style="font-weight:400; color:var(--ink-4);">(optional)</span></label>
-                        <input
-                            type="text"
-                            id="addr_label"
-                            name="label"
-                            class="form-input"
-                            placeholder="e.g., Home, Work, Cabin"
-                            value="<?= htmlspecialchars($_POST['label'] ?? '') ?>"
-                        >
-                    </div>
-                </div>
-
                 <div class="form-group">
                     <label class="form-label" for="addr_address">Address or location</label>
                     <input
@@ -738,6 +729,18 @@ window.addEventListener('pageshow', snapTopAndFocus);
                         required
                     >
                     <div class="form-hint">Anything Google Maps can find works — a zip code, a local business, cross streets, or a full address.</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="addr_label">Nickname <span style="font-weight:400; color:var(--ink-4);">(optional)</span></label>
+                    <input
+                        type="text"
+                        id="addr_label"
+                        name="label"
+                        class="form-input"
+                        placeholder="e.g., Home, Work, Cabin"
+                        value="<?= htmlspecialchars($_POST['label'] ?? '') ?>"
+                    >
                 </div>
             </div>
 
