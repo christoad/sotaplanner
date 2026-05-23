@@ -1279,9 +1279,7 @@ if ($tl_show) {
             <div style="font-size:0.8rem; font-weight:600; color:var(--green);">Trailhead Set</div>
             <div style="font-size:0.72rem; color:var(--ink-2); font-family:var(--font-mono); margin-top:2px;"><?= htmlspecialchars($summit['trailhead_lat']) ?>, <?= htmlspecialchars($summit['trailhead_lng']) ?></div>
           </div>
-          <form method="POST" style="margin:0;">
-            <button type="submit" name="reset_trailhead" class="btn btn-danger btn-sm" onclick="return confirm('Clear the saved trailhead coordinates?')">Reset</button>
-          </form>
+          <button type="button" class="btn btn-danger btn-sm" onclick="resetTrailhead()">Reset</button>
         </div>
         <input type="hidden" name="trailhead_lat" value="<?= htmlspecialchars($summit['trailhead_lat']) ?>">
         <input type="hidden" name="trailhead_lng" value="<?= htmlspecialchars($summit['trailhead_lng']) ?>">
@@ -1657,6 +1655,19 @@ function setDifficulty(val) {
     const d = btn.getAttribute('data-diff');
     btn.className = 'diff-btn' + (d === val ? ' active-' + d : '');
   });
+}
+
+// ── Reset trailhead ─────────────────────────────────────────────────────────
+function resetTrailhead() {
+  if (!confirm('Clear the saved trailhead coordinates?')) return;
+  const f = document.createElement('form');
+  f.method = 'POST';
+  f.action = window.location.href;
+  const i = document.createElement('input');
+  i.type = 'hidden'; i.name = 'reset_trailhead'; i.value = '1';
+  f.appendChild(i);
+  document.body.appendChild(f);
+  f.submit();
 }
 
 // ── Geocoder ────────────────────────────────────────────────────────────────
