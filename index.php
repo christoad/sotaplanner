@@ -441,6 +441,7 @@ $summits = $stmt->fetchAll();
     }
     .ctx-label { color: var(--ink-3); font-size: 0.75rem; white-space: nowrap; }
     .ctx-sep { color: var(--border-2); margin: 0 2px; }
+    .ctx-group { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
     .topbar-right {
       display: flex; align-items: center; gap: var(--sp-3);
       margin-left: auto; flex-shrink: 0;
@@ -711,10 +712,26 @@ $summits = $stmt->fetchAll();
     /* ── Mobile responsive ── */
     @media (max-width: 768px) {
       .page { padding: var(--sp-4); }
-      .topbar { padding: 0 var(--sp-4); gap: var(--sp-2); }
+      .topbar {
+        height: auto;
+        min-height: 52px;
+        flex-wrap: wrap;
+        padding: var(--sp-2) var(--sp-4);
+        gap: var(--sp-2);
+      }
+      .topbar-logo { order: 1; }
+      .topbar-right { order: 2; margin-left: auto; }
+      nav.topbar > .topbar-divider { display: none; }
+      .topbar-context {
+        order: 3;
+        width: 100%;
+        flex-wrap: wrap;
+        gap: 6px;
+        border-top: 1px solid var(--border);
+        padding: var(--sp-2) 0 var(--sp-1);
+      }
       .topbar-nav { display: none; }
-      .topbar-context { flex-wrap: wrap; gap: 6px; }
-      .select-inline { max-width: 140px; }
+      .select-inline { max-width: 150px; }
 
       .table-wrap { border: none; background: transparent; box-shadow: none; overflow: visible; }
       .data-table thead { display: none; }
@@ -759,27 +776,30 @@ $summits = $stmt->fetchAll();
     <div class="topbar-divider"></div>
 
     <div class="topbar-context">
-        <span class="ctx-label">Group</span>
-        <form method="POST" style="display:contents">
-            <select name="planning_group_id" class="select-inline" onchange="this.form.submit()">
-                <?php foreach ($all_groups as $group): ?>
-                    <option value="<?= $group['id'] ?>" <?= ($current_group && $current_group['id'] == $group['id']) ? 'selected' : '' ?>>
-                        <?= htmlspecialchars($group['name']) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-            <input type="hidden" name="select_planning_group" value="1">
-        </form>
-        <form method="POST" style="display:contents">
-            <input type="hidden" name="set_default_group" value="1">
-            <input type="hidden" name="default_group_id" value="<?= $current_group['id'] ?>">
-            <button type="submit"
-                    class="star-btn <?= (!empty($_COOKIE['sota_default_group']) && (int)$_COOKIE['sota_default_group'] === $current_group['id']) ? 'active' : '' ?>"
-                    title="Set as default group">★</button>
-        </form>
+        <div class="ctx-group">
+            <span class="ctx-label">Group</span>
+            <form method="POST" style="display:contents">
+                <select name="planning_group_id" class="select-inline" onchange="this.form.submit()">
+                    <?php foreach ($all_groups as $group): ?>
+                        <option value="<?= $group['id'] ?>" <?= ($current_group && $current_group['id'] == $group['id']) ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($group['name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <input type="hidden" name="select_planning_group" value="1">
+            </form>
+            <form method="POST" style="display:contents">
+                <input type="hidden" name="set_default_group" value="1">
+                <input type="hidden" name="default_group_id" value="<?= $current_group['id'] ?>">
+                <button type="submit"
+                        class="star-btn <?= (!empty($_COOKIE['sota_default_group']) && (int)$_COOKIE['sota_default_group'] === $current_group['id']) ? 'active' : '' ?>"
+                        title="Set as default group">★</button>
+            </form>
+        </div>
 
         <?php if (count($all_addresses) > 0): ?>
             <span class="ctx-sep">·</span>
+            <div class="ctx-group">
             <span class="ctx-label">From</span>
             <form method="POST" style="display:contents">
                 <select name="address_id" class="select-inline" onchange="this.form.submit()">
@@ -800,6 +820,7 @@ $summits = $stmt->fetchAll();
                         title="Set as default address">★</button>
             </form>
             <?php endif; ?>
+            </div>
         <?php else: ?>
             <span class="ctx-sep">·</span>
             <span style="font-size:0.78rem; color:var(--ink-4)"><a href="planning_groups.php" style="color:var(--ink-4)">Add an address</a></span>

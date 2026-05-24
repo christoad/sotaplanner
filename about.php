@@ -207,6 +207,11 @@ session_start();
       .topbar { padding: 0 var(--sp-4); }
       .page { padding: var(--sp-6) var(--sp-4) 4rem; }
       .feature-grid { grid-template-columns: 1fr; }
+      .feature-card:last-child:nth-child(odd) {
+        grid-column: auto;
+        width: 100%;
+        margin-inline: 0;
+      }
       .hero h1 { font-size: 1.5rem; }
     }
     </style>

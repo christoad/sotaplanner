@@ -401,6 +401,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
     }
     .info-panel p { font-size: 0.8rem; color: var(--ink-3); line-height: 1.6; }
     .info-panel strong { color: var(--ink-2); }
+
+    @media (max-width: 640px) {
+      .topbar { padding: 0 var(--sp-4); }
+      .topbar-nav { display: none; }
+      .page { padding: var(--sp-4); }
+    }
   </style>
 </head>
 <body>

@@ -537,6 +537,15 @@ $google_maps = "https://www.google.com/maps/search/" . urlencode($summit_name . 
         font-size: 0.82rem; font-weight: 500; color: var(--forest-dark); text-decoration: none;
     }
     .user-dropdown a:hover { background: #f5f5f0; }
+
+    @media (max-width: 640px) {
+        body { padding: 1rem; }
+        h1 { font-size: 1.6rem; }
+        .subtitle { font-size: 0.9rem; margin-bottom: 1.25rem; }
+        .search-links { grid-template-columns: 1fr; }
+        .card { padding: 1.25rem; }
+        .info-box { padding: 1rem; }
+    }
     </style>
 </head>
 <body>
