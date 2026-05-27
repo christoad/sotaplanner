@@ -17,9 +17,17 @@ Context: VK3ARR (SOTA team) granted an SSO client for identity login. Chris sent
 ### Playwright Screenshots
 Always save Playwright screenshots to the `playwright/` folder in the project root (e.g. `playwright/my-screenshot.png`). This folder is gitignored and excluded from rsync deploys — never commit screenshots.
 
+### Playwright Login
+The staging login page shows a hero section by default. To log in, click the small **"Developer access"** link in the bottom-left corner of the page — this reveals the callsign input. Enter `KI6CR` and click **Go**.
+
 ### Branches
 - **`main`** — production branch. Only merge here when a feature is tested and confirmed working.
 - **`dev`** — development branch. All new work happens here.
+
+### Merging dev → main
+Before merging, always:
+1. Bump `APP_VERSION` in `config.php`
+2. Add a new version block to `changelog.php` describing the new features in plain English (see changelog conventions below)
 
 ### Staging Environment
 - **URL:** christopherreddick.com/sotaplanner/

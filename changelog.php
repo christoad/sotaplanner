@@ -230,12 +230,26 @@ session_start();
         <p>Release history and update notes for SOTA Planner</p>
     </div>
 
-    <!-- v1.3.1 -->
+    <!-- v1.3.2 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.3.2</span>
+            <span class="version-date">May 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Live SOTAwatch alerts, activation history, and a refreshed About page.</p>
+        <ul>
+            <li>Summit detail page now shows recent SOTAwatch alerts — see who has spotted this summit and when, right alongside your planning data</li>
+            <li>Activation history pulled from the SOTA database appears on each summit detail page — see past activations at a glance</li>
+            <li>Redesigned About page with a clearer feature overview and illustrated layout</li>
+        </ul>
+    </div>
+
+    <!-- v1.3.1 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.3.1</span>
             <span class="version-date">May 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Summit search, a cleaner detail page, and a better day timeline.</p>
         <ul>

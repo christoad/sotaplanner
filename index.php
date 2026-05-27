@@ -442,6 +442,7 @@ $summits = $stmt->fetchAll();
     .ctx-label { color: var(--ink-3); font-size: 0.75rem; white-space: nowrap; }
     .ctx-sep { color: var(--border-2); margin: 0 2px; }
     .ctx-group { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .topbar-addr { display: flex; align-items: center; gap: 8px; }
     .topbar-right {
       display: flex; align-items: center; gap: var(--sp-3);
       margin-left: auto; flex-shrink: 0;
