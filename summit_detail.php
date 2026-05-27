@@ -199,82 +199,6 @@ if (isset($_POST['update_gpx_preferences'])) {
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Add activation
-    if (isset($_POST['add_activation'])) {
-        $current_group = getCurrentPlanningGroup($db);
-        $stmt = $db->prepare("
-            INSERT INTO activations (summit_id, planning_group_id, activation_date, callsigns, notes)
-            VALUES (?, ?, ?, ?, ?)
-        ");
-        $stmt->execute([
-            $summit_id,
-            $current_group['id'],
-            $_POST['activation_date'],
-            $_POST['activation_callsigns'],
-            $_POST['activation_notes'] ?? null
-        ]);
-        
-        // Update summit's last_activated_date if this is most recent
-        $stmt = $db->prepare("
-            UPDATE summits 
-            SET last_activated_date = ?,
-                activated_by = ?,
-                status = 'activated'
-            WHERE id = ? AND (last_activated_date IS NULL OR last_activated_date < ?)
-        ");
-        $stmt->execute([
-            $_POST['activation_date'],
-            $_POST['activation_callsigns'],
-            $summit_id,
-            $_POST['activation_date']
-        ]);
-
-        logActivity($db, 'Activation logged', $log_summit_name, $log_sota_ref, $log_group_name);
-        header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
-        exit;
-    }
-    
-    // Delete activation
-    if (isset($_POST['delete_activation'])) {
-        $current_group = getCurrentPlanningGroup($db);
-        $activation_id = (int)$_POST['activation_id'];
-        
-        // Delete the activation (only if it belongs to this group)
-        $stmt = $db->prepare("DELETE FROM activations WHERE id = ? AND planning_group_id = ?");
-        $stmt->execute([$activation_id, $current_group['id']]);
-        
-        // Update summit's last_activated_date to most recent remaining activation
-        $stmt = $db->prepare("
-            SELECT activation_date, callsigns 
-            FROM activations 
-            WHERE summit_id = ? AND planning_group_id = ?
-            ORDER BY activation_date DESC 
-            LIMIT 1
-        ");
-        $stmt->execute([$summit_id, $current_group['id']]);
-        $latest = $stmt->fetch();
-        
-        if ($latest) {
-            $stmt = $db->prepare("
-                UPDATE summits 
-                SET last_activated_date = ?, activated_by = ?
-                WHERE id = ?
-            ");
-            $stmt->execute([$latest['activation_date'], $latest['callsigns'], $summit_id]);
-        } else {
-            // No activations left - clear the fields
-            $stmt = $db->prepare("
-                UPDATE summits 
-                SET last_activated_date = NULL, activated_by = NULL
-                WHERE id = ?
-            ");
-            $stmt->execute([$summit_id]);
-        }
-        
-        header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
-        exit;
-    }
-    
     // Disconnect from shared data
     if (isset($_POST['use_custom_data'])) {
         $stmt = $db->prepare("UPDATE summits SET uses_shared_data = FALSE WHERE id = ?");
@@ -574,28 +498,9 @@ if (!$summit) {
     exit;
 }
 
-// Auto-archive past planned activations for this summit, then fetch current ones
+// Fetch upcoming planned activations
 $planned_activations_list = [];
 if ($current_group) {
-    $stmt = $db->prepare("SELECT * FROM planned_activations WHERE summit_id = ? AND planning_group_id = ? AND planned_date < CURDATE()");
-    $stmt->execute([$summit_id, $current_group['id']]);
-    $past_planned = $stmt->fetchAll();
-
-    foreach ($past_planned as $pp) {
-        $db->prepare("INSERT INTO activations (summit_id, planning_group_id, activation_date, callsigns, notes) VALUES (?, ?, ?, ?, ?)")
-           ->execute([$pp['summit_id'], $pp['planning_group_id'], $pp['planned_date'], $pp['callsigns'],
-                      $pp['invitation_message'] ? substr($pp['invitation_message'], 0, 200) : null]);
-        $db->prepare("UPDATE summits SET last_activated_date = ?, activated_by = ?, status = 'activated' WHERE id = ? AND (last_activated_date IS NULL OR last_activated_date < ?)")
-           ->execute([$pp['planned_date'], $pp['callsigns'], $summit_id, $pp['planned_date']]);
-        $db->prepare("DELETE FROM planned_activations WHERE id = ?")->execute([$pp['id']]);
-    }
-
-    if (!empty($past_planned)) {
-        $stmt = $db->prepare("SELECT * FROM summits WHERE id = ?");
-        $stmt->execute([$summit_id]);
-        $summit = $stmt->fetch();
-    }
-
     $stmt = $db->prepare("SELECT * FROM planned_activations WHERE summit_id = ? AND planning_group_id = ? ORDER BY planned_date ASC");
     $stmt->execute([$summit_id, $current_group['id']]);
     $planned_activations_list = $stmt->fetchAll();
@@ -618,6 +523,71 @@ if (empty($summit['drive_time_min']) && $selected_address && !empty($summit['lat
         $db->prepare("UPDATE summits SET drive_time_min = ? WHERE id = ?")
            ->execute([$auto_drive_rt, $summit_id]);
         $summit['drive_time_min'] = $auto_drive_rt;
+    }
+}
+
+// ── SOTA API: official activation history for group members ─────────────────
+$sota_member_activations = [];
+if ($current_group && !empty($summit['sota_ref'])) {
+    // Collect all group member callsigns (owner + members)
+    $member_stmt = $db->prepare("
+        SELECT callsign FROM planning_group_members WHERE planning_group_id = ?
+        UNION
+        SELECT owner_callsign FROM planning_groups WHERE id = ?
+    ");
+    $member_stmt->execute([$current_group['id'], $current_group['id']]);
+    $group_callsigns = array_map('strtoupper', array_column($member_stmt->fetchAll(), 'callsign'));
+
+    // Cache SOTA API results in app_settings (24-hour TTL)
+    $cache_key   = 'sota_activations_' . preg_replace('/[^a-zA-Z0-9_]/', '_', $summit['sota_ref']);
+    $cache_stmt  = $db->prepare("SELECT setting_value, updated_at FROM app_settings WHERE setting_key = ?");
+    $cache_stmt->execute([$cache_key]);
+    $cache_row   = $cache_stmt->fetch();
+    $all_sota_activations = null;
+
+    if ($cache_row && (time() - strtotime($cache_row['updated_at'])) < 86400) {
+        $all_sota_activations = json_decode($cache_row['setting_value'], true);
+    } else {
+        $ref_parts = explode('/', $summit['sota_ref'], 2);
+        if (count($ref_parts) === 2) {
+            $api_url = 'https://api2.sota.org.uk/api/activations/' . urlencode($ref_parts[0]) . '/' . urlencode($ref_parts[1]);
+            $ctx = stream_context_create(['http' => ['timeout' => 6, 'ignore_errors' => true,
+                'header' => "Accept: application/json\r\nUser-Agent: SOTAplanner/1.0\r\n"]]);
+            $raw = @file_get_contents($api_url, false, $ctx);
+            if ($raw !== false) {
+                $fetched = json_decode($raw, true);
+                if (is_array($fetched)) {
+                    $all_sota_activations = $fetched;
+                    $db->prepare("INSERT INTO app_settings (setting_key, setting_value, updated_at)
+                        VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=NOW()")
+                       ->execute([$cache_key, json_encode($all_sota_activations)]);
+                }
+            }
+        }
+    }
+
+    if (is_array($all_sota_activations)) {
+        foreach ($all_sota_activations as $act) {
+            $cs = strtoupper(trim($act['ownCallsign'] ?? ''));
+            if (in_array($cs, $group_callsigns)) {
+                $sota_member_activations[] = [
+                    'date'     => $act['activationDate'] ?? '',
+                    'callsign' => $cs,
+                    'qsos'     => (int)($act['qsos'] ?? 0),
+                ];
+            }
+        }
+        usort($sota_member_activations, fn($a,$b) => strcmp($b['date'], $a['date']));
+
+        // Push the most recent group-member activation back to the summits table
+        // so the dashboard last-activated field stays current
+        if (!empty($sota_member_activations)) {
+            $most_recent = $sota_member_activations[0];
+            $new_date    = date('Y-m-d', strtotime($most_recent['date']));
+            $db->prepare("UPDATE summits SET last_activated_date = ?, activated_by = ?, status = 'activated'
+                          WHERE id = ? AND (last_activated_date IS NULL OR last_activated_date < ?)")
+               ->execute([$new_date, $most_recent['callsign'], $summit_id, $new_date]);
+        }
     }
 }
 
@@ -1647,69 +1617,46 @@ if ($tl_show) {
 
   <!-- ACTIVATION HISTORY -->
   <div style="margin-top:1rem;">
+  <!-- SOTA OFFICIAL ACTIVATION HISTORY -->
+  <?php if (!empty($summit['sota_ref']) && $current_group): ?>
+  <div style="margin-bottom:1rem;">
     <div class="section-card">
-      <div class="section-title">Activation History</div>
-      <?php
-        $stmt = $db->prepare("SELECT * FROM activations WHERE summit_id = ? AND planning_group_id = ? ORDER BY activation_date DESC");
-        $stmt->execute([$summit_id, $current_group['id']]);
-        $activations = $stmt->fetchAll();
-      ?>
-      <?php if (!empty($activations)): ?>
-        <div style="overflow-x:auto; margin-bottom:1.25rem;">
+      <div class="section-title" style="display:flex; align-items:center; gap:0.5rem;">
+        Activation History
+        <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem;">Group members only</span>
+      </div>
+      <?php if (!empty($sota_member_activations)): ?>
+        <div style="overflow-x:auto;">
           <table class="mini-table">
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Callsigns</th>
-                <th>Notes</th>
-                <th></th>
+                <th>Callsign</th>
+                <th style="text-align:right;">QSOs</th>
               </tr>
             </thead>
             <tbody>
-              <?php foreach ($activations as $activation): ?>
+              <?php foreach ($sota_member_activations as $sa): ?>
                 <tr>
-                  <td style="white-space:nowrap; font-weight:500; color:var(--ink);"><?= date('M j, Y', strtotime($activation['activation_date'])) ?></td>
-                  <td style="font-family:var(--font-mono); font-size:0.78rem; color:var(--ink);"><?= htmlspecialchars($activation['callsigns']) ?></td>
-                  <td style="color:var(--ink-2);"><?= htmlspecialchars($activation['notes'] ?? '') ?></td>
-                  <td style="text-align:right; white-space:nowrap;">
-                    <form method="POST" style="margin:0;" onsubmit="return confirm('Delete this activation?');">
-                      <input type="hidden" name="activation_id" value="<?= $activation['id'] ?>">
-                      <button type="submit" name="delete_activation" class="btn btn-danger btn-sm" style="height:24px; padding:0 8px; font-size:0.72rem;">×</button>
-                    </form>
-                  </td>
+                  <td style="white-space:nowrap; font-weight:500; color:var(--ink);"><?= date('M j, Y', strtotime($sa['date'])) ?></td>
+                  <td style="font-family:var(--font-mono); font-size:0.78rem; color:var(--ink);"><?= htmlspecialchars($sa['callsign']) ?></td>
+                  <td style="text-align:right; font-weight:600; color:var(--green);"><?= $sa['qsos'] ?></td>
                 </tr>
               <?php endforeach; ?>
             </tbody>
           </table>
         </div>
+        <p style="font-size:0.75rem; color:var(--ink-4); margin-top:0.75rem;">
+          Pulled from the SOTA database · refreshed every 24 hours
+        </p>
+      <?php elseif ($sota_member_activations === [] && !empty($summit['sota_ref'])): ?>
+        <p style="color:var(--ink-3); font-size:0.875rem;">No activations by any planning group members on record for this summit.</p>
       <?php else: ?>
-        <p style="color:var(--ink-3); font-size:0.875rem; margin-bottom:1.25rem;">No activations recorded yet.</p>
+        <p style="color:var(--ink-3); font-size:0.875rem;">Could not reach the SOTA API.</p>
       <?php endif; ?>
-
-      <details>
-        <summary style="cursor:pointer; font-size:0.875rem; font-weight:600; color:var(--accent); display:inline-flex; align-items:center; gap:0.4rem;">
-          + Record an Activation
-        </summary>
-        <form method="POST" style="margin-top:0.875rem;">
-          <div class="field-row-2" style="margin-bottom:1rem;">
-            <div class="form-group" style="margin:0;">
-              <label class="form-label">Date</label>
-              <input type="date" name="activation_date" class="form-input" required value="<?= date('Y-m-d') ?>">
-            </div>
-            <div class="form-group" style="margin:0;">
-              <label class="form-label">Callsigns</label>
-              <input type="text" name="activation_callsigns" class="form-input" placeholder="KI6CR/P" required>
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Notes (optional)</label>
-            <input type="text" name="activation_notes" class="form-input" placeholder="Conditions, gear notes...">
-          </div>
-          <button type="submit" name="add_activation" class="btn btn-primary">Record Activation</button>
-        </form>
-      </details>
     </div>
   </div>
+  <?php endif; ?>
 
   <!-- DANGER ZONE -->
   <div style="margin-top:1rem; margin-bottom:1rem;">
@@ -1836,13 +1783,16 @@ function toggleMapExpand() {
   const wrap     = document.getElementById('map-wrap');
   const backdrop = document.getElementById('map-backdrop');
   const btn      = document.getElementById('btn-map-expand');
+  const widget   = document.getElementById('float-widget');
   const expanded = wrap.classList.toggle('map-expanded');
   if (expanded) {
     _mapWrapParent  = wrap.parentNode;
     _mapWrapNextSib = wrap.nextSibling;
     document.body.appendChild(wrap);
+    if (widget) widget.style.display = 'none';
   } else {
     if (_mapWrapParent) _mapWrapParent.insertBefore(wrap, _mapWrapNextSib);
+    if (widget) widget.style.display = '';
   }
   backdrop.classList.toggle('active', expanded);
   if (btn) { btn.innerHTML = expanded ? COLLAPSE_ICON : EXPAND_ICON; btn.title = expanded ? 'Collapse map' : 'Expand map'; }

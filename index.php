@@ -709,11 +709,14 @@ $summits = $stmt->fetchAll();
     .hiw-list li { margin-bottom: 0.3rem; }
 
     /* ── Mobile responsive ── */
+    .dropdown-mobile-only { display: none; }
     @media (max-width: 768px) {
+      .dropdown-mobile-only { display: block; }
       .page { padding: var(--sp-4); }
       .topbar { padding: 0 var(--sp-4); gap: var(--sp-2); }
       .topbar-nav { display: none; }
-      .topbar-context { flex-wrap: wrap; gap: 6px; }
+      .topbar-context { flex-wrap: nowrap; gap: 6px; }
+      .topbar-addr { display: none; }
       .select-inline { max-width: 140px; }
 
       .table-wrap { border: none; background: transparent; box-shadow: none; overflow: visible; }
@@ -778,6 +781,7 @@ $summits = $stmt->fetchAll();
                     title="Set as default group">★</button>
         </form>
 
+        <span class="topbar-addr">
         <?php if (count($all_addresses) > 0): ?>
             <span class="ctx-sep">·</span>
             <span class="ctx-label">From</span>
@@ -804,6 +808,7 @@ $summits = $stmt->fetchAll();
             <span class="ctx-sep">·</span>
             <span style="font-size:0.78rem; color:var(--ink-4)"><a href="planning_groups.php" style="color:var(--ink-4)">Add an address</a></span>
         <?php endif; ?>
+        </span>
     </div>
 
     <div class="topbar-right">
@@ -824,6 +829,7 @@ $summits = $stmt->fetchAll();
                 <?php if (($_SESSION['sota_callsign'] ?? '') === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
                     <a href="god_mode.php">God Mode</a>
                 <?php endif; ?>
+                <a href="planning_groups.php" class="dropdown-mobile-only">Planning Groups</a>
                 <a href="logout.php">Sign Out</a>
             </div>
         </div>
@@ -1010,7 +1016,7 @@ $summits = $stmt->fetchAll();
                             $elevation_for_display ? number_format(convertElevation($elevation_for_display, $current_group['units'])) . ' ' . getElevationUnit($current_group['units']) . ' gain' : null,
                         ]);
                     ?>
-                    <tr class="<?= $row_class ?>" onclick="window.location='summit_detail.php?id=<?= $summit['id'] ?>&group=<?= $current_group['id'] ?>';">
+                    <tr class="<?= $row_class ?>" data-summit-id="<?= $summit['id'] ?>" onclick="window.location='summit_detail.php?id=<?= $summit['id'] ?>&group=<?= $current_group['id'] ?>';">
                         <td class="td-main" onclick="event.stopPropagation()">
                             <a href="summit_detail.php?id=<?= $summit['id'] ?>&group=<?= $current_group['id'] ?>" style="text-decoration:none">
                                 <div class="summit-name"><?= htmlspecialchars($summit['name']) ?></div>
@@ -1472,5 +1478,28 @@ window.addEventListener('load', function() { show(0); });
 </script>
 <?php endif; ?>
 
+<script>
+// Silently refresh SOTA activation cache for all summits on the dashboard.
+// Fires after page paint, 3 at a time, so it never blocks the UI.
+(function() {
+  const groupId = <?= (int)$current_group['id'] ?>;
+  const ids = Array.from(document.querySelectorAll('tr[data-summit-id]'))
+                   .map(r => r.dataset.summitId);
+  if (!ids.length) return;
+
+  let i = 0;
+  function next() {
+    if (i >= ids.length) return;
+    const id = ids[i++];
+    fetch('sota_refresh.php?summit_id=' + id + '&group_id=' + groupId)
+      .then(r => r.json())
+      .catch(() => {})
+      .finally(next);
+  }
+  // Start 3 concurrent workers after page is idle
+  requestIdleCallback ? requestIdleCallback(() => { next(); next(); next(); })
+                      : setTimeout(() => { next(); next(); next(); }, 1500);
+})();
+</script>
 </body>
 </html>
