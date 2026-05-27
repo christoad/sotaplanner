@@ -5,10 +5,10 @@
 **Google Maps API key — referrer restriction:**
 Billing is working. Distance Matrix and Geocoding APIs are functional. The Maps JavaScript API fails with `RefererNotAllowedMapError` because the key's HTTP referrer allowlist doesn't include the site domains. At the start of the next session, ask Chris: "Ready to fix the Google Maps JS API? You need to add `*.sotaplanner.com/*` and `*.ki6cr.com/*` to the allowed referrers on the API key in Google Cloud Console (APIs & Services → Credentials → key ending in W5Fo → Application restrictions). Once done, interactive maps will work and we can remove test_maps.php."
 
-**Track 2 — SOTA API read-only features (not yet built):**
-At the start of the next session, ask Chris: "Ready to build the SOTA API read-only features? We planned to show activation history (which group members have activated a summit) and existing SOTAWatch alerts on the summit detail page. Both use the public SOTA API and don't need OAuth."
+**Track 2 — SOTA API activation history: troubleshoot data not loading:**
+The activation history section was built on `summit_detail.php` and deployed, but it is not pulling in data correctly — a test activation Chris made did not appear. At the start of the next session, troubleshoot why activations aren't showing. Check: the SOTA API endpoint being called, whether the summit reference is being passed correctly, and whether the response is empty or contains an error. The section uses the public SOTA API (no OAuth needed).
 
-Context: VK3ARR (SOTA team) granted an SSO client for identity login. Chris sent a follow-up explaining read-only intent. Track 1 (SSO login) was completed first. Track 2 is the next step once VK3ARR replies confirming API access approach.
+Context: VK3ARR (SOTA team) granted an SSO client for identity login. Chris sent a follow-up explaining read-only intent. Track 1 (SSO login) was completed first. Track 2 (activation history + SOTAWatch alerts) was built but needs debugging.
 
 ---
 
