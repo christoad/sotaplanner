@@ -195,6 +195,169 @@ session_start();
         <p>Built for the SOTA community by KI6CR</p>
     </div>
 
+    <!-- Journey illustration -->
+    <div class="about-section" style="padding:0;overflow:hidden;margin-bottom:1rem;">
+        <svg viewBox="0 0 640 270" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;max-width:100%;" aria-label="Illustration of a SOTA activation day: drive to trailhead, hike up, radio activation at summit, hike down, drive home">
+          <defs>
+            <linearGradient id="g-sky" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#E4E0D8"/>
+              <stop offset="100%" stop-color="#F2EFE9"/>
+            </linearGradient>
+            <linearGradient id="g-mtn" x1="0.25" y1="0" x2="0.75" y2="1">
+              <stop offset="0%" stop-color="#C8C4B8"/>
+              <stop offset="100%" stop-color="#DDD9D0"/>
+            </linearGradient>
+            <clipPath id="bar-clip">
+              <rect x="40" y="220" width="560" height="26" rx="5"/>
+            </clipPath>
+          </defs>
+
+          <!-- Sky -->
+          <rect width="640" height="270" fill="url(#g-sky)"/>
+
+          <!-- Distant ridge (background layer) -->
+          <path d="M0,200 L40,182 L80,195 L115,170 L155,188 L185,165 L220,185 L640,185 L640,210 L0,210Z" fill="#D8D4CB" opacity="0.45"/>
+
+          <!-- Main mountain -->
+          <path d="M-10,202 L50,202 L105,164 L140,178 L200,122 L248,144 L320,44 L392,144 L440,122 L500,178 L535,164 L590,202 L650,202 L650,270 L-10,270Z" fill="url(#g-mtn)" stroke="#C2BDB4" stroke-width="1.5"/>
+
+          <!-- Snow cap -->
+          <path d="M308,70 L320,44 L332,70 L325,74 L315,74Z" fill="rgba(255,255,255,0.7)"/>
+
+          <!-- ── JOURNEY PATH ── -->
+          <!-- Drive (left) -->
+          <path d="M40,196 L132,190" stroke="#4A72A0" stroke-width="3" stroke-dasharray="8,5" stroke-linecap="round" fill="none"/>
+          <!-- Hike up -->
+          <path d="M132,190 L228,128 L320,50" stroke="#2E7A50" stroke-width="3" stroke-dasharray="8,5" stroke-linecap="round" fill="none"/>
+          <!-- Hike down -->
+          <path d="M320,50 L412,128 L508,190" stroke="#2E7A50" stroke-width="3" stroke-dasharray="8,5" stroke-linecap="round" fill="none" opacity="0.8"/>
+          <!-- Drive (right) -->
+          <path d="M508,190 L600,196" stroke="#4A72A0" stroke-width="3" stroke-dasharray="8,5" stroke-linecap="round" fill="none" opacity="0.8"/>
+
+          <!-- ── ICONS ── -->
+
+          <!-- House (left) -->
+          <g transform="translate(40,190)">
+            <rect x="-9" y="-7" width="18" height="13" rx="2" fill="white" stroke="#8C8A86" stroke-width="1.5"/>
+            <path d="M-12,-7 L0,-21 L12,-7" fill="#EFEDE8" stroke="#8C8A86" stroke-width="1.5" stroke-linejoin="round"/>
+            <rect x="-4" y="-1" width="8" height="7" fill="#B8B5B0" rx="1"/>
+          </g>
+
+          <!-- Car (left trailhead) -->
+          <g transform="translate(132,183)">
+            <rect x="-14" y="-6" width="28" height="10" rx="3" fill="#DDEAF7" stroke="#4A72A0" stroke-width="1.5"/>
+            <rect x="-8" y="-13" width="16" height="9" rx="2" fill="#DDEAF7" stroke="#4A72A0" stroke-width="1.5"/>
+            <circle cx="-8" cy="5" r="4" fill="#4A72A0"/>
+            <circle cx="8" cy="5" r="4" fill="#4A72A0"/>
+            <circle cx="-8" cy="5" r="1.8" fill="white"/>
+            <circle cx="8" cy="5" r="1.8" fill="white"/>
+          </g>
+
+          <!-- Hiker (ascending) -->
+          <g transform="translate(226,122)">
+            <circle cx="0" cy="-15" r="5.5" fill="white" stroke="#2E7A50" stroke-width="1.5"/>
+            <path d="M0,-9 L0,2" stroke="#2E7A50" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M0,-1 L-7,6" stroke="#2E7A50" stroke-width="2" stroke-linecap="round"/>
+            <path d="M0,-1 L7,4" stroke="#2E7A50" stroke-width="2" stroke-linecap="round"/>
+            <path d="M0,2 L-5,13" stroke="#2E7A50" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M0,2 L5,13" stroke="#2E7A50" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M7,4 L11,13" stroke="#2E7A50" stroke-width="1.5" stroke-linecap="round"/>
+          </g>
+
+          <!-- Summit: radio burst -->
+          <g transform="translate(320,50)">
+            <circle cx="0" cy="0" r="18" fill="#B87830" opacity="0.12"/>
+            <circle cx="0" cy="0" r="10" fill="#B87830"/>
+            <!-- Antenna mast -->
+            <line x1="0" y1="-10" x2="0" y2="-24" stroke="#B87830" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="-5" y1="-18" x2="5" y2="-18" stroke="#B87830" stroke-width="2" stroke-linecap="round"/>
+            <!-- Signal arcs -->
+            <path d="M-8,-20 Q-15,-13 -13,-5" stroke="#B87830" stroke-width="1.5" fill="none" opacity="0.6" stroke-linecap="round"/>
+            <path d="M8,-20 Q15,-13 13,-5" stroke="#B87830" stroke-width="1.5" fill="none" opacity="0.6" stroke-linecap="round"/>
+            <path d="M-12,-25 Q-22,-15 -19,-5" stroke="#B87830" stroke-width="1" fill="none" opacity="0.32" stroke-linecap="round"/>
+            <path d="M12,-25 Q22,-15 19,-5" stroke="#B87830" stroke-width="1" fill="none" opacity="0.32" stroke-linecap="round"/>
+            <!-- Waveform inside circle -->
+            <path d="M-5,-1 L-2,3 L2,-1 L5,3" stroke="white" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </g>
+
+          <!-- Hiker (descending) -->
+          <g transform="translate(414,122)">
+            <circle cx="0" cy="-15" r="5.5" fill="white" stroke="#2E7A50" stroke-width="1.5"/>
+            <path d="M0,-9 L0,2" stroke="#2E7A50" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M0,-1 L-7,4" stroke="#2E7A50" stroke-width="2" stroke-linecap="round"/>
+            <path d="M0,-1 L7,6" stroke="#2E7A50" stroke-width="2" stroke-linecap="round"/>
+            <path d="M0,2 L-5,13" stroke="#2E7A50" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M0,2 L5,13" stroke="#2E7A50" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M-7,4 L-11,13" stroke="#2E7A50" stroke-width="1.5" stroke-linecap="round"/>
+          </g>
+
+          <!-- Car (right trailhead) -->
+          <g transform="translate(508,183)">
+            <rect x="-14" y="-6" width="28" height="10" rx="3" fill="#DDEAF7" stroke="#4A72A0" stroke-width="1.5"/>
+            <rect x="-8" y="-13" width="16" height="9" rx="2" fill="#DDEAF7" stroke="#4A72A0" stroke-width="1.5"/>
+            <circle cx="-8" cy="5" r="4" fill="#4A72A0"/>
+            <circle cx="8" cy="5" r="4" fill="#4A72A0"/>
+            <circle cx="-8" cy="5" r="1.8" fill="white"/>
+            <circle cx="8" cy="5" r="1.8" fill="white"/>
+          </g>
+
+          <!-- House (right) -->
+          <g transform="translate(600,190)">
+            <rect x="-9" y="-7" width="18" height="13" rx="2" fill="white" stroke="#8C8A86" stroke-width="1.5"/>
+            <path d="M-12,-7 L0,-21 L12,-7" fill="#EFEDE8" stroke="#8C8A86" stroke-width="1.5" stroke-linejoin="round"/>
+            <rect x="-4" y="-1" width="8" height="7" fill="#B8B5B0" rx="1"/>
+          </g>
+
+          <!-- ── FLOATING LABELS ── -->
+          <!-- Drive (left) -->
+          <rect x="57" y="203" width="38" height="15" rx="3" fill="white" opacity="0.82"/>
+          <text x="76" y="214" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="9" font-weight="700" fill="#4A72A0" letter-spacing="0.07em">DRIVE</text>
+
+          <!-- Hike Up -->
+          <rect x="148" y="152" width="52" height="15" rx="3" fill="white" opacity="0.82"/>
+          <text x="174" y="163" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="9" font-weight="700" fill="#2E7A50" letter-spacing="0.07em">HIKE UP</text>
+
+          <!-- Activate -->
+          <rect x="334" y="34" width="62" height="15" rx="3" fill="white" opacity="0.82"/>
+          <text x="365" y="45" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="9" font-weight="700" fill="#B87830" letter-spacing="0.07em">ACTIVATE</text>
+
+          <!-- Hike Down -->
+          <rect x="436" y="152" width="68" height="15" rx="3" fill="white" opacity="0.82"/>
+          <text x="470" y="163" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="9" font-weight="700" fill="#2E7A50" letter-spacing="0.07em">HIKE DOWN</text>
+
+          <!-- Drive (right) -->
+          <rect x="525" y="203" width="38" height="15" rx="3" fill="white" opacity="0.82"/>
+          <text x="544" y="214" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="9" font-weight="700" fill="#4A72A0" letter-spacing="0.07em">DRIVE</text>
+
+          <!-- ── TIMELINE BAR ── -->
+          <!-- Total 315 min, bar x=40–600 (560px) -->
+          <!-- Drive:80 | HikeUp:160 | Activate:107 | HikeDown:133 | Drive:80 -->
+          <g clip-path="url(#bar-clip)">
+            <rect x="40"  y="220" width="80"  height="26" fill="#4A72A0"/>
+            <rect x="120" y="220" width="160" height="26" fill="#2E7A50"/>
+            <rect x="280" y="220" width="107" height="26" fill="#B87830"/>
+            <rect x="387" y="220" width="133" height="26" fill="#2E7A50" opacity="0.82"/>
+            <rect x="520" y="220" width="80"  height="26" fill="#4A72A0" opacity="0.82"/>
+          </g>
+
+          <!-- Hairline dividers between segments -->
+          <line x1="120" y1="220" x2="120" y2="246" stroke="rgba(0,0,0,0.12)" stroke-width="1"/>
+          <line x1="280" y1="220" x2="280" y2="246" stroke="rgba(0,0,0,0.12)" stroke-width="1"/>
+          <line x1="387" y1="220" x2="387" y2="246" stroke="rgba(0,0,0,0.12)" stroke-width="1"/>
+          <line x1="520" y1="220" x2="520" y2="246" stroke="rgba(0,0,0,0.12)" stroke-width="1"/>
+
+          <!-- Bar labels -->
+          <text x="80"   y="236" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="white">Drive</text>
+          <text x="200"  y="236" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="white">Hike Up</text>
+          <text x="333"  y="236" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="white">Activate</text>
+          <text x="453"  y="236" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="white">Hike Down</text>
+          <text x="560"  y="236" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="white">Drive</text>
+
+          <!-- Total -->
+          <text x="320" y="260" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="10.5" font-weight="600" fill="#4A4844" letter-spacing="-0.01em">Total: 5 hr 15 min, door to door</text>
+        </svg>
+    </div>
+
     <div class="about-section accent">
         <h2>The Problem</h2>
         <p>
