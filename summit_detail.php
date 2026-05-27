@@ -591,6 +591,49 @@ if ($current_group && !empty($summit['sota_ref'])) {
     }
 }
 
+// ── SOTAwatch alerts for this summit ────────────────────────────────────────
+$sota_alerts = [];
+if (!empty($summit['sota_ref'])) {
+    $alerts_cache_key = 'sota_all_alerts';
+    $ac = $db->prepare("SELECT setting_value, updated_at FROM app_settings WHERE setting_key = ?");
+    $ac->execute([$alerts_cache_key]);
+    $alerts_cache = $ac->fetch();
+    $all_alerts = null;
+
+    if ($alerts_cache && (time() - strtotime($alerts_cache['updated_at'])) < 3600) {
+        $all_alerts = json_decode($alerts_cache['setting_value'], true);
+    } else {
+        $ctx = stream_context_create(['http' => ['timeout' => 6, 'ignore_errors' => true,
+            'header' => "Accept: application/json\r\nUser-Agent: SOTAplanner/1.0\r\n"]]);
+        $raw = @file_get_contents('https://api2.sota.org.uk/api/alerts', false, $ctx);
+        if ($raw !== false) {
+            $fetched = json_decode($raw, true);
+            if (is_array($fetched)) {
+                $all_alerts = $fetched;
+                $db->prepare("INSERT INTO app_settings (setting_key, setting_value, updated_at)
+                              VALUES (?, ?, NOW())
+                              ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=NOW()")
+                   ->execute([$alerts_cache_key, json_encode($all_alerts)]);
+            }
+        }
+    }
+
+    if (is_array($all_alerts)) {
+        $ref_parts = explode('/', $summit['sota_ref'], 2);
+        $assoc_code  = $ref_parts[0] ?? '';
+        $summit_code = $ref_parts[1] ?? '';
+        $now = time();
+        foreach ($all_alerts as $alert) {
+            if (strcasecmp($alert['associationCode'] ?? '', $assoc_code) === 0
+                && strcasecmp($alert['summitCode'] ?? '', $summit_code) === 0
+                && strtotime($alert['dateActivated'] ?? '') > $now) {
+                $sota_alerts[] = $alert;
+            }
+        }
+        usort($sota_alerts, fn($a,$b) => strcmp($a['dateActivated'], $b['dateActivated']));
+    }
+}
+
 // Track type determines how one-way GPX tracks are used for round-trip planning
 $track_type = $gpx_data['track_type'] ?? 'round-trip';
 $gpx_download_name = $gpx_data ? preg_replace('/[^a-zA-Z0-9]+/', '-', $summit['name'] ?? 'summit')
@@ -1537,7 +1580,10 @@ if ($tl_show) {
   <!-- PLANNED ACTIVATIONS -->
   <div id="planned-activations" style="margin-top:1.5rem;">
     <div class="section-card">
-      <div class="section-title">Planned Activations</div>
+      <div class="section-title" style="display:flex; align-items:center; gap:0.5rem;">
+        Planned Activations
+        <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem;">This group</span>
+      </div>
 
       <?php if (!empty($planned_activations_list)): ?>
         <?php foreach ($planned_activations_list as $pa):
@@ -1615,9 +1661,56 @@ if ($tl_show) {
     </div>
   </div>
 
+  <!-- SOTAWATCH ALERTS -->
+  <?php if (!empty($summit['sota_ref'])): ?>
+  <div style="margin-top:1rem; margin-bottom:1rem;">
+    <div class="section-card">
+      <div class="section-title" style="display:flex; align-items:center; gap:0.5rem;">
+        SOTAwatch Alerts
+        <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem;">Community — not this group</span>
+      </div>
+      <?php if (!empty($sota_alerts)): ?>
+        <div style="overflow-x:auto;">
+          <table class="mini-table">
+            <thead>
+              <tr>
+                <th>Date &amp; Time</th>
+                <th>Callsign</th>
+                <th>Frequency / Mode</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php foreach ($sota_alerts as $al): ?>
+                <tr>
+                  <td style="white-space:nowrap; font-weight:500; color:var(--ink);">
+                    <?= date('M j, Y', strtotime($al['dateActivated'])) ?>
+                    <span style="color:var(--ink-3); font-size:0.78rem; display:block;">
+                      <?= date('g:i A', strtotime($al['dateActivated'])) ?> UTC
+                    </span>
+                  </td>
+                  <td style="font-family:var(--font-mono); font-size:0.82rem; font-weight:600; color:var(--ink);">
+                    <?= htmlspecialchars($al['activatingCallsign']) ?>
+                    <?php if (!empty($al['activatorName'])): ?>
+                      <span style="display:block; font-family:var(--font-sans); font-size:0.72rem; font-weight:400; color:var(--ink-3);"><?= htmlspecialchars($al['activatorName']) ?></span>
+                    <?php endif; ?>
+                  </td>
+                  <td style="font-size:0.78rem; color:var(--ink-2);"><?= htmlspecialchars($al['frequency'] ?? '—') ?></td>
+                  <td style="font-size:0.78rem; color:var(--ink-2);"><?= htmlspecialchars($al['comments'] ?? '') ?></td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size:0.75rem; color:var(--ink-4); margin-top:0.75rem;">From SOTAwatch · refreshed hourly</p>
+      <?php else: ?>
+        <p style="color:var(--ink-3); font-size:0.875rem;">No upcoming activations posted on SOTAwatch for this summit.</p>
+      <?php endif; ?>
+    </div>
+  </div>
+  <?php endif; ?>
+
   <!-- ACTIVATION HISTORY -->
-  <div style="margin-top:1rem;">
-  <!-- SOTA OFFICIAL ACTIVATION HISTORY -->
   <?php if (!empty($summit['sota_ref']) && $current_group): ?>
   <div style="margin-bottom:1rem;">
     <div class="section-card">
