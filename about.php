@@ -142,37 +142,27 @@ session_start();
     .about-section a { color: var(--accent); text-decoration: none; }
     .about-section a:hover { text-decoration: underline; }
 
-    .about-section.accent {
-      background: var(--accent-bg);
-      border-color: var(--accent-border);
-    }
-
-    /* ── Feature grid ── */
-    .feature-grid {
+    /* ── Feature tiles ── */
+    .feature-tiles {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.75rem;
-      margin-top: 0.25rem;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0;
+      margin: 0.25rem -0.25rem -0.5rem;
     }
-    .feature-card {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: var(--r-md);
-      padding: 1rem;
-      display: flex;
-      gap: 0.75rem;
-      align-items: flex-start;
+    .feature-tile {
+      padding: 1rem 0.75rem;
+      text-align: center;
     }
-    .feature-icon {
-      width: 32px;
-      height: 32px;
-      background: var(--surface);
-      border: 1px solid var(--border-2);
-      border-radius: var(--r-sm);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
+    .feature-tile h3 {
+      font-size: 0.875rem;
+      font-weight: 700;
+      color: var(--ink);
+      margin: 0.5rem 0 0.3rem;
+    }
+    .feature-tile p {
+      font-size: 0.82rem;
+      color: var(--ink-3);
+      line-height: 1.5;
     }
     .feature-text {}
     .feature-name {
@@ -239,131 +229,137 @@ session_start();
         <p>Doorstep-to-doorstep time planning for SOTA activations</p>
     </div>
 
-    <div class="about-section accent">
-        <h2>The Problem</h2>
-        <p>
-            Planning a SOTA activation means piecing together information from multiple sources —
-            drive time, hike distance, elevation gain, time on summit for radio, and the return
-            journey. It's hard to know if you're looking at a 3-hour outing or an 8-hour day
-            before you've even started researching.
-        </p>
+    <!-- Hub-and-spoke illustration: inputs scattered on left → SOTAplanner logo on right -->
+    <div class="about-section" style="padding:0;overflow:hidden;margin-bottom:1rem;">
+        <svg viewBox="0 0 680 460" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;max-width:100%;" aria-label="Five inputs — Summit, Drive Time, Hike Time, Trail, Activation Time — all flow into SOTAplanner">
+          <defs>
+            <marker id="arr" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto">
+              <path d="M1.5,1.5 L7.5,4.5 L1.5,7.5" fill="none" stroke="#C2BDB4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </marker>
+          </defs>
+
+          <!-- Background -->
+          <rect width="680" height="460" fill="#F7F6F3" rx="12"/>
+
+          <!-- ── ARROWS (icon right edge → hub left edge) ── -->
+          <line x1="85"  y1="55"  x2="505" y2="202" stroke="#D4D0C8" stroke-width="1.5" marker-end="url(#arr)"/>
+          <line x1="168" y1="140" x2="502" y2="211" stroke="#D4D0C8" stroke-width="1.5" marker-end="url(#arr)"/>
+          <line x1="82"  y1="228" x2="500" y2="228" stroke="#D4D0C8" stroke-width="1.5" marker-end="url(#arr)"/>
+          <line x1="170" y1="315" x2="502" y2="245" stroke="#D4D0C8" stroke-width="1.5" marker-end="url(#arr)"/>
+          <line x1="85"  y1="400" x2="505" y2="254" stroke="#D4D0C8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+          <!-- ── HUB: SOTAplanner logo (r=80) ── -->
+          <circle cx="580" cy="228" r="80" fill="white" stroke="#D8C890" stroke-width="2"/>
+          <g transform="translate(580,228) scale(1.36) translate(-55,-55)">
+            <circle fill="none" stroke="#1c1b19" stroke-width="1.5" cx="55" cy="55" r="50"/>
+            <path fill="none" stroke="#8c8a86" stroke-width=".5" opacity=".2" d="M18,75.5c11.33-4,23.67-5,37-3,13.33-3.33,25.67-3.67,37-1"/>
+            <path fill="none" stroke="#8c8a86" stroke-width=".5" opacity=".15" d="M22,81.5c12-4,23-5,33-3,13.33-3.33,24.33-3.67,33-1"/>
+            <path fill="none" stroke="#1c1b19" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M26,79.5l17-30,7,8,12-20,22,42"/>
+            <circle fill="#2b8e8e" cx="62" cy="35.5" r="3.5"/>
+            <circle fill="none" stroke="#2b8e8e" stroke-width="1.2" opacity=".45" cx="62" cy="35.5" r="9"/>
+            <circle fill="none" stroke="#2b8e8e" stroke-width=".8" opacity=".2" cx="62" cy="35.5" r="15"/>
+          </g>
+          <text x="580" y="323" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="14" font-weight="700" fill="#1C1B19" letter-spacing="-0.02em">SOTAplanner</text>
+          <text x="580" y="338" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="9.5" font-weight="400" fill="#8C8A86" letter-spacing="0.01em">the complete picture</text>
+
+          <!-- ── ICON CIRCLES — all use toolkit icons (viewBox 0 0 24 24, scale 1.8) ── -->
+
+          <!-- 1. Summit (55, 55) — staggered LEFT -->
+          <circle cx="55" cy="55" r="30" fill="white" stroke="#E5E2DA" stroke-width="1.5"/>
+          <g transform="translate(55,55) scale(1.8) translate(-12,-12)" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 20L12 4L21 20H3Z"/>
+            <path d="M9 20L12 13L15 17"/>
+          </g>
+          <text x="55" y="98" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#1C1B19">Summit</text>
+
+          <!-- 2. Trail Info (138, 140) — staggered RIGHT -->
+          <circle cx="138" cy="140" r="30" fill="white" stroke="#E5E2DA" stroke-width="1.5"/>
+          <g transform="translate(138,140) scale(1.8) translate(-12,-12)" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="1,6 1,22 8,18 16,22 23,18 23,2 16,6 8,2"/>
+            <line x1="8" y1="2" x2="8" y2="18"/>
+            <line x1="16" y1="6" x2="16" y2="22"/>
+          </g>
+          <text x="138" y="183" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#1C1B19">Trail Info</text>
+
+          <!-- 3. Drive Time (52, 228) — staggered LEFT -->
+          <circle cx="52" cy="228" r="30" fill="white" stroke="#E5E2DA" stroke-width="1.5"/>
+          <g transform="translate(52,228) scale(1.8) translate(-12,-12)" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 1 1 18 0z"/>
+            <circle cx="12" cy="10" r="3"/>
+          </g>
+          <text x="52" y="271" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#1C1B19">Drive Time</text>
+
+          <!-- 4. Hike Time (140, 315) — staggered RIGHT -->
+          <circle cx="140" cy="315" r="30" fill="white" stroke="#E5E2DA" stroke-width="1.5"/>
+          <g transform="translate(140,315) scale(1.8) translate(-12,-12)" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="4" r="1.5" fill="#4A4844" stroke="none"/>
+            <line x1="12" y1="5.5" x2="11" y2="13"/>
+            <rect x="8" y="5.5" width="3.5" height="5.5" rx="1"/>
+            <line x1="16" y1="7" x2="18" y2="22"/>
+            <line x1="11" y1="9" x2="16" y2="8"/>
+            <line x1="11" y1="13" x2="8" y2="22"/>
+            <line x1="11" y1="13" x2="14" y2="22"/>
+          </g>
+          <text x="140" y="358" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#1C1B19">Hike Time</text>
+
+          <!-- 5. Activation Time (55, 400) — staggered LEFT (exact toolkit 'radio' icon) -->
+          <circle cx="55" cy="400" r="30" fill="white" stroke="#E5E2DA" stroke-width="1.5"/>
+          <g transform="translate(55,400) scale(1.8) translate(-12,-12)" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="7" y="8" width="8" height="13" rx="2"/>
+            <line x1="12" y1="8" x2="12" y2="3"/>
+            <rect x="9" y="10" width="4" height="3" rx="0.5"/>
+            <circle cx="11" cy="17" r="1.5" fill="#4A4844" stroke="none"/>
+          </g>
+          <text x="55" y="443" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#1C1B19">Activation time</text>
+        </svg>
     </div>
 
     <div class="about-section">
-        <h2>The Solution</h2>
+        <h2>What It Does</h2>
         <p>
-            <strong>SOTA Planner</strong> brings everything together in one place. Set your
-            starting address, nominate summits you're interested in, research the trails, and
-            instantly see the <strong>total door-to-door time</strong> for each activation —
-            drive up, hike in, radio time on the summit, hike out, drive home.
-        </p>
-        <p>
-            Whether you're squeezing in a quick activation before work or planning a full-day
-            adventure, SOTA Planner helps you match the right summit to the time you actually have.
+            <strong>SOTA Planner</strong> pulls together everything required to activate a summit —
+            drive time from your front door, hike distance and elevation, time on the air, and the
+            return trip — so you can see the full door-to-door picture and know whether a given
+            summit fits the time you have.
         </p>
     </div>
 
     <div class="about-section">
         <h2>Key Features</h2>
-        <div class="feature-grid">
-
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <circle cx="9" cy="9" r="7.5" stroke="#1C1B19" stroke-width="1.4"/>
-                        <path d="M9 5.5V9.25L11.5 11" stroke="#1C1B19" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                </div>
-                <div class="feature-text">
-                    <div class="feature-name">Total time estimate</div>
-                    <div class="feature-desc">Drive + hike up + activation + hike down + drive back, at a glance</div>
-                </div>
+        <div class="feature-tiles">
+            <div class="feature-tile">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="9"/>
+                    <polyline points="12 7 12 12 15 15"/>
+                </svg>
+                <h3>Total Time Estimate</h3>
+                <p>Drive + hike + activation + return, all in one number</p>
             </div>
-
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M2 9C2 5.13 5.13 2 9 2s7 3.13 7 7" stroke="#1C1B19" stroke-width="1.4" stroke-linecap="round"/>
-                        <path d="M3.5 13l1.5-4 2 2 2-3.5 2 2 1.5-3.5" stroke="#1C1B19" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-                        <path d="M2.5 13.5h13" stroke="#1C1B19" stroke-width="1.4" stroke-linecap="round"/>
-                    </svg>
-                </div>
-                <div class="feature-text">
-                    <div class="feature-name">Drive time calculation</div>
-                    <div class="feature-desc">Automatic routing from your home to each trailhead via Google Maps</div>
-                </div>
+            <div class="feature-tile">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 1 1 18 0z"/>
+                    <circle cx="12" cy="10" r="3"/>
+                </svg>
+                <h3>Drive Time</h3>
+                <p>Automatic routing from your address to each trailhead</p>
             </div>
-
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M1.5 13L5 7l3 4 3-7 3 6 2-3" stroke="#1C1B19" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-                        <circle cx="11" cy="4.5" r="1.5" fill="#2b8e8e"/>
-                    </svg>
-                </div>
-                <div class="feature-text">
-                    <div class="feature-name">GPX track analysis</div>
-                    <div class="feature-desc">Upload a recorded track to extract real hike time, activation time, distance, and elevation</div>
-                </div>
+            <div class="feature-tile">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                </svg>
+                <h3>GPX Analysis</h3>
+                <p>Upload a recorded track to get real-world hike and activation times</p>
             </div>
-
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <circle cx="7" cy="7" r="3" stroke="#1C1B19" stroke-width="1.4"/>
-                        <circle cx="13" cy="7" r="3" stroke="#1C1B19" stroke-width="1.4"/>
-                        <path d="M2.5 15.5c0-2.21 2.01-4 4.5-4s4.5 1.79 4.5 4" stroke="#1C1B19" stroke-width="1.4" stroke-linecap="round"/>
-                        <path d="M13 11.5c1.49.37 2.5 1.6 2.5 3" stroke="#1C1B19" stroke-width="1.4" stroke-linecap="round"/>
-                    </svg>
-                </div>
-                <div class="feature-text">
-                    <div class="feature-name">Planning groups</div>
-                    <div class="feature-desc">Collaborate with co-activators; share summit research, GPX tracks, and notes</div>
-                </div>
+            <div class="feature-tile">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+                <h3>Planning Groups</h3>
+                <p>Share summit research and notes with co-activators</p>
             </div>
-
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <rect x="1.5" y="3.5" width="15" height="12" rx="1.5" stroke="#1C1B19" stroke-width="1.4"/>
-                        <path d="M5.5 1.5v4M12.5 1.5v4M1.5 7.5h15" stroke="#1C1B19" stroke-width="1.4" stroke-linecap="round"/>
-                        <rect x="4" y="10" width="4" height="2" rx="0.5" fill="#2b8e8e"/>
-                        <rect x="10" y="10" width="4" height="2" rx="0.5" fill="#1C1B19" fill-opacity="0.18"/>
-                    </svg>
-                </div>
-                <div class="feature-text">
-                    <div class="feature-name">Activation timeline</div>
-                    <div class="feature-desc">Shareable invitation page for hiking partners with a visual day schedule</div>
-                </div>
-            </div>
-
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <circle cx="8" cy="8" r="5.5" stroke="#1C1B19" stroke-width="1.4"/>
-                        <path d="M12.5 12.5l3.5 3.5" stroke="#1C1B19" stroke-width="1.4" stroke-linecap="round"/>
-                    </svg>
-                </div>
-                <div class="feature-text">
-                    <div class="feature-name">Summit search</div>
-                    <div class="feature-desc">Find summits by name — no SOTA reference code needed</div>
-                </div>
-            </div>
-
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M9 2C6.24 2 4 4.24 4 7c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5z" stroke="#1C1B19" stroke-width="1.4" stroke-linejoin="round"/>
-                        <circle cx="9" cy="7" r="1.5" fill="#2b8e8e"/>
-                        <ellipse cx="9" cy="7" rx="4" ry="2" stroke="#1C1B19" stroke-width="1" stroke-dasharray="2 1.5" opacity="0.5"/>
-                    </svg>
-                </div>
-                <div class="feature-text">
-                    <div class="feature-name">Activation zone overlay</div>
-                    <div class="feature-desc">Terrain-based activation zone boundary shown on the summit map</div>
-                </div>
-            </div>
-
         </div>
     </div>
 
