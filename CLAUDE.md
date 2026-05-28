@@ -10,6 +10,9 @@ The activation history section was built on `summit_detail.php` and deployed, bu
 
 Context: VK3ARR (SOTA team) granted an SSO client for identity login. Chris sent a follow-up explaining read-only intent. Track 1 (SSO login) was completed first. Track 2 (activation history + SOTAWatch alerts) was built but needs debugging.
 
+**Track 3 — SOTAwatch write API (post/delete spots and alerts):**
+Research complete and tested 2026-05-28. All endpoints and auth headers are fully understood (see "SOTAwatch Write API" section below). `test_sotawatch_write.php` exists on dev for testing. oauth_callback.php updated to store `id_token`. **Blocked on VK3ARR** — our `sotaplanner` client returns HTTP 403 on the write API despite valid tokens. Chris has messaged VK3ARR requesting write access. Once granted, re-run the test page to confirm, then build the real UI (spot/alert buttons on summit_detail.php).
+
 ---
 
 ## Development Workflow
@@ -17,9 +20,17 @@ Context: VK3ARR (SOTA team) granted an SSO client for identity login. Chris sent
 ### Playwright Screenshots
 Always save Playwright screenshots to the `playwright/` folder in the project root (e.g. `playwright/my-screenshot.png`). This folder is gitignored and excluded from rsync deploys — never commit screenshots.
 
+### Playwright Login
+The staging login page shows a hero section by default. To log in, click the small **"Developer access"** link in the bottom-left corner of the page — this reveals the callsign input. Enter `KI6CR` and click **Go**.
+
 ### Branches
 - **`main`** — production branch. Only merge here when a feature is tested and confirmed working.
 - **`dev`** — development branch. All new work happens here.
+
+### Merging dev → main
+Before merging, always:
+1. Bump `APP_VERSION` in `config.php`
+2. Add a new version block to `changelog.php` describing the new features in plain English (see changelog conventions below)
 
 ### Staging Environment
 - **URL:** christopherreddick.com/sotaplanner/
@@ -129,6 +140,91 @@ Keycloak OIDC endpoints (already hardcoded in `oauth_callback.php`):
 - UserInfo: `https://sso.sota.org.uk/auth/realms/SOTA/protocol/openid-connect/userinfo`
 
 The login button on `login.php` is active when `SOTA_CLIENT_ID` is defined. Client secret is optional — omitted from token exchange if `SOTA_CLIENT_SECRET` is not defined.
+
+---
+
+
+## SOTAwatch Write API (Post/Delete Spots & Alerts)
+
+Fully researched May 2026 by studying the open-source [sotlas-frontend](https://github.com/manuelkasper/sotlas-frontend) project (Manuel Kasper's SOTLAS site), which posts and deletes spots and alerts. All endpoints confirmed working.
+
+### Two different base URLs
+
+| Purpose | Base URL |
+|---|---|
+| Reading spots/alerts/summits (read-only, no auth) | `https://api2.sota.org.uk/api/` |
+| **Writing spots & alerts (requires auth)** | `https://api-db2.sota.org.uk/api/` |
+
+### Authentication for write requests
+
+After SOTA SSO login, the OAuth token exchange returns an `access_token` and `id_token`. Both are required as headers on every write request:
+
+```
+Authorization: Bearer {access_token}
+id_token: {id_token}
+```
+
+Tokens expire — before each write request, refresh using the `refresh_token` if the access token is within 60 seconds of expiry.
+
+**Critical:** We must store the `access_token`, `id_token`, and `refresh_token` after SSO login. Currently `oauth_callback.php` only uses the token to get the callsign, then discards it. To support write API calls, these tokens need to be saved (e.g. in the session or database).
+
+### POST a spot
+
+`POST https://api-db2.sota.org.uk/api/spots`
+
+```json
+{
+  "callsign": "KI6CR",
+  "activatorCallsign": "KI6CR/P",
+  "associationCode": "W7O",
+  "summitCode": "NC-001",
+  "frequency": "14.285",
+  "mode": "SSB",
+  "type": "NORMAL",
+  "comments": "CQ SOTA"
+}
+```
+
+- `frequency`: MHz as a string
+- `mode`: one of `AM`, `CW`, `Data`, `DV`, `FM`, `SSB`
+- `type`: `NORMAL`, `QRT` (done for the day), or `TEST`
+- When editing an existing spot, also include `"id": {spotId}` and `"userID": {userID}` (without userID you get "User does not own spot!" error)
+
+### DELETE a spot
+
+`DELETE https://api-db2.sota.org.uk/api/spots/{spotId}`
+
+### POST an alert
+
+`POST https://api-db2.sota.org.uk/api/alerts`
+
+```json
+{
+  "activatingCallsign": "KI6CR/P",
+  "associationCode": "W7O",
+  "summitCode": "NC-001",
+  "dateActivated": "2026-05-28T18:00:00Z",
+  "frequency": "14.285-SSB, 7.032-CW",
+  "comments": "optional notes",
+  "posterCallsign": "KI6CR"
+}
+```
+
+- `dateActivated`: ISO 8601 UTC datetime string (`YYYY-MM-DDTHH:mm:ssZ`)
+- `frequency`: free-text field combining frequency and mode (e.g. `"14.285-SSB"`), max 40 characters
+- When editing an existing alert, also include `"id": {alertId}`
+
+### DELETE an alert
+
+`DELETE https://api-db2.sota.org.uk/api/alerts/{alertId}`
+
+Ownership is determined server-side by matching the JWT's user ID to the alert's `userID` field. Users can only delete their own alerts/spots.
+
+### The gate: client ID write permission — CONFIRMED BLOCKED
+
+Tested 2026-05-28 with valid OAuth tokens (access_token + id_token both present, token fresh). The write API returned **HTTP 403 Forbidden** from the Rocket (Rust) backend. This confirms our `sotaplanner` client ID is recognized but not authorized for write operations.
+
+**Write access must be explicitly granted by VK3ARR.** Each app needs a separate write permission grant. SOTLAS uses `sotlas`, Ham2k PoLo uses `polo` — both had to be registered for write access. We need to email VK3ARR and ask them to grant write API access to the `sotaplanner` client.
 
 ---
 
@@ -558,3 +654,7 @@ The changelog is **user-facing and feature-focused**. Keep it high-level and rea
 - Bug fixes, PHP errors, internal refactors, cosmetic tweaks, technical debt cleanup — none of this belongs in the public changelog
 
 **Format per version block:** version number, month+year date, "Current" badge on the latest only, one-sentence description of the release theme, then a short plain-English bullet list (no tags, no technical jargon). Each bullet should describe what the user can now *do* or *see*, not what changed in the code.
+
+## Version bumping
+
+Only bump `APP_VERSION` in `config.php` (and add a changelog entry) when the commit contains a new feature or a meaningful UX improvement. **Do not bump the version for cosmetic changes, design polish, dead-code removal, or internal refactors.** Those ship silently under the current version number.
