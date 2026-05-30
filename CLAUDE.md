@@ -10,6 +10,11 @@ The activation history section was built on `summit_detail.php` and deployed, bu
 
 Context: VK3ARR (SOTA team) granted an SSO client for identity login. Chris sent a follow-up explaining read-only intent. Track 1 (SSO login) was completed first. Track 2 (activation history + SOTAWatch alerts) was built but needs debugging.
 
+**Track 4 — Batch data pre-population:**
+- `admin_batch_gpx.php` built and on dev. Fetches best SOTAmaps community track for every summit missing a GPX. Deploy to staging to test, then run on production.
+- Next: scrape trailhead data from association-level resources (W6 association trip reports, etc.)
+- Also want to scrape this Google My Maps for **"drive-up" summit status** — summits reachable by car with no hiking required. Map URL: `https://www.google.com/maps/@39.0603443,-99.2805547,3153051m/data=!3m1!1e3!4m2!6m1!1s1JPDeCfGjFoAVlJlXkXvCPxv5-SvDOt4?entry=ttu` — need to research how to extract the underlying KML/data from a Google My Maps layer.
+
 **Track 3 — SOTAwatch write API (post/delete spots and alerts):**
 Research complete and tested 2026-05-28. All endpoints and auth headers are fully understood (see "SOTAwatch Write API" section below). `test_sotawatch_write.php` exists on dev for testing. oauth_callback.php updated to store `id_token`. **Blocked on VK3ARR** — our `sotaplanner` client returns HTTP 403 on the write API despite valid tokens. Chris has messaged VK3ARR requesting write access. Once granted, re-run the test page to confirm, then build the real UI (spot/alert buttons on summit_detail.php).
 
