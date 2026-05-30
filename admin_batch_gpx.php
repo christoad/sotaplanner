@@ -22,6 +22,14 @@ if (!isGodMode()) {
 
 $db = getDbConnection();
 
+// Safety: refuse to run on staging — staging shares the production DB, so
+// imported file paths would point to the staging filesystem and corrupt records.
+$host = $_SERVER['HTTP_HOST'] ?? '';
+if (str_contains($host, 'christopherreddick.com')) {
+    http_response_code(403);
+    die('<b>Error:</b> This tool cannot run on the staging server — staging shares the production database. Deploy and run on <b>sotaplanner.com</b> only.');
+}
+
 // ── JSON API ──────────────────────────────────────────────────────────────────
 
 $action = $_GET['action'] ?? '';
@@ -64,10 +72,11 @@ if ($action === 'process') {
         exit;
     }
 
-    // Skip if a track was already imported (e.g. by a parallel run)
-    $already = $db->prepare("SELECT id FROM gpx_tracks WHERE summit_id = ?");
+    // Skip if a track already exists for this summit (any group)
+    $already = $db->prepare("SELECT id, file_path FROM gpx_tracks WHERE summit_id = ?");
     $already->execute([$summit_id]);
-    if ($already->fetch()) {
+    $existing = $already->fetch();
+    if ($existing && file_exists($existing['file_path'])) {
         echo json_encode(['status' => 'skip', 'msg' => 'Already has a track']);
         exit;
     }
