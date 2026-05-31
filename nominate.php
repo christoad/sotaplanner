@@ -7,6 +7,56 @@ require_once 'sota_cache_helper.php';
 session_start();
 requireLogin();
 
+// Link a global GPX library track to a newly-created summit row.
+// Creates a gpx_tracks row pointing at the shared file and fills in
+// hike distance, elevation gain, and trailhead on the summit.
+function _link_global_gpx(PDO $db, int $summit_id, int $group_id, string $sota_ref): void {
+    $st = $db->prepare("SELECT * FROM global_gpx_tracks WHERE sota_ref = ?");
+    $st->execute([$sota_ref]);
+    $g = $st->fetch();
+    if (!$g || !file_exists($g['file_path'])) return;
+
+    // Don't add a second gpx_tracks row if one already exists
+    $chk = $db->prepare("SELECT id FROM gpx_tracks WHERE summit_id = ? LIMIT 1");
+    $chk->execute([$summit_id]);
+    if ($chk->fetch()) return;
+
+    $db->prepare("
+        INSERT IGNORE INTO gpx_tracks (
+            summit_id, planning_group_id, filename, file_path,
+            total_time, hiking_time, activation_time, rest_break_time,
+            total_distance, hiking_distance, max_elevation, min_elevation,
+            elevation_gain, elevation_loss, avg_speed, hiking_speed,
+            num_points, summit_lat, summit_lon, using_api,
+            activation_zone_polygon, activation_zone_method,
+            use_for_hike_time, use_for_elevation, from_global_library
+        ) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, 0, NULL, 'none', 0, 1, 1)
+    ")->execute([
+        $summit_id, $group_id, $g['filename'], $g['file_path'],
+        $g['total_distance'], $g['total_distance'],
+        $g['max_elevation'], $g['min_elevation'],
+        $g['elevation_gain'], $g['elevation_loss'],
+        $g['num_points'], $g['summit_lat'], $g['summit_lon'],
+    ]);
+
+    // Auto-fill summit fields only if not already set
+    $updates = [];
+    $params  = [];
+    if ($g['elevation_gain'] && $g['elevation_gain'] > 0) {
+        $updates[] = "hike_elevation_gain_ft = COALESCE(hike_elevation_gain_ft, ?)";
+        $params[]  = round($g['elevation_gain'] * 3.28084);
+    }
+    if ($g['total_distance'] && $g['total_distance'] > 0) {
+        $updates[] = "hike_distance_mi = COALESCE(hike_distance_mi, ?)";
+        $params[]  = round($g['total_distance'] * 2 * 0.621371, 2);
+    }
+    // Trailhead coordinates are not derived from GPX data — set by the OSM trailhead lookup tool.
+    if ($updates) {
+        $params[] = $summit_id;
+        $db->prepare("UPDATE summits SET " . implode(', ', $updates) . " WHERE id = ?")->execute($params);
+    }
+}
+
 // ── AJAX search endpoint ─────────────────────────────────────────────────────
 if (isset($_GET['action']) && $_GET['action'] === 'search') {
     header('Content-Type: application/json');
@@ -149,6 +199,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
                         }
                     }
 
+                    // If source group had no GPX, fall through to global library check below
+                    if (!($source_gpx && file_exists($source_gpx['file_path']))) {
+                        _link_global_gpx($db, $summit_id, $current_group['id'], $sota_ref);
+                    }
+
                     // Show message about using shared data
                     header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&shared_data=1");
                     exit;
@@ -219,6 +274,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
                         }
                     }
                     
+                    // Link global GPX library track if one exists (fills in map, elevation, trailhead)
+                    _link_global_gpx($db, $summit_id, $current_group['id'], $sota_ref);
+
                     logActivity($db, 'Summit nominated', $sota_ref, $summit_data['name'] ?? '', $current_group['name'] ?? '');
                     header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&nominated=1");
                     exit;

@@ -881,6 +881,25 @@ foreach ($health_raw as $r) {
             </form>
         </div>
 
+        <!-- Data Pre-population Tools -->
+        <div class="card" style="margin-bottom: 2rem;">
+            <h2 style="margin-bottom: 0.5rem;">🗺️ Data Pre-population Tools</h2>
+            <p style="color:#666; margin-bottom:1.25rem; font-size:0.9rem;">
+                Batch tools for populating trail data across all summits so users get pre-filled maps and stats when they nominate a summit.
+            </p>
+            <div style="display:flex; gap:1rem; flex-wrap:wrap;">
+                <a href="admin_batch_gpx.php" class="btn" style="background:var(--navy); color:white;">
+                    ⛰ Batch GPX Import (SOTAmaps)
+                </a>
+                <a href="admin_trailhead_osm.php" class="btn" style="background:var(--navy); color:white;">
+                    📍 OSM Trailhead Lookup
+                </a>
+                <a href="admin_gpx_library.php" class="btn" style="background:var(--navy); color:white;">
+                    🗂 Browse GPX Library
+                </a>
+            </div>
+        </div>
+
         <!-- Summit Search Cache -->
         <div class="card" style="margin-bottom: 2rem;">
             <h2 style="margin-bottom: 0.5rem;">⛰️ Summit Search Cache</h2>

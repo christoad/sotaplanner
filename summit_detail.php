@@ -93,11 +93,11 @@ if (isset($_FILES['gpx_file']) && $_FILES['gpx_file']['error'] === UPLOAD_ERR_OK
                     
                     if ($gpx_stats) {
                         try {
-                            // Delete old GPX for this summit/group
-                            $stmt = $db->prepare("SELECT file_path FROM gpx_tracks WHERE summit_id = ? AND planning_group_id = ?");
+                            // Delete old GPX for this summit/group (but never delete global library files)
+                            $stmt = $db->prepare("SELECT file_path, from_global_library FROM gpx_tracks WHERE summit_id = ? AND planning_group_id = ?");
                             $stmt->execute([$summit_id, $current_group['id']]);
                             $old = $stmt->fetch();
-                            if ($old && file_exists($old['file_path'])) {
+                            if ($old && file_exists($old['file_path']) && empty($old['from_global_library'])) {
                                 unlink($old['file_path']);
                             }
                             
@@ -1476,9 +1476,15 @@ if ($tl_show) {
       <div class="card" style="margin-bottom:1rem;">
         <div style="font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3); margin-bottom:0.875rem;">GPX Track</div>
         <?php if ($gpx_data): ?>
+          <?php if (!empty($gpx_data['from_global_library'])): ?>
+          <div style="font-size:0.75rem; color:var(--blue); font-weight:500; margin-bottom:0.5rem;">
+            Community route from <a href="https://sotamaps.org" target="_blank" style="color:var(--blue)">SOTA Mapping Project</a> — pre-loaded for you.
+          </div>
+          <?php else: ?>
           <div style="font-size:0.78rem; color:var(--green); font-weight:500; margin-bottom:0.75rem;">
             Track loaded: <?= htmlspecialchars($gpx_data['filename']) ?>
           </div>
+          <?php endif; ?>
           <?php if ($has_timestamps): ?>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-bottom:0.75rem;">
             <div style="background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-md); padding:0.625rem; text-align:center;">

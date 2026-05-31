@@ -1,89 +1,83 @@
 <?php
 /**
- * DB Migration — activity_log table
- * Creates the persistent activity log table used by God Mode.
- * Safe to run multiple times (idempotent). Delete after running.
+ * db_migrate.php — Global GPX library migration
+ *
+ * Creates global_gpx_tracks table and adds from_global_library column to gpx_tracks.
+ * Password: sota
+ * Delete from the server after running.
  */
 
-require_once 'config.php';
-session_start();
-
-$authorized = false;
-$results    = [];
-$done       = false;
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['pass'] ?? '') === 'sota') {
-    $authorized = true;
-    $db = getDbConnection();
-
-    // Create activity_log table
-    try {
-        $db->exec("
-            CREATE TABLE IF NOT EXISTS activity_log (
-                id          INT AUTO_INCREMENT PRIMARY KEY,
-                event_time  DATETIME DEFAULT CURRENT_TIMESTAMP,
-                callsign    VARCHAR(20),
-                login_type  VARCHAR(20),
-                event_type  VARCHAR(50),
-                subject     VARCHAR(255),
-                detail      VARCHAR(255),
-                group_name  VARCHAR(255),
-                ip_address  VARCHAR(45),
-                INDEX idx_time     (event_time),
-                INDEX idx_callsign (callsign)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        ");
-        $results[] = ['ok', 'activity_log table created (or already existed)'];
-    } catch (PDOException $e) {
-        $results[] = ['err', 'Failed to create activity_log: ' . $e->getMessage()];
-    }
-
-    $done = true;
+if (($_POST['pw'] ?? '') !== 'sota') {
+?><!DOCTYPE html>
+<html><head><title>DB Migrate</title></head>
+<body style="font-family:sans-serif;max-width:500px;margin:3rem auto;padding:1rem">
+<h2>DB Migration — Global GPX Library</h2>
+<p>Creates the <code>global_gpx_tracks</code> table and adds <code>from_global_library</code> to <code>gpx_tracks</code>.</p>
+<form method="post">
+  <label>Password: <input type="password" name="pw" autofocus></label>
+  <button type="submit" style="margin-left:.5rem">Run Migration</button>
+</form>
+</body></html>
+<?php
+    exit;
 }
-?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>DB Migration — SOTA Planner</title>
-    <style>
-        body { font-family: monospace; background: #1a1a1a; color: #eee; padding: 2rem; }
-        h1 { color: #E6B84A; margin-bottom: 1.5rem; }
-        .row { padding: 0.4rem 0; }
-        .ok   { color: #4caf50; }
-        .skip { color: #aaa; }
-        .err  { color: #f44336; }
-        form  { margin-top: 1.5rem; }
-        input[type=password] { padding: 0.5rem; font-size: 1rem; border-radius: 4px; border: none; }
-        button { margin-left: 0.5rem; padding: 0.5rem 1.5rem; background: #E6B84A; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
-        .done { margin-top: 1.5rem; padding: 1rem; background: #1e3a1e; border: 1px solid #4caf50; border-radius: 6px; }
-    </style>
-</head>
-<body>
 
-<h1>SOTA Planner — DB Migration: activity_log</h1>
+require_once 'config.php';
+$db = getDbConnection();
+$ok = 0; $skip = 0; $err = 0;
 
-<?php if (!$authorized): ?>
-    <p>Enter the dev password to run the migration:</p>
-    <form method="POST">
-        <input type="password" name="pass" placeholder="password" autofocus>
-        <button type="submit">Run Migration</button>
-    </form>
-<?php else: ?>
-    <?php foreach ($results as [$status, $msg]): ?>
-        <div class="row <?= $status ?>">
-            <?= $status === 'ok' ? '✓' : ($status === 'err' ? '✗' : '–') ?> <?= htmlspecialchars($msg) ?>
-        </div>
-    <?php endforeach; ?>
+echo "<!DOCTYPE html><html><head><title>DB Migrate</title></head>";
+echo "<body style='font-family:sans-serif;max-width:700px;margin:3rem auto;padding:1rem'>";
+echo "<h2>DB Migration — Global GPX Library</h2>";
 
-    <?php if ($done): ?>
-        <div class="done">
-            Migration complete. Delete <code>db_migrate.php</code> from the server when done.
-            <br><br>
-            <a href="god_mode.php?tab=activity" style="color:#E6B84A;">Go to Activity Log →</a>
-        </div>
-    <?php endif; ?>
-<?php endif; ?>
+// ── Step 1: Create global_gpx_tracks table ────────────────────────────────────
+try {
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS global_gpx_tracks (
+            id                 INT AUTO_INCREMENT PRIMARY KEY,
+            sota_ref           VARCHAR(20) NOT NULL,
+            filename           VARCHAR(255) NOT NULL,
+            file_path          VARCHAR(500) NOT NULL,
+            source             VARCHAR(50) NOT NULL DEFAULT 'sotamaps',
+            source_callsign    VARCHAR(20) DEFAULT NULL,
+            source_track_title VARCHAR(255) DEFAULT NULL,
+            total_distance     DECIMAL(10,4) DEFAULT NULL,
+            max_elevation      DECIMAL(10,2) DEFAULT NULL,
+            min_elevation      DECIMAL(10,2) DEFAULT NULL,
+            elevation_gain     DECIMAL(10,2) DEFAULT NULL,
+            elevation_loss     DECIMAL(10,2) DEFAULT NULL,
+            num_points         INT DEFAULT NULL,
+            summit_lat         DECIMAL(10,7) DEFAULT NULL,
+            summit_lon         DECIMAL(10,7) DEFAULT NULL,
+            trailhead_lat      DECIMAL(10,7) DEFAULT NULL,
+            trailhead_lon      DECIMAL(10,7) DEFAULT NULL,
+            imported_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY sota_ref (sota_ref)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ");
+    echo "<p style='color:green'>✓ global_gpx_tracks table created (or already exists)</p>";
+    $ok++;
+} catch (Exception $e) {
+    echo "<p style='color:red'>✗ global_gpx_tracks: " . htmlspecialchars($e->getMessage()) . "</p>";
+    $err++;
+}
 
-</body>
-</html>
+// ── Step 2: Add from_global_library to gpx_tracks ─────────────────────────────
+$cols = $db->query("SHOW COLUMNS FROM gpx_tracks LIKE 'from_global_library'")->fetchAll();
+if (count($cols) === 0) {
+    try {
+        $db->exec("ALTER TABLE gpx_tracks ADD COLUMN from_global_library TINYINT(1) NOT NULL DEFAULT 0");
+        echo "<p style='color:green'>✓ Added from_global_library column to gpx_tracks</p>";
+        $ok++;
+    } catch (Exception $e) {
+        echo "<p style='color:red'>✗ from_global_library column: " . htmlspecialchars($e->getMessage()) . "</p>";
+        $err++;
+    }
+} else {
+    echo "<p style='color:orange'>⚠ from_global_library column already exists in gpx_tracks (skipped)</p>";
+    $skip++;
+}
+
+echo "<hr><p><strong>Done.</strong> OK: $ok &nbsp; Skipped: $skip &nbsp; Errors: $err</p>";
+echo "<p style='color:#888;font-size:.85em'>Delete this file from the server after running.</p>";
+echo "</body></html>";

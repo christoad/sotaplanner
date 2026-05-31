@@ -158,6 +158,7 @@ if (isset($_GET['code'])) {
     $_SESSION['sota_callsign']      = $callsign;
     $_SESSION['sota_login_type']    = 'oauth';
     $_SESSION['sota_access_token']  = $tokens['access_token'];
+    $_SESSION['sota_id_token']      = $tokens['id_token'] ?? null;
     $_SESSION['sota_refresh_token'] = $tokens['refresh_token'] ?? null;
     $_SESSION['sota_token_expires'] = time() + ($tokens['expires_in'] ?? 300);
 

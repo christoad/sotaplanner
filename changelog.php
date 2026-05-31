@@ -230,12 +230,26 @@ session_start();
         <p>Release history and update notes for SOTA Planner</p>
     </div>
 
-    <!-- v1.3.2 -->
+    <!-- v1.4.0 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.4.0</span>
+            <span class="version-date">May 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Community trail routes appear automatically when you nominate a summit.</p>
+        <ul>
+            <li>When you add a summit that has a community-submitted track on the SOTA Mapping Project, the route map and elevation profile appear automatically — no GPX upload needed</li>
+            <li>Hike distance and elevation gain are pre-filled from the community track</li>
+            <li>A "Community route from SOTA Mapping Project" badge appears on any summit using a shared track</li>
+        </ul>
+    </div>
+
+    <!-- v1.3.2 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.3.2</span>
             <span class="version-date">May 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Live SOTAwatch alerts, activation history, and a refreshed About page.</p>
         <ul>
