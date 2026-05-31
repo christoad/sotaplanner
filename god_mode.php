@@ -157,11 +157,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // ── DATA ─────────────────────────────────────────────────────────────────────
 
 $stats = [
-    'users'       => $db->query("SELECT COUNT(DISTINCT callsign) FROM (SELECT callsign FROM planning_group_members UNION SELECT owner_callsign FROM planning_groups) u")->fetchColumn(),
-    'groups'      => $db->query("SELECT COUNT(*) FROM planning_groups")->fetchColumn(),
-    'summits'     => $db->query("SELECT COUNT(*) FROM summits")->fetchColumn(),
-    'activations' => $db->query("SELECT COUNT(*) FROM activations")->fetchColumn(),
-    'gpx_tracks'  => $db->query("SELECT COUNT(*) FROM gpx_tracks")->fetchColumn(),
+    'users'           => $db->query("SELECT COUNT(DISTINCT callsign) FROM (SELECT callsign FROM planning_group_members UNION SELECT owner_callsign FROM planning_groups) u")->fetchColumn(),
+    'groups'          => $db->query("SELECT COUNT(*) FROM planning_groups")->fetchColumn(),
+    'summits'         => $db->query("SELECT COUNT(*) FROM summits")->fetchColumn(),
+    'activations'     => $db->query("SELECT COUNT(*) FROM activations")->fetchColumn(),
+    'gpx_tracks'      => $db->query("SELECT COUNT(*) FROM gpx_tracks")->fetchColumn(),
+    'global_gpx'      => $db->query("SELECT COUNT(*) FROM global_gpx_tracks")->fetchColumn(),
 ];
 
 $banner_raw     = $db->query("SELECT setting_value FROM app_settings WHERE setting_key = 'sitewide_banner'")->fetchColumn();
@@ -240,7 +241,7 @@ if (is_dir($gpx_dir)) {
 }
 
 $active_tab = $_GET['tab'] ?? 'overview';
-$tabs = ['overview' => 'Overview', 'users' => 'Users', 'groups' => 'Groups', 'activity' => 'Activity', 'cleanup' => 'Cleanup'];
+$tabs = ['overview' => 'Overview', 'users' => 'Users', 'groups' => 'Groups', 'activity' => 'Activity', 'data' => 'Data Tools', 'cleanup' => 'Cleanup'];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -447,12 +448,12 @@ select.form-input { cursor: pointer; }
                 <div class="stat-label">Summits</div>
             </div>
             <div class="stat-card">
-                <div class="stat-num"><?= $stats['activations'] ?></div>
-                <div class="stat-label">Activations</div>
-            </div>
-            <div class="stat-card">
                 <div class="stat-num"><?= $stats['gpx_tracks'] ?></div>
                 <div class="stat-label">GPX Tracks</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num"><?= $stats['global_gpx'] ?></div>
+                <div class="stat-label">Community Routes</div>
             </div>
         </div>
 
@@ -695,6 +696,57 @@ select.form-input { cursor: pointer; }
             <?php endif; ?>
         </div>
         <?php endif; ?>
+
+    <!-- ── DATA TOOLS ── -->
+    <?php elseif ($active_tab === 'data'): ?>
+
+        <div class="section-head">
+            <div>
+                <h2>Data Pre-population Tools</h2>
+                <p>Import community data from external sources into the global library. Run on production only.</p>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom:var(--sp-4);">
+            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:var(--sp-6);">
+                <div>
+                    <div style="font-weight:600; font-size:1rem; margin-bottom:0.3rem;">Batch GPX Import</div>
+                    <div style="font-size:0.85rem; color:var(--ink-2); line-height:1.55;">
+                        Imports community-submitted trail routes from the SOTA Mapping Project into the global GPX library.
+                        Pick any SOTA association (W6, W7O, G, VK, etc.), load the queue, and run.
+                        Routes appear automatically when users nominate matching summits.
+                    </div>
+                    <div style="font-size:0.78rem; color:var(--ink-3); margin-top:0.5rem;"><?= $stats['global_gpx'] ?> community routes in library so far</div>
+                </div>
+                <a href="admin_batch_gpx.php" class="btn btn-primary" style="flex-shrink:0;">Open →</a>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom:var(--sp-4);">
+            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:var(--sp-6);">
+                <div>
+                    <div style="font-weight:600; font-size:1rem; margin-bottom:0.3rem;">GPX Library Browser</div>
+                    <div style="font-size:0.85rem; color:var(--ink-2); line-height:1.55;">
+                        Browse all community routes in the global library. Filter by association, search by summit reference,
+                        and remove individual entries to re-queue them for re-import.
+                    </div>
+                </div>
+                <a href="admin_gpx_library.php" class="btn btn-primary" style="flex-shrink:0;">Open →</a>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom:var(--sp-4);">
+            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:var(--sp-6);">
+                <div>
+                    <div style="font-weight:600; font-size:1rem; margin-bottom:0.3rem;">Trailhead Lookup (OpenStreetMap)</div>
+                    <div style="font-size:0.85rem; color:var(--ink-2); line-height:1.55;">
+                        For summits that are missing trailhead coordinates, queries OpenStreetMap for nearby trailheads and
+                        parking areas. Once a trailhead is found, drive time calculations unlock automatically for that summit.
+                    </div>
+                </div>
+                <a href="admin_trailhead_osm.php" class="btn btn-primary" style="flex-shrink:0;">Open →</a>
+            </div>
+        </div>
 
     <!-- ── CLEANUP ── -->
     <?php elseif ($active_tab === 'cleanup'): ?>

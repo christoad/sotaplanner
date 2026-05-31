@@ -272,6 +272,27 @@ if ($action === 'associations') {
     exit;
 }
 
+if ($action === 'assoc_stats') {
+    header('Content-Type: application/json');
+    $rows = $db->query("
+        SELECT SUBSTRING_INDEX(sota_ref,'/',1) AS assoc,
+               COUNT(*) AS track_count,
+               MAX(imported_at) AS last_import
+        FROM global_gpx_tracks
+        GROUP BY assoc
+        ORDER BY assoc
+    ")->fetchAll();
+    $result = [];
+    foreach ($rows as $row) {
+        $result[$row['assoc']] = [
+            'count'       => (int)$row['track_count'],
+            'last_import' => $row['last_import'],
+        ];
+    }
+    echo json_encode($result);
+    exit;
+}
+
 if ($action === 'queue') {
     header('Content-Type: application/json');
     try {
@@ -464,8 +485,7 @@ if ($action === 'process') {
     exit;
 }
 
-// ── HTML PAGE (W6 hardcoded) ──────────────────────────────────────────────────
-$ASSOC = 'W6';
+// ── HTML PAGE ────────────────────────────────────────────────────────────────
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -516,21 +536,35 @@ h2{font-size:.95rem;font-weight:600;margin-bottom:1rem;color:var(--ink-2)}
 .sum-lbl{font-size:.7rem;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em}
 .delay-row{display:flex;align-items:center;gap:.5rem;font-size:.8rem;color:var(--ink-3)}
 .delay-row input{width:60px;padding:.25rem .4rem;border:1px solid var(--border);border-radius:4px;font-family:var(--font-mono);font-size:.8rem;text-align:center}
+.assoc-select{padding:.45rem .7rem;border:1px solid var(--border);border-radius:var(--r-md);font-family:var(--font-mono);font-size:.9rem;color:var(--ink);background:var(--surface);outline:none;cursor:pointer;min-width:220px}
+.assoc-select:focus{border-color:var(--accent)}
 </style>
 </head>
 <body>
 <div class="page">
-  <h1>Batch GPX Import — <?= $ASSOC ?></h1>
-  <p class="subtitle">Fetches the best community track from <strong>SOTA Mapping Project</strong> for every <strong><?= $ASSOC ?></strong> summit and adds it to the global GPX library. When any user nominates these summits, maps and trail stats will be pre-populated automatically. Tracks already in the library are skipped.</p>
+  <h1>Batch GPX Import</h1>
+  <p class="subtitle">Fetches the best community track from <strong>SOTA Mapping Project</strong> for each summit in the selected association and adds it to the global GPX library. When any user nominates these summits, maps and trail stats will be pre-populated automatically. Tracks already in the library are skipped.</p>
+
+  <!-- Association picker -->
+  <div class="card">
+    <h2>Select Association</h2>
+    <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+      <select id="assoc-select" class="assoc-select" onchange="onAssocChange()">
+        <option value="">— Loading associations… —</option>
+      </select>
+      <span id="assoc-load-status" style="font-size:.82rem;color:var(--ink-3)"></span>
+    </div>
+  </div>
 
   <div class="card">
-    <h2>Stats — <?= $ASSOC ?></h2>
+    <h2 id="stats-heading">Stats</h2>
     <div class="stats-grid">
-      <div class="stat"><div class="stat-val ink" id="stat-total">…</div><div class="stat-lbl">Summits in <?= $ASSOC ?></div></div>
-      <div class="stat"><div class="stat-val green" id="stat-have">…</div><div class="stat-lbl">In GPX library</div></div>
-      <div class="stat"><div class="stat-val orange" id="stat-need">…</div><div class="stat-lbl">Need import</div></div>
+      <div class="stat"><div class="stat-val ink" id="stat-total">—</div><div class="stat-lbl" id="stat-total-lbl">Summits in association</div></div>
+      <div class="stat"><div class="stat-val green" id="stat-have">—</div><div class="stat-lbl">In GPX library</div></div>
+      <div class="stat"><div class="stat-val orange" id="stat-need">—</div><div class="stat-lbl">Need import</div></div>
     </div>
-    <p id="queue-status" style="font-size:.85rem;color:var(--ink-3)">Loading W6 summit list from local cache…</p>
+    <p id="queue-status" style="font-size:.85rem;color:var(--ink-3)">Choose an association above to begin.</p>
+    <p id="last-import-notice" style="display:none;margin-top:.5rem;font-size:.82rem;color:var(--ink-3)"></p>
   </div>
 
   <div class="card">
@@ -569,32 +603,121 @@ h2{font-size:.95rem;font-weight:600;margin-bottom:1rem;color:var(--ink-2)}
       <span style="font-size:.875rem;font-weight:600;color:var(--ink-2)">Live Log</span>
       <button class="btn btn-ghost" style="height:28px;font-size:.75rem" onclick="clearLog()">Clear</button>
     </div>
-    <div class="log" id="log"><div style="color:#555">Loading queue…</div></div>
+    <div class="log" id="log"><div style="color:#555">Select an association to load the queue.</div></div>
   </div>
 
   <p style="margin-top:1rem"><a href="admin.php" style="color:var(--ink-3);font-size:.875rem">&larr; Back to admin</a></p>
 </div>
 
 <script>
-const ASSOC = '<?= $ASSOC ?>';
-let queue   = [];
-let idx     = 0;
-let paused  = false;
-let stopped = false;
-let counts  = { imported: 0, none: 0, skip: 0, err: 0 };
+let queue       = [];
+let idx         = 0;
+let paused      = false;
+let stopped     = false;
+let counts      = { imported: 0, none: 0, skip: 0, err: 0 };
+let loadingQueue = false;
+let assocStats  = {};
 
-// Load queue immediately on page load
+function getAssoc() {
+  return document.getElementById('assoc-select').value;
+}
+
+// Load associations list on page load
 (async () => {
+  const sel    = document.getElementById('assoc-select');
+  const status = document.getElementById('assoc-load-status');
   try {
-    const r = await fetch(`admin_batch_gpx.php?action=queue&association=${ASSOC}`);
+    const [assocData, statsData] = await Promise.all([
+      fetch('admin_batch_gpx.php?action=associations').then(r => r.json()),
+      fetch('admin_batch_gpx.php?action=assoc_stats').then(r => r.json()),
+    ]);
+    if (assocData.error) throw new Error(assocData.error);
+    assocStats = statsData;
+
+    const done   = assocData.filter(a => statsData[a.code]);
+    const notYet = assocData.filter(a => !statsData[a.code]);
+
+    sel.innerHTML = '<option value="">— Choose an association —</option>';
+
+    if (notYet.length) {
+      const g = document.createElement('optgroup');
+      g.label = `Not yet imported (${notYet.length})`;
+      notYet.forEach(a => {
+        const opt = document.createElement('option');
+        opt.value       = a.code;
+        opt.textContent = `${a.code} — ${a.name}`;
+        g.appendChild(opt);
+      });
+      sel.appendChild(g);
+    }
+
+    if (done.length) {
+      const g = document.createElement('optgroup');
+      g.label = `Already imported (${done.length})`;
+      done.forEach(a => {
+        const s   = statsData[a.code];
+        const dt  = new Date(s.last_import);
+        const fmt = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const opt = document.createElement('option');
+        opt.value       = a.code;
+        opt.textContent = `${a.code} — ${a.name}  ✓ ${s.count.toLocaleString()} tracks · last: ${fmt}`;
+        g.appendChild(opt);
+      });
+      sel.appendChild(g);
+    }
+
+    status.textContent = `${assocData.length} associations · ${done.length} already imported`;
+  } catch (e) {
+    status.textContent = 'Error loading associations: ' + e.message;
+    status.style.color = 'var(--red)';
+  }
+})();
+
+async function onAssocChange() {
+  const assoc = getAssoc();
+  if (!assoc) return;
+  if (loadingQueue) return;
+
+  // Reset import state if switching mid-import
+  stopped = true;
+  queue   = [];
+  idx     = 0;
+
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('btn-pause').disabled = true;
+  document.getElementById('btn-stop').disabled  = true;
+  document.getElementById('stat-total').textContent = '…';
+  document.getElementById('stat-have').textContent  = '…';
+  document.getElementById('stat-need').textContent  = '…';
+  document.getElementById('stats-heading').textContent  = `Stats — ${assoc}`;
+  document.getElementById('stat-total-lbl').textContent = `Summits in ${assoc}`;
+  document.getElementById('queue-status').textContent   = `Loading ${assoc} summit list…`;
+  document.getElementById('queue-status').style.color   = 'var(--ink-3)';
+  const notice = document.getElementById('last-import-notice');
+  if (assocStats[assoc]) {
+    const s   = assocStats[assoc];
+    const dt  = new Date(s.last_import);
+    const fmt = dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    notice.textContent = `⚠ Previously imported: ${s.count.toLocaleString()} tracks as of ${fmt}. Only missing summits will be re-queued.`;
+    notice.style.display = 'block';
+  } else {
+    notice.style.display = 'none';
+  }
+  document.getElementById('progress-bar').style.width   = '0';
+  document.getElementById('progress-text').textContent  = 'Waiting…';
+  document.getElementById('progress-pct').textContent   = '';
+  document.getElementById('summary-box').style.display  = 'none';
+  document.getElementById('log').innerHTML = '';
+
+  loadingQueue = true;
+  try {
+    const r = await fetch(`admin_batch_gpx.php?action=queue&association=${encodeURIComponent(assoc)}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const text = await r.text();
     let d;
-    try {
-      d = JSON.parse(text);
-    } catch (je) {
-      throw new Error('Bad JSON — raw response: ' + text.substring(0, 300));
-    }
+    try { d = JSON.parse(text); }
+    catch (je) { throw new Error('Bad JSON — ' + text.substring(0, 200)); }
+
     queue = d.summits || [];
     document.getElementById('stat-total').textContent = d.total;
     document.getElementById('stat-have').textContent  = d.in_library;
@@ -602,32 +725,36 @@ let counts  = { imported: 0, none: 0, skip: 0, err: 0 };
     document.getElementById('queue-status').textContent =
       queue.length > 0
         ? `Ready — ${queue.length} summit(s) to import. Press Start.`
-        : '✓ All W6 summits already in the library.';
+        : `✓ All ${assoc} summits already in the library.`;
     document.getElementById('btn-start').disabled = (queue.length === 0);
-    document.getElementById('log').innerHTML = '';
-    log(`Queue ready: ${d.total} total W6 summits, ${d.in_library} already in library, ${queue.length} to import.`, 'info');
+    log(`Queue ready: ${d.total} total ${assoc} summits, ${d.in_library} already in library, ${queue.length} to import.`, 'info');
+    stopped = false;
   } catch (e) {
     document.getElementById('queue-status').textContent = 'Error loading queue: ' + e.message;
     document.getElementById('queue-status').style.color = 'var(--red)';
     log('Error loading queue: ' + e.message, 'err');
   }
-})();
+  loadingQueue = false;
+}
 
 function startImport() {
-  if (queue.length === 0) return;
-  document.getElementById('btn-start').disabled = true;
-  document.getElementById('btn-pause').disabled = false;
-  document.getElementById('btn-stop').disabled  = false;
+  const assoc = getAssoc();
+  if (!assoc || queue.length === 0) return;
+  document.getElementById('btn-start').disabled  = true;
+  document.getElementById('btn-pause').disabled  = false;
+  document.getElementById('btn-stop').disabled   = false;
+  document.getElementById('assoc-select').disabled = true;
   document.getElementById('summary-box').style.display = 'none';
   counts  = { imported: 0, none: 0, skip: 0, err: 0 };
   paused  = false;
   stopped = false;
   idx     = 0;
-  log(`Starting import of ${queue.length} ${ASSOC} summits…`, 'info');
+  log(`Starting import of ${queue.length} ${assoc} summits…`, 'info');
   runNext();
 }
 
 function runNext() {
+  const assoc = getAssoc();
   if (stopped) { finish(); return; }
   if (paused)  { setTimeout(runNext, 300); return; }
   if (idx >= queue.length) { finish(); return; }
@@ -674,9 +801,10 @@ function pauseImport() {
 function stopImport() { stopped = true; }
 
 function finish() {
-  document.getElementById('btn-start').disabled = true;
-  document.getElementById('btn-pause').disabled = true;
-  document.getElementById('btn-stop').disabled  = true;
+  document.getElementById('btn-start').disabled    = true;
+  document.getElementById('btn-pause').disabled    = true;
+  document.getElementById('btn-stop').disabled     = true;
+  document.getElementById('assoc-select').disabled = false;
   document.getElementById('summary-box').style.display = 'block';
   updateSummary();
   log(`Done. Imported: ${counts.imported}  No tracks: ${counts.none}  Skipped: ${counts.skip}  Errors: ${counts.err}`, 'ok');
