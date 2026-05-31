@@ -195,6 +195,22 @@ if (isset($_POST['update_gpx_preferences'])) {
 }
 
 
+if (isset($_POST['remove_gpx_track'])) {
+    if ($current_group) {
+        $stmt = $db->prepare("SELECT file_path, from_global_library FROM gpx_tracks WHERE summit_id = ? AND planning_group_id = ?");
+        $stmt->execute([$summit_id, $current_group['id']]);
+        $track = $stmt->fetch();
+        if ($track) {
+            if (empty($track['from_global_library']) && !empty($track['file_path']) && file_exists($track['file_path'])) {
+                unlink($track['file_path']);
+            }
+            $db->prepare("DELETE FROM gpx_tracks WHERE summit_id = ? AND planning_group_id = ?")->execute([$summit_id, $current_group['id']]);
+        }
+        header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
+        exit;
+    }
+}
+
 // ========== END GPX UPLOAD HANDLER ==========
 
 // Handle form submissions
@@ -910,7 +926,7 @@ if ($tl_show) {
     .time-bar-time  { color: rgba(255,255,255,0.8);  font-size: 0.65rem; font-weight: 400; white-space: nowrap; line-height: 1.25; }
 
     /* Map */
-    .map-wrap { position: relative; }
+    .map-wrap { position: relative; z-index: 0; }
     #summit-map { height: 280px; border-radius: var(--r-lg); border: 1px solid var(--border); overflow: hidden; margin-bottom: 0.75rem; }
     .map-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; align-items: center; }
     .carrier-btn { height: 28px; padding: 0 0.625rem; font-size: 0.75rem; font-weight: 600; border-radius: var(--r-sm); border: 1.5px solid; cursor: pointer; transition: all 0.12s; font-family: var(--font-sans); }
@@ -1511,10 +1527,17 @@ if ($tl_show) {
               <option value="ascent"     <?= $track_type === 'ascent'     ? 'selected' : '' ?>>Ascent only</option>
               <option value="descent"    <?= $track_type === 'descent'    ? 'selected' : '' ?>>Descent only</option>
             </select>
-            <div style="display:flex; gap:0.5rem;">
+            <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
               <button type="submit" class="btn btn-secondary btn-sm">Save Prefs</button>
               <a href="load_gpx.php?id=<?= $gpx_data['id'] ?>" download="<?= htmlspecialchars($gpx_download_name) ?>" class="btn btn-ghost btn-sm">Download GPX</a>
             </div>
+          </form>
+          <form method="POST" style="margin-top:0.5rem;">
+            <button type="submit" name="remove_gpx_track" value="1" class="btn btn-sm"
+              style="background:var(--red-bg); color:var(--red); border:1px solid oklch(85% 0.08 22);"
+              onclick="return confirm('Remove this track from this summit?')">
+              Remove Track
+            </button>
           </form>
           <div style="margin-top:0.875rem; padding-top:0.875rem; border-top:1px solid var(--border);">
             <div style="font-size:0.75rem; color:var(--ink-3); margin-bottom:0.5rem;">Replace track:</div>
