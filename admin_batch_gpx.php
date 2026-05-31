@@ -634,39 +634,24 @@ function getAssoc() {
     if (assocData.error) throw new Error(assocData.error);
     assocStats = statsData;
 
-    const done   = assocData.filter(a => statsData[a.code]);
-    const notYet = assocData.filter(a => !statsData[a.code]);
+    const importedCount = assocData.filter(a => statsData[a.code]).length;
 
     sel.innerHTML = '<option value="">— Choose an association —</option>';
-
-    if (notYet.length) {
-      const g = document.createElement('optgroup');
-      g.label = `Not yet imported (${notYet.length})`;
-      notYet.forEach(a => {
-        const opt = document.createElement('option');
-        opt.value       = a.code;
-        opt.textContent = `${a.code} — ${a.name}`;
-        g.appendChild(opt);
-      });
-      sel.appendChild(g);
-    }
-
-    if (done.length) {
-      const g = document.createElement('optgroup');
-      g.label = `Already imported (${done.length})`;
-      done.forEach(a => {
-        const s   = statsData[a.code];
+    assocData.forEach(a => {
+      const opt = document.createElement('option');
+      opt.value = a.code;
+      const s = statsData[a.code];
+      if (s) {
         const dt  = new Date(s.last_import);
         const fmt = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        const opt = document.createElement('option');
-        opt.value       = a.code;
-        opt.textContent = `${a.code} — ${a.name}  ✓ ${s.count.toLocaleString()} tracks · last: ${fmt}`;
-        g.appendChild(opt);
-      });
-      sel.appendChild(g);
-    }
+        opt.textContent = `${a.code} — ${a.name}  [${s.count.toLocaleString()} tracks · ${fmt}]`;
+      } else {
+        opt.textContent = `${a.code} — ${a.name}`;
+      }
+      sel.appendChild(opt);
+    });
 
-    status.textContent = `${assocData.length} associations · ${done.length} already imported`;
+    status.textContent = `${assocData.length} associations · ${importedCount} imported`;
   } catch (e) {
     status.textContent = 'Error loading associations: ' + e.message;
     status.style.color = 'var(--red)';

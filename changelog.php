@@ -230,12 +230,28 @@ session_start();
         <p>Release history and update notes for SOTA Planner</p>
     </div>
 
-    <!-- v1.4.0 -->
+    <!-- v1.4.1 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.4.1</span>
+            <span class="version-date">May 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Smarter GPX analysis — auto-detects track direction and trailhead location.</p>
+        <ul>
+            <li>When you upload a GPX file, the app now automatically determines whether the track is an ascent, descent, or out-and-back — no more manual selection needed</li>
+            <li>The trailhead location is automatically identified from the GPX and saved to the summit if none was set</li>
+            <li>The "Use GPS data" toggle now saves instantly — no Save button needed</li>
+            <li>Distance and elevation gain fields are greyed out when GPS data is active, making it clear those values are coming from the track file</li>
+            <li>The summit's radio time in the planning timeline now uses your personal default from User Settings rather than the recorded activation time from the GPX</li>
+        </ul>
+    </div>
+
+    <!-- v1.4.0 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.4.0</span>
             <span class="version-date">May 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Community trail routes appear automatically when you nominate a summit.</p>
         <ul>

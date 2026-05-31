@@ -116,8 +116,8 @@ if (isset($_FILES['gpx_file']) && $_FILES['gpx_file']['error'] === UPLOAD_ERR_OK
                                     elevation_gain, elevation_loss, avg_speed, hiking_speed,
                                     num_points, summit_lat, summit_lon, using_api,
                                     activation_zone_polygon, activation_zone_method,
-                                    use_for_hike_time, use_for_elevation
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    use_for_hike_time, use_for_elevation, track_type
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             ");
                             $stmt->execute([
                                 $summit_id, $current_group['id'], $filename, $filepath,
@@ -130,8 +130,15 @@ if (isset($_FILES['gpx_file']) && $_FILES['gpx_file']['error'] === UPLOAD_ERR_OK
                                 $gpx_stats['num_points'], $gpx_stats['summit_lat'],
                                 $gpx_stats['summit_lon'], $gpx_stats['using_api'] ? 1 : 0,
                                 $gpx_stats['activation_zone_polygon'], $gpx_stats['activation_zone_method'],
-                                $use_for_hike, $use_for_hike
+                                $use_for_hike, $use_for_hike,
+                                $gpx_stats['track_type'] ?? 'round-trip'
                             ]);
+
+                            // Auto-set trailhead from GPX detection if none is saved yet
+                            if (!empty($gpx_stats['trailhead_lat'])) {
+                                $db->prepare("UPDATE summits SET trailhead_lat = ?, trailhead_lng = ?, trailhead_manual = 0 WHERE id = ? AND (trailhead_lat IS NULL OR trailhead_lat = '')")
+                                   ->execute([$gpx_stats['trailhead_lat'], $gpx_stats['trailhead_lon'], $summit_id]);
+                            }
 
                             // Only overwrite distance/elevation from GPX when it has timestamps
                             // (real recorded hike). Route-only GPX files leave manual data intact.
@@ -178,16 +185,13 @@ if (isset($_FILES['gpx_file']) && $_FILES['gpx_file']['error'] === UPLOAD_ERR_OK
 if (isset($_POST['update_gpx_preferences'])) {
     if ($current_group) {
         $use_gps = isset($_POST['use_gps_data']) ? 1 : 0;
-        $track_type = in_array($_POST['track_type'] ?? '', ['round-trip', 'ascent', 'descent'])
-            ? $_POST['track_type']
-            : 'round-trip';
 
         $stmt = $db->prepare("
             UPDATE gpx_tracks
-            SET use_for_hike_time = ?, use_for_elevation = ?, track_type = ?
+            SET use_for_hike_time = ?, use_for_elevation = ?
             WHERE summit_id = ? AND planning_group_id = ?
         ");
-        $stmt->execute([$use_gps, $use_gps, $track_type, $summit_id, $current_group['id']]);
+        $stmt->execute([$use_gps, $use_gps, $summit_id, $current_group['id']]);
 
         header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
         exit;
@@ -508,6 +512,11 @@ if ($current_group) {
     $gpx_data = $stmt->fetch();
 }
 
+// User's preferred activation/radio time — used for planning, not overridden by GPX
+$_us = $db->prepare("SELECT default_activation_time_min FROM user_settings WHERE user_callsign = ?");
+$_us->execute([$_SESSION['sota_callsign']]);
+$default_activation_min = (int)(($_us->fetchColumn()) ?: 60);
+
 
 if (!$summit) {
     header('Location: index.php');
@@ -716,9 +725,8 @@ if ($hike_time_total) {
 } else {
     $tl_hike_up = $tl_hike_down = 0;
 }
-$tl_activation = ($gpx_data && $gpx_data['activation_time'] > 0)
-    ? intval(round($gpx_data['activation_time'] / 60))
-    : 60;
+// Always use the user's configured radio time for planning — never the GPX-recorded activation time
+$tl_activation = $default_activation_min;
 $tl_total = $tl_drive_one * 2 + $tl_hike_up + $tl_activation + $tl_hike_down;
 $tl_show = $tl_total > 0;
 if ($tl_show) {
@@ -1352,16 +1360,19 @@ if ($tl_show) {
       </div>
 
       <!-- Distance · Gain · Difficulty in one row -->
+      <?php $gpx_active = $gpx_data && $gpx_data['use_for_hike_time']; ?>
       <div class="field-row-3" style="margin-bottom:1rem;">
         <div class="form-group" style="margin:0;">
           <label class="form-label">Distance (<?= getDistanceUnit($current_group['units']) ?>, RT)</label>
           <input type="number" class="form-input" name="hike_distance_mi" step="0.01" min="0"
-                 value="<?= htmlspecialchars($summit['hike_distance_mi'] ?? '') ?>" placeholder="0.0">
+                 value="<?= htmlspecialchars($summit['hike_distance_mi'] ?? '') ?>" placeholder="0.0"
+                 <?= $gpx_active ? 'readonly title="Distance is pulled from the GPX file while \'Use GPS data\' is enabled" style="opacity:0.45;cursor:not-allowed;background:var(--bg-2);"' : '' ?>>
         </div>
         <div class="form-group" style="margin:0;">
           <label class="form-label">Elev. Gain (<?= getElevationUnit($current_group['units']) ?>)</label>
           <input type="number" class="form-input" name="hike_elevation_gain_ft" min="0"
-                 value="<?= htmlspecialchars($summit['hike_elevation_gain_ft'] ?? '') ?>" placeholder="0">
+                 value="<?= htmlspecialchars($summit['hike_elevation_gain_ft'] ?? '') ?>" placeholder="0"
+                 <?= $gpx_active ? 'readonly title="Elevation gain is pulled from the GPX file while \'Use GPS data\' is enabled" style="opacity:0.45;cursor:not-allowed;background:var(--bg-2);"' : '' ?>>
         </div>
         <div class="form-group" style="margin:0;">
           <label class="form-label">Hike Difficulty</label>
@@ -1515,22 +1526,23 @@ if ($tl_show) {
           <?php else: ?>
             <div style="font-size:0.78rem; color:var(--ink-3); margin-bottom:0.75rem;">Route-only GPX (no timestamps) — map &amp; elevation data loaded.</div>
           <?php endif; ?>
+          <?php
+            $track_type_label = ['ascent' => 'Ascent only', 'descent' => 'Descent only', 'round-trip' => 'Round-trip'][$track_type] ?? 'Round-trip';
+          ?>
+          <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem;">
+            <span style="font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--ink-3);">Track type</span>
+            <span style="font-size:0.78rem; font-weight:600; color:var(--ink-2); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.5rem;">
+              <?= htmlspecialchars($track_type_label) ?>
+            </span>
+            <span style="font-size:0.7rem; color:var(--ink-4);">auto-detected</span>
+          </div>
           <form method="POST" class="gps-prefs">
             <input type="hidden" name="update_gpx_preferences" value="1">
-            <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; font-size:0.82rem; font-weight:500; color:var(--ink); margin-bottom:0.625rem;">
-              <input type="checkbox" name="use_gps_data" value="1" <?= ($gpx_data['use_for_hike_time']) ? 'checked' : '' ?> style="width:14px; height:14px;">
+            <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; font-size:0.82rem; font-weight:500; color:var(--ink); margin-bottom:0.75rem;">
+              <input type="checkbox" name="use_gps_data" value="1" <?= ($gpx_data['use_for_hike_time']) ? 'checked' : '' ?> style="width:14px; height:14px;" onchange="this.form.submit()">
               Use GPS data for planning
             </label>
-            <label class="form-label" style="margin-bottom:0.3rem; font-size:0.72rem;">Track type</label>
-            <select name="track_type" class="form-select" style="height:32px; padding:0.25rem 0.625rem; font-size:0.8rem; margin-bottom:0.625rem;">
-              <option value="round-trip" <?= $track_type === 'round-trip' ? 'selected' : '' ?>>Round-trip</option>
-              <option value="ascent"     <?= $track_type === 'ascent'     ? 'selected' : '' ?>>Ascent only</option>
-              <option value="descent"    <?= $track_type === 'descent'    ? 'selected' : '' ?>>Descent only</option>
-            </select>
-            <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
-              <button type="submit" class="btn btn-secondary btn-sm">Save Prefs</button>
-              <a href="load_gpx.php?id=<?= $gpx_data['id'] ?>" download="<?= htmlspecialchars($gpx_download_name) ?>" class="btn btn-ghost btn-sm">Download GPX</a>
-            </div>
+            <a href="load_gpx.php?id=<?= $gpx_data['id'] ?>" download="<?= htmlspecialchars($gpx_download_name) ?>" class="btn btn-ghost btn-sm">Download GPX</a>
           </form>
           <form method="POST" style="margin-top:0.5rem;">
             <button type="submit" name="remove_gpx_track" value="1" class="btn btn-sm"

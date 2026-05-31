@@ -1,5 +1,5 @@
 <?php
-define('APP_VERSION', '1.4.0');
+define('APP_VERSION', '1.4.1');
 
 // Enable error reporting for debugging
 error_reporting(E_ALL);
@@ -416,7 +416,45 @@ function analyze_gpx_track($gpx_file_path, $summit_ref = null) {
     
     $avg_speed = $total_time > 0 ? ($total_distance / 1000) / ($total_time / 3600) : 0;
     $hiking_speed = $hiking_time > 0 ? ($hiking_distance / 1000) / ($hiking_time / 3600) : 0;
-    
+
+    // Auto-detect track type from start/end elevation vs. the elevation range.
+    // Threshold: if an endpoint is within 25% of the range from min (low) or max (high),
+    // it qualifies as "low" or "high". ascent = low→high, descent = high→low, else round-trip.
+    $detected_track_type = 'round-trip';
+    $detected_trailhead_lat = null;
+    $detected_trailhead_lon = null;
+    if (count($points) >= 2 && ($max_elevation - $min_elevation) > 5) {
+        $ele_range = $max_elevation - $min_elevation;
+        $threshold = $ele_range * 0.25;
+        $start_ele = $points[0]['ele'];
+        $end_ele   = $points[count($points) - 1]['ele'];
+
+        $start_is_low  = ($start_ele - $min_elevation) <= $threshold;
+        $start_is_high = ($max_elevation - $start_ele) <= $threshold;
+        $end_is_low    = ($end_ele   - $min_elevation) <= $threshold;
+        $end_is_high   = ($max_elevation - $end_ele)   <= $threshold;
+
+        if ($start_is_low && $end_is_high) {
+            $detected_track_type = 'ascent';
+            $detected_trailhead_lat = $points[0]['lat'];
+            $detected_trailhead_lon = $points[0]['lon'];
+        } elseif ($start_is_high && $end_is_low) {
+            $detected_track_type = 'descent';
+            $detected_trailhead_lat = $points[count($points) - 1]['lat'];
+            $detected_trailhead_lon = $points[count($points) - 1]['lon'];
+        } else {
+            $detected_track_type = 'round-trip';
+            // Trailhead is whichever end is lower elevation
+            if ($start_ele <= $end_ele) {
+                $detected_trailhead_lat = $points[0]['lat'];
+                $detected_trailhead_lon = $points[0]['lon'];
+            } else {
+                $detected_trailhead_lat = $points[count($points) - 1]['lat'];
+                $detected_trailhead_lon = $points[count($points) - 1]['lon'];
+            }
+        }
+    }
+
     return [
         'total_time' => $total_time,
         'hiking_time' => $hiking_time,
@@ -437,6 +475,9 @@ function analyze_gpx_track($gpx_file_path, $summit_ref = null) {
         'activation_zone_polygon' => $activation_zone_polygon ? json_encode($activation_zone_polygon) : null,
         'activation_zone_method' => $activation_zone_method,
         'has_timestamps' => $has_timestamps,
+        'track_type' => $detected_track_type,
+        'trailhead_lat' => $detected_trailhead_lat,
+        'trailhead_lon' => $detected_trailhead_lon,
     ];
 }
 
