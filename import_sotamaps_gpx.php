@@ -18,6 +18,10 @@ if (!isset($_SESSION['sota_callsign'])) {
 header('Content-Type: application/json');
 
 $db = getDbConnection();
+
+// Inline migration: add sotamaps_track_count if missing
+try { $db->exec("ALTER TABLE global_gpx_tracks ADD COLUMN sotamaps_track_count INT NULL DEFAULT NULL"); } catch (PDOException $e) {}
+
 $current_group = getCurrentPlanningGroup($db);
 
 if (!$current_group) {
@@ -85,25 +89,35 @@ if ($action === 'list') {
         exit;
     }
 
-    if (count($data) === 0) {
-        echo json_encode(['tracks' => [], 'message' => 'No tracks found for this summit on SOTA Maps']);
+    // Store track count in global library (lazy backfill for cached summits)
+    $track_count = count($data);
+    $db->prepare("UPDATE global_gpx_tracks SET sotamaps_track_count = ? WHERE sota_ref = ?")
+       ->execute([$track_count, $sota_ref]);
+
+    if ($track_count === 0) {
+        echo json_encode(['tracks' => [], 'count' => 0, 'message' => 'No tracks found for this summit on SOTA Maps']);
         exit;
     }
 
     $tracks = [];
     foreach ($data as $t) {
-        $pt_count = isset($t['points']) ? count($t['points']) : 0;
+        $pts  = $t['points'] ?? [];
+        $dist = _sum_track_distance($pts);
         $tracks[] = [
             'hdr_id'       => $t['hdr_id'],
             'callsign'     => $t['callsign']    ?? '',
             'title'        => $t['track_title'] ?? '(untitled)',
             'notes'        => $t['track_notes'] ?? '',
             'posted_date'  => $t['posted_date'] ?? '',
-            'point_count'  => $pt_count,
+            'point_count'  => count($pts),
+            'distance_km'  => round($dist / 1000, 2),
         ];
     }
 
-    echo json_encode(['tracks' => $tracks]);
+    // Sort shortest first so the user sees the most efficient route at the top
+    usort($tracks, fn($a, $b) => $a['distance_km'] <=> $b['distance_km']);
+
+    echo json_encode(['tracks' => $tracks, 'count' => $track_count]);
     exit;
 }
 
@@ -250,6 +264,21 @@ echo json_encode(['error' => 'Unknown action']);
 exit;
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
+
+function _sum_track_distance(array $points): float {
+    $total = 0.0;
+    $prev  = null;
+    foreach ($points as $pt) {
+        if ($prev !== null) {
+            $total += haversine_distance(
+                floatval($prev['latitude']),  floatval($prev['longitude']),
+                floatval($pt['latitude']),    floatval($pt['longitude'])
+            );
+        }
+        $prev = $pt;
+    }
+    return $total; // metres
+}
 
 /**
  * Build a minimal GPX 1.1 file from the SMP points array.

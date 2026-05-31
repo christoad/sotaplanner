@@ -230,12 +230,27 @@ session_start();
         <p>Release history and update notes for SOTA Planner</p>
     </div>
 
-    <!-- v1.4.1 -->
+    <!-- v1.4.2 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.4.2</span>
+            <span class="version-date">June 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Smarter summit search and smoother nomination flow.</p>
+        <ul>
+            <li>Summit search now narrows as you type a SOTA reference prefix — type "W6/CT-" to browse all summits in that region and pick one from the list</li>
+            <li>When you type a full designator directly, the summit name now appears in the confirmation box so you can verify you have the right summit before nominating</li>
+            <li>When nominating a summit, a loading indicator shows while the app searches the SOTA Mapping Project for a community route</li>
+            <li>If a community route has multiple alternatives on the SOTA Mapping Project, a "swap" option now appears on the summit detail page to try a different one</li>
+        </ul>
+    </div>
+
+    <!-- v1.4.1 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.4.1</span>
             <span class="version-date">May 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Smarter GPX analysis — auto-detects track direction and trailhead location.</p>
         <ul>

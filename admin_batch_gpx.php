@@ -277,6 +277,7 @@ if ($action === 'assoc_stats') {
     $rows = $db->query("
         SELECT SUBSTRING_INDEX(sota_ref,'/',1) AS assoc,
                COUNT(*) AS track_count,
+               SUM(CASE WHEN sotamaps_track_count > 1 THEN 1 ELSE 0 END) AS multi_track_count,
                MAX(imported_at) AS last_import
         FROM global_gpx_tracks
         GROUP BY assoc
@@ -285,8 +286,9 @@ if ($action === 'assoc_stats') {
     $result = [];
     foreach ($rows as $row) {
         $result[$row['assoc']] = [
-            'count'       => (int)$row['track_count'],
-            'last_import' => $row['last_import'],
+            'count'             => (int)$row['track_count'],
+            'multi_track_count' => (int)$row['multi_track_count'],
+            'last_import'       => $row['last_import'],
         ];
     }
     echo json_encode($result);
@@ -364,13 +366,19 @@ if ($action === 'process') {
         exit;
     }
 
-    // Pick the track with the most points (most detailed)
+    // Pick the shortest-distance track (best for planning; avoids long wandering routes)
     $best = null;
+    $best_dist = PHP_FLOAT_MAX;
     foreach ($data as $t) {
-        $pts = is_array($t['points'] ?? null) ? count($t['points']) : 0;
-        if (!$best || $pts > count($best['points'] ?? [])) {
-            $best = $t;
-        }
+        $pts = $t['points'] ?? [];
+        if (count($pts) < 2) continue;
+        $dist = _batch_track_distance($pts);
+        if ($dist < $best_dist) { $best = $t; $best_dist = $dist; }
+    }
+
+    if (!$best) {
+        echo json_encode(['status' => 'error', 'msg' => 'No usable tracks found']);
+        exit;
     }
 
     $points = $best['points'] ?? [];
@@ -412,8 +420,8 @@ if ($action === 'process') {
             INSERT INTO global_gpx_tracks (
                 sota_ref, filename, file_path, source, source_callsign, source_track_title,
                 total_distance, max_elevation, min_elevation, elevation_gain, elevation_loss,
-                num_points, summit_lat, summit_lon, trailhead_lat, trailhead_lon
-            ) VALUES (?, ?, ?, 'sotamaps', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                num_points, summit_lat, summit_lon, trailhead_lat, trailhead_lon, sotamaps_track_count
+            ) VALUES (?, ?, ?, 'sotamaps', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
             $sota_ref, $filename, $filepath,
@@ -421,7 +429,7 @@ if ($action === 'process') {
             $gpx_stats['total_distance'], $gpx_stats['max_elevation'], $gpx_stats['min_elevation'],
             $gpx_stats['elevation_gain'], $gpx_stats['elevation_loss'],
             $gpx_stats['num_points'], $gpx_stats['summit_lat'], $gpx_stats['summit_lon'],
-            null, null,
+            null, null, count($data),
         ]);
         $global_id = $db->lastInsertId();
 
@@ -642,9 +650,10 @@ function getAssoc() {
       opt.value = a.code;
       const s = statsData[a.code];
       if (s) {
-        const dt  = new Date(s.last_import);
-        const fmt = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        opt.textContent = `${a.code} — ${a.name}  [${s.count.toLocaleString()} tracks · ${fmt}]`;
+        const dt    = new Date(s.last_import);
+        const fmt   = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const multi = s.multi_track_count > 0 ? ` · ${s.multi_track_count} with alt routes` : '';
+        opt.textContent = `${a.code} — ${a.name}  [${s.count.toLocaleString()} tracks · ${fmt}${multi}]`;
       } else {
         opt.textContent = `${a.code} — ${a.name}`;
       }
@@ -824,6 +833,20 @@ function clearLog() { document.getElementById('log').innerHTML = ''; }
 
 <?php
 // ── Build GPX XML from SMP points array ──────────────────────────────────────
+function _batch_track_distance(array $points): float {
+    $total = 0.0; $prev = null;
+    foreach ($points as $pt) {
+        if ($prev !== null) {
+            $total += haversine_distance(
+                floatval($prev['latitude']), floatval($prev['longitude']),
+                floatval($pt['latitude']),  floatval($pt['longitude'])
+            );
+        }
+        $prev = $pt;
+    }
+    return $total;
+}
+
 function _batch_build_gpx(array $points, string $title, string $callsign): string {
     $safe_title    = htmlspecialchars($title,    ENT_XML1);
     $safe_callsign = htmlspecialchars($callsign, ENT_XML1);

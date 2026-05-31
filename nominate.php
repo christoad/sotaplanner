@@ -277,8 +277,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
                     // Link global GPX library track if one exists (fills in map, elevation, trailhead)
                     _link_global_gpx($db, $summit_id, $current_group['id'], $sota_ref);
 
+                    // If no GPX was found in the library, signal summit_detail to fetch one async
+                    $gpx_chk = $db->prepare("SELECT id FROM gpx_tracks WHERE summit_id = ? LIMIT 1");
+                    $gpx_chk->execute([$summit_id]);
+                    $has_gpx = (bool)$gpx_chk->fetchColumn();
+
                     logActivity($db, 'Summit nominated', $sota_ref, $summit_data['name'] ?? '', $current_group['name'] ?? '');
-                    header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&nominated=1");
+                    $qs = $has_gpx ? '&nominated=1' : '&nominated=1&fetch_gpx=1';
+                    header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . $qs);
                     exit;
                 }
             } catch (PDOException $e) {
@@ -581,8 +587,8 @@ const selectedRef  = document.getElementById('selected-ref');
 const nominateBtn  = document.getElementById('nominate-btn');
 const searchHint   = document.getElementById('search-hint');
 
-// Matches a complete SOTA reference like W6/CT-225 or W7O/NC-001
-const refPattern = /^[A-Za-z0-9]{1,6}\/[A-Za-z0-9]{1,6}-\d+$/;
+// Matches a complete SOTA reference like W6/CT-225 or W7O/NC-001 (requires 3+ digits)
+const refPattern = /^[A-Za-z0-9]{1,6}\/[A-Za-z0-9]{1,6}-\d{3,}$/;
 
 let debounceTimer = null;
 
@@ -598,10 +604,31 @@ searchInput.addEventListener('input', function() {
     }
 
     if (refPattern.test(val)) {
-        // Looks like a direct reference — select it immediately
+        // Looks like a direct reference — select it immediately, then look up the name
         hideResults();
-        selectSummit(val.toUpperCase(), val.toUpperCase());
-        searchHint.textContent = 'Looks like a SOTA reference — ready to nominate.';
+        const ref = val.toUpperCase();
+        refInput.value = ref;
+        selectedName.textContent = ref;
+        selectedRef.textContent = '';
+        selectedBox.style.display = 'block';
+        setNominateEnabled(true);
+        searchHint.textContent = 'Looking up summit name...';
+
+        fetch('nominate.php?action=search&q=' + encodeURIComponent(ref))
+            .then(r => r.json())
+            .then(data => {
+                if (Array.isArray(data) && data.length > 0) {
+                    const match = data.find(s => s.ref.toUpperCase() === ref) || data[0];
+                    if (match) {
+                        selectedName.textContent = match.name;
+                        selectedRef.textContent = ref;
+                    }
+                }
+                searchHint.textContent = 'Looks like a SOTA reference — ready to nominate.';
+            })
+            .catch(() => {
+                searchHint.textContent = 'Looks like a SOTA reference — ready to nominate.';
+            });
         return;
     }
 

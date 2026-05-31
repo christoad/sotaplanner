@@ -13,34 +13,53 @@ function normalize_for_search($str) {
 }
 
 // Search the cache file. Returns array of [ref, name, points, altFt] sorted by points desc.
+// If the query contains '/', it is treated as a SOTA reference prefix (e.g. "W6/CT-") and
+// matched against the code column. Otherwise, keyword search on the name column is used.
 function search_sota_cache($query, $limit = 20) {
     if (!file_exists(SOTA_CACHE_FILE)) {
         return ['_no_cache' => true];
     }
 
-    $norm = normalize_for_search(trim($query));
-    $keywords = array_values(array_filter(preg_split('/\s+/', $norm)));
-    if (empty($keywords)) return [];
+    $raw = trim($query);
+    $is_ref_search = strpos($raw, '/') !== false;
 
     $results = [];
     $gz = @gzopen(SOTA_CACHE_FILE, 'rb');
     if (!$gz) return [];
 
-    while (!gzeof($gz)) {
-        $line = gzgets($gz, 512);
-        if (!$line) continue;
-        $s = explode('|', rtrim($line, "\r\n"), 5);
-        if (count($s) < 5) continue;
-        // columns: code | original_name | normalized_name | points | alt_ft
-        $norm_name = $s[2];
-        foreach ($keywords as $kw) {
-            if (strpos($norm_name, $kw) === false) continue 2;
+    if ($is_ref_search) {
+        $ref_prefix = strtoupper($raw);
+        while (!gzeof($gz)) {
+            $line = gzgets($gz, 512);
+            if (!$line) continue;
+            $s = explode('|', rtrim($line, "\r\n"), 5);
+            if (count($s) < 5) continue;
+            if (strpos(strtoupper($s[0]), $ref_prefix) === 0) {
+                $results[] = [$s[0], $s[1], (int)$s[3], (int)$s[4]];
+            }
         }
-        $results[] = [$s[0], $s[1], (int)$s[3], (int)$s[4]];
-    }
-    gzclose($gz);
+        gzclose($gz);
+        // Sort alphabetically by ref — gives natural numerical order within an association
+        usort($results, fn($a, $b) => strcmp($a[0], $b[0]));
+    } else {
+        $norm = normalize_for_search($raw);
+        $keywords = array_values(array_filter(preg_split('/\s+/', $norm)));
+        if (empty($keywords)) { gzclose($gz); return []; }
 
-    usort($results, fn($a, $b) => $b[2] !== $a[2] ? $b[2] - $a[2] : strcmp($a[1], $b[1]));
+        while (!gzeof($gz)) {
+            $line = gzgets($gz, 512);
+            if (!$line) continue;
+            $s = explode('|', rtrim($line, "\r\n"), 5);
+            if (count($s) < 5) continue;
+            $norm_name = $s[2];
+            foreach ($keywords as $kw) {
+                if (strpos($norm_name, $kw) === false) continue 2;
+            }
+            $results[] = [$s[0], $s[1], (int)$s[3], (int)$s[4]];
+        }
+        gzclose($gz);
+        usort($results, fn($a, $b) => $b[2] !== $a[2] ? $b[2] - $a[2] : strcmp($a[1], $b[1]));
+    }
 
     return array_map(fn($r) => [
         'ref'    => $r[0],

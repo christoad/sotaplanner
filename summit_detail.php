@@ -36,9 +36,14 @@ $error = '';
 // Get current planning group (needed for all handlers)
 $current_group = getCurrentPlanningGroup($db);
 
+// Flag: fetch GPX from SOTAmaps in the background after page load
+$fetch_gpx_async = isset($_GET['fetch_gpx']) && $_GET['fetch_gpx'] === '1';
+
 // Check for success messages
 if (isset($_GET['nominated'])) {
-    $message = "✓ Summit nominated! Use the tools below to add trail info and import a GPS track.";
+    $message = $fetch_gpx_async
+        ? "✓ Summit nominated! Searching for a community route…"
+        : "✓ Summit nominated! Use the tools below to add trail info and import a GPS track.";
 }
 if (isset($_GET['saved'])) {
     $message = "Summit updated successfully!";
@@ -506,10 +511,19 @@ $summit = $stmt->fetch();
 
 // Get GPX data for this summit/group
 $gpx_data = null;
+$sotamaps_track_count = null;
 if ($current_group) {
     $stmt = $db->prepare("SELECT * FROM gpx_tracks WHERE summit_id = ? AND planning_group_id = ?");
     $stmt->execute([$summit_id, $current_group['id']]);
     $gpx_data = $stmt->fetch();
+
+    // If linked from global library, load the SOTAmaps track count for the swap UI
+    if (!empty($gpx_data['from_global_library']) && !empty($summit['sota_ref'])) {
+        $st = $db->prepare("SELECT sotamaps_track_count FROM global_gpx_tracks WHERE sota_ref = ?");
+        $st->execute([$summit['sota_ref']]);
+        $row = $st->fetch();
+        if ($row) $sotamaps_track_count = $row['sotamaps_track_count']; // null = unknown
+    }
 }
 
 // User's preferred activation/radio time — used for planning, not overridden by GPX
@@ -935,6 +949,31 @@ if ($tl_show) {
 
     /* Map */
     .map-wrap { position: relative; z-index: 0; }
+
+    /* GPX fetch loading overlay */
+    .gpx-loading-overlay {
+      position: absolute; inset: 0; z-index: 10;
+      background: rgba(247,246,243,0.88);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 0.75rem; border-radius: inherit;
+      backdrop-filter: blur(2px);
+      transition: opacity 0.4s;
+    }
+    .gpx-loading-overlay.hidden { opacity: 0; pointer-events: none; }
+    .gpx-spinner {
+      width: 36px; height: 36px; border-radius: 50%;
+      border: 3px solid var(--border-2);
+      border-top-color: var(--accent);
+      animation: gpx-spin 0.8s linear infinite;
+    }
+    @keyframes gpx-spin { to { transform: rotate(360deg); } }
+    .gpx-loading-label {
+      font-size: 0.85rem; font-weight: 500; color: var(--ink-2);
+      text-align: center; padding: 0 1rem; line-height: 1.4;
+    }
+    .gpx-loading-sub {
+      font-size: 0.75rem; color: var(--ink-3);
+    }
     #summit-map { height: 280px; border-radius: var(--r-lg); border: 1px solid var(--border); overflow: hidden; margin-bottom: 0.75rem; }
     .map-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; align-items: center; }
     .carrier-btn { height: 28px; padding: 0 0.625rem; font-size: 0.75rem; font-weight: 600; border-radius: var(--r-sm); border: 1.5px solid; cursor: pointer; transition: all 0.12s; font-family: var(--font-sans); }
@@ -1089,7 +1128,7 @@ if ($tl_show) {
   <div class="topbar-divider"></div>
   <div class="topbar-nav">
     <a href="index.php">Dashboard</a>
-    <a href="manage_addresses.php">Groups &amp; Addresses</a>
+    <a href="planning_groups.php">Manage Planning Groups</a>
     <a href="about.php">About</a>
   </div>
   <div class="topbar-right">
@@ -1319,6 +1358,13 @@ if ($tl_show) {
 
       <!-- Map -->
       <div class="map-wrap" id="map-wrap">
+        <?php if ($fetch_gpx_async && empty($gpx_data)): ?>
+        <div class="gpx-loading-overlay" id="gpx-loading-overlay">
+          <div class="gpx-spinner"></div>
+          <div class="gpx-loading-label">Searching SOTA Mapping Project for a community route…</div>
+          <div class="gpx-loading-sub">This only happens once</div>
+        </div>
+        <?php endif; ?>
         <div id="summit-map"></div>
         <div class="map-buttons">
           <button type="button" id="btn-base-street"    class="btn btn-sm btn-map-active"  onclick="switchBase('street')">Street</button>
@@ -1504,9 +1550,19 @@ if ($tl_show) {
         <div style="font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3); margin-bottom:0.875rem;">GPX Track</div>
         <?php if ($gpx_data): ?>
           <?php if (!empty($gpx_data['from_global_library'])): ?>
-          <div style="font-size:0.75rem; color:var(--blue); font-weight:500; margin-bottom:0.5rem;">
-            Community route from <a href="https://sotamaps.org" target="_blank" style="color:var(--blue)">SOTA Mapping Project</a> — pre-loaded for you.
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:0.75rem; margin-bottom:0.5rem; flex-wrap:wrap;">
+            <div style="font-size:0.75rem; color:var(--blue); font-weight:500;">
+              Community route from <a href="https://sotamaps.org" target="_blank" style="color:var(--blue)">SOTA Mapping Project</a>
+            </div>
+            <?php if ($sotamaps_track_count === null): ?>
+              <span id="sotamaps-count-badge" style="font-size:0.72rem; color:var(--ink-4);">Checking for other routes…</span>
+            <?php elseif ($sotamaps_track_count > 1): ?>
+              <button class="btn btn-ghost btn-sm" id="sotamaps-fetch-btn"
+                      onclick="fetchSotaMaps(this)"
+                      style="font-size:0.72rem;"><?= $sotamaps_track_count - 1 ?> other route<?= $sotamaps_track_count > 2 ? 's' : '' ?> available — swap?</button>
+            <?php endif; ?>
           </div>
+          <div id="sotamaps-result" style="margin-top:0.5rem; display:none;"></div>
           <?php else: ?>
           <div style="font-size:0.78rem; color:var(--green); font-weight:500; margin-bottom:0.75rem;">
             Track loaded: <?= htmlspecialchars($gpx_data['filename']) ?>
@@ -2218,16 +2274,18 @@ function renderTrackList(data) {
   let html = '<div style="display:flex;flex-direction:column;gap:0.4rem;">';
   for (const t of data.tracks) {
     const date  = t.posted_date ? t.posted_date.slice(0, 10) : '';
+    const dist  = t.distance_km ? t.distance_km + ' km one-way' : '';
     const notes = t.notes ? '<div style="font-size:0.75rem;color:var(--ink-3);margin-top:2px;">' + escHtml(t.notes) + '</div>' : '';
+    const meta  = [escHtml(t.callsign), escHtml(date), dist, t.point_count + ' pts'].filter(Boolean).join(' · ');
     html += `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:0.5rem;
                   padding:0.5rem 0.75rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);">
       <div>
         <div style="font-size:0.82rem;font-weight:500;color:var(--ink);">${escHtml(t.title)}</div>
-        <div style="font-size:0.75rem;color:var(--ink-3);">${escHtml(t.callsign)} &middot; ${escHtml(date)} &middot; ${t.point_count} pts</div>
+        <div style="font-size:0.75rem;color:var(--ink-3);">${meta}</div>
         ${notes}
       </div>
       <button class="btn btn-accent btn-sm" style="flex-shrink:0;white-space:nowrap;"
-              onclick="importSotaMapsTrack(${t.hdr_id}, this)">Import</button>
+              onclick="importSotaMapsTrack(${t.hdr_id}, this)">Use this route</button>
     </div>`;
   }
   html += '</div>';
@@ -2297,6 +2355,64 @@ if (flash) setTimeout(() => { flash.style.transition = 'opacity 0.5s'; flash.sty
     chip.addEventListener('click', function(e) { e.stopPropagation(); this.classList.toggle('open'); });
     document.addEventListener('click', function() { chip.classList.remove('open'); });
 })();
+
+<?php if (!empty($gpx_data['from_global_library']) && $sotamaps_track_count === null): ?>
+// ── Lazy SOTAmaps count backfill ─────────────────────────────────────────────
+(function() {
+    const badge = document.getElementById('sotamaps-count-badge');
+    const url   = 'import_sotamaps_gpx.php?action=list'
+                + '&sota_ref=' + encodeURIComponent(SOTAMAPS_SOTA_REF)
+                + '&summit_id=' + SOTAMAPS_SUMMIT_ID;
+    fetch(url)
+        .then(r => r.json())
+        .then(d => {
+            if (!badge) return;
+            const count = d.count ?? (d.tracks ? d.tracks.length : 0);
+            if (count > 1) {
+                const others = count - 1;
+                badge.outerHTML = `<button class="btn btn-ghost btn-sm" id="sotamaps-fetch-btn"
+                    onclick="fetchSotaMaps(this)" style="font-size:0.72rem;">
+                    ${others} other route${others > 1 ? 's' : ''} available — swap?</button>`;
+            } else {
+                badge.remove();
+            }
+        })
+        .catch(() => { if (badge) badge.remove(); });
+})();
+<?php endif; ?>
+
+<?php if ($fetch_gpx_async && empty($gpx_data)): ?>
+// ── Async GPX fetch ───────────────────────────────────────────────────────────
+(function() {
+    const overlay = document.getElementById('gpx-loading-overlay');
+    const label   = overlay ? overlay.querySelector('.gpx-loading-label') : null;
+
+    const fd = new FormData();
+    fd.append('summit_id', '<?= $summit['id'] ?>');
+
+    fetch('gpx_fetch.php', { method: 'POST', body: fd })
+        .then(r => {
+            if (!r.ok) return r.text().then(t => { throw new Error('HTTP ' + r.status + ': ' + t.substring(0, 200)); });
+            return r.json();
+        })
+        .then(d => {
+            if (!overlay) return;
+            if (d.status === 'found') {
+                if (label) label.textContent = '✓ Community route found — loading map…';
+                overlay.querySelector('.gpx-spinner').style.display = 'none';
+                setTimeout(() => window.location.replace(window.location.pathname + '?id=<?= $summit['id'] ?>&group=<?= $current_group['id'] ?>&nominated=1'), 800);
+            } else {
+                console.log('gpx_fetch:', d.status, d.msg || '');
+                overlay.classList.add('hidden');
+                setTimeout(() => overlay.remove(), 500);
+            }
+        })
+        .catch(err => {
+            console.error('gpx_fetch error:', err);
+            if (overlay) { overlay.classList.add('hidden'); setTimeout(() => overlay.remove(), 500); }
+        });
+})();
+<?php endif; ?>
 </script>
 
 <!-- Floating save / top widget -->
