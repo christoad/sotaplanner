@@ -10,21 +10,32 @@ The activation history section was built on `summit_detail.php` and deployed, bu
 
 Context: VK3ARR (SOTA team) granted an SSO client for identity login. Chris sent a follow-up explaining read-only intent. Track 1 (SSO login) was completed first. Track 2 (activation history + SOTAWatch alerts) was built but needs debugging.
 
-**Track 4 — Batch data pre-population:**
+**Track 4 — Batch data pre-population (Global GPX Library):**
 
-`admin_batch_gpx.php` is built, deployed to production, and working. It fetches the best community track from the SOTA Mapping Project API (`api-db.sota.org.uk/smp/gpx/summit/`) for every summit in the DB that has no GPX track yet. Selects the track with the most points (most detailed). Marks tracks as route-only (no timestamps), so hike time is not auto-enabled but map, elevation profile, and distance populate. Admin (KI6CR) only. Run at `sotaplanner.com/admin_batch_gpx.php`.
+`admin_batch_gpx.php` has been reworked into a **global GPX library** system. Architecture:
+
+- New `global_gpx_tracks` table: one row per `sota_ref`, keyed globally (not per planning group). Populated by the admin batch importer from the SOTAmaps API.
+- GPX files for global tracks go in `gpx_files/global/` on the server.
+- `gpx_tracks` table gained a `from_global_library` flag — rows with this flag=1 point to the shared global file (no file copy).
+- When a user nominates a summit, `nominate.php` checks `global_gpx_tracks` and auto-links the track + fills in distance/elevation/trailhead.
+- When the batch importer imports a new global track, it retroactively backfills `gpx_tracks` for any existing planning-group summits that have no track yet.
+- The batch importer UI now has an **association dropdown** — pick one association at a time, shows progress within that association.
+- Summit detail shows "Community route from SOTA Mapping Project" attribution when `from_global_library=1`.
+- Deletion of a user's GPX track does not unlink the physical file when `from_global_library=1`.
+
+**Trailhead extraction:** The batch importer now extracts trailhead lat/lon from the first vs. last trackpoint (lower elevation = trailhead). Stored in `global_gpx_tracks.trailhead_lat/lon` and copied to `summits.trailhead_lat/lng` when the summit has none.
+
+**Deployment status:** Code is built on `dev` branch. Requires `db_migrate.php` to be run on production before first use.
 
 **Important lessons learned the hard way:**
-- Staging (christopherreddick.com/sotaplanner) shares the production database. Running the batch importer on staging wrote records with staging file paths into the live DB, making tracks appear missing on production. The importer now blocks itself if run on staging (`HTTP_HOST` check). Always run batch tools on production only.
-- The batch cleanup script (`cleanup_staging_gpx.php`) was used to delete bad records and has been removed from the server.
+- Staging (christopherreddick.com/sotaplanner) shares the production database. The importer blocks itself if run on staging (`HTTP_HOST` check). Always run batch tools on production only.
+
+**OSM Trailhead Lookup (`admin_trailhead_osm.php`):**
+Queries the Overpass API (OpenStreetMap) for `highway=trailhead`, `tourism=trailhead`, and non-private `amenity=parking` within 5 km of each summit that lacks a trailhead location. Picks the nearest result, prioritising dedicated trailhead tags over generic parking. Writes to `summits.trailhead_lat/lng`. Unlocks drive-time calculations for those summits. Admin-only. Production-only. Same start/pause/stop UI as the GPX importer. Default delay 1.5 s between requests (Overpass is a public API). Run at `sotaplanner.com/admin_trailhead_osm.php` or via the admin panel link.
 
 **Next steps for data pre-population:**
 
-1. **Trailhead extraction from GPX tracks (ready to build):** When importing any GPX track — whether batch SOTAmaps import or user upload — auto-populate the summit's trailhead lat/lng from the track endpoints. Logic: compare elevation of the first vs. last trackpoint; whichever end is lower elevation is the trailhead. Only write if `trailhead_lat`/`trailhead_lng` are not already manually set. Add this logic to both `import_sotamaps_gpx.php` and the upload handler in `summit_detail.php`.
-
-2. **Trailhead scraping from association resources:** The W6 association and others collect trailhead/parking data from member activation reports. Research these as a secondary source for summits with no GPX track.
-
-3. **Drive-up summit status from Google My Maps:** A public map exists marking SOTA summits reachable by car (no hiking required). URL: `https://www.google.com/maps/@39.0603443,-99.2805547,3153051m/data=!3m1!1e3!4m2!6m1!1s1JPDeCfGjFoAVlJlXkXvCPxv5-SvDOt4?entry=ttu` — research how to extract the underlying KML from a public Google My Maps layer and import drive-up status into the summits table.
+1. **Drive-up summit status from Google My Maps:** A public map exists marking SOTA summits reachable by car (no hiking required). URL: `https://www.google.com/maps/@39.0603443,-99.2805547,3153051m/data=!3m1!1e3!4m2!6m1!1s1JPDeCfGjFoAVlJlXkXvCPxv5-SvDOt4?entry=ttu` — research how to extract the underlying KML from a public Google My Maps layer and import drive-up status into the summits table.
 
 **Track 3 — SOTAwatch write API (post/delete spots and alerts):**
 Research complete and tested 2026-05-28. All endpoints and auth headers are fully understood (see "SOTAwatch Write API" section below). `test_sotawatch_write.php` exists on dev for testing. oauth_callback.php updated to store `id_token`. **Blocked on VK3ARR** — our `sotaplanner` client returns HTTP 403 on the write API despite valid tokens. Chris has messaged VK3ARR requesting write access. Once granted, re-run the test page to confirm, then build the real UI (spot/alert buttons on summit_detail.php).
