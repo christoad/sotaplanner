@@ -120,8 +120,8 @@ $action = $_GET['action'] ?? '';
 
 if ($action === 'stats') {
     header('Content-Type: application/json');
-    $total = (int)$db->query("SELECT COUNT(DISTINCT sota_ref) FROM summits WHERE sota_ref != '' AND latitude != 0")->fetchColumn();
-    $have  = (int)$db->query("SELECT COUNT(DISTINCT sota_ref) FROM summits WHERE sota_ref != '' AND latitude != 0 AND trailhead_lat IS NOT NULL AND trailhead_lat != 0")->fetchColumn();
+    $total = (int)$db->query("SELECT COUNT(*) FROM global_gpx_tracks WHERE file_path IS NOT NULL AND file_path != ''")->fetchColumn();
+    $have  = (int)$db->query("SELECT COUNT(*) FROM global_gpx_tracks WHERE file_path IS NOT NULL AND file_path != '' AND trailhead_lat IS NOT NULL AND trailhead_lat != 0")->fetchColumn();
     echo json_encode(['total' => $total, 'have' => $have, 'need' => max(0, $total - $have)]);
     exit;
 }
@@ -129,14 +129,11 @@ if ($action === 'stats') {
 if ($action === 'queue') {
     header('Content-Type: application/json');
     $rows = $db->query("
-        SELECT MIN(s.id) AS id, s.sota_ref, MIN(s.name) AS name,
-               MIN(s.latitude) AS lat, MIN(s.longitude) AS lon
-        FROM summits s
-        WHERE s.sota_ref IS NOT NULL AND s.sota_ref != ''
-          AND s.latitude IS NOT NULL AND s.latitude != 0
-          AND (s.trailhead_lat IS NULL OR s.trailhead_lat = 0)
-        GROUP BY s.sota_ref
-        ORDER BY s.sota_ref
+        SELECT id AS track_id, sota_ref, file_path
+        FROM global_gpx_tracks
+        WHERE file_path IS NOT NULL AND file_path != ''
+          AND (trailhead_lat IS NULL OR trailhead_lat = 0)
+        ORDER BY sota_ref
     ")->fetchAll(PDO::FETCH_ASSOC);
     echo json_encode(['summits' => $rows]);
     exit;
@@ -144,48 +141,73 @@ if ($action === 'queue') {
 
 if ($action === 'lookup') {
     header('Content-Type: application/json');
-    $summit_id = (int)($_GET['summit_id'] ?? 0);
-    $sota_ref  = trim($_GET['sota_ref']   ?? '');
-    $lat       = (float)($_GET['lat']     ?? 0);
-    $lon       = (float)($_GET['lon']     ?? 0);
+    $track_id = (int)($_GET['track_id'] ?? 0);
+    $sota_ref = trim($_GET['sota_ref']  ?? '');
 
-    if (!$summit_id || !$sota_ref || !$lat || !$lon) {
+    if (!$track_id || !$sota_ref) {
         echo json_encode(['status' => 'error', 'msg' => 'Missing parameters']);
         exit;
     }
 
-    // Skip if trailhead already set on any summit with this ref
-    $chk = $db->prepare("SELECT COUNT(*) FROM summits WHERE sota_ref = ? AND trailhead_lat IS NOT NULL AND trailhead_lat != 0");
-    $chk->execute([$sota_ref]);
-    if ((int)$chk->fetchColumn() > 0) {
+    // Fetch the global track row
+    $row_stmt = $db->prepare("SELECT id, file_path, trailhead_lat FROM global_gpx_tracks WHERE id = ? AND sota_ref = ?");
+    $row_stmt->execute([$track_id, $sota_ref]);
+    $track_row = $row_stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$track_row) {
+        echo json_encode(['status' => 'error', 'msg' => 'Track not found']);
+        exit;
+    }
+    if (!empty($track_row['trailhead_lat'])) {
         echo json_encode(['status' => 'skip', 'msg' => 'Trailhead already set']);
         exit;
     }
-
-    $result = overpass_trailhead($lat, $lon);
-
-    if (!$result) {
-        echo json_encode(['status' => 'none', 'msg' => 'No OSM trailhead or parking found within 5 km']);
+    if (empty($track_row['file_path']) || !file_exists($track_row['file_path'])) {
+        echo json_encode(['status' => 'skip', 'msg' => 'GPX file not on disk']);
         exit;
     }
 
-    // Write to all summit rows with this sota_ref that lack a trailhead
+    // Determine the trailhead location from the GPX track itself.
+    // analyze_gpx_track() detects ascent/descent/round-trip from the elevation
+    // profile and returns the low-elevation endpoint as the trailhead.
+    $gpx_stats = analyze_gpx_track($track_row['file_path'], null);
+    if (!$gpx_stats || empty($gpx_stats['trailhead_lat']) || empty($gpx_stats['trailhead_lon'])) {
+        echo json_encode(['status' => 'skip', 'msg' => 'GPX analysis did not yield a trailhead point']);
+        exit;
+    }
+
+    $result = overpass_trailhead((float)$gpx_stats['trailhead_lat'], (float)$gpx_stats['trailhead_lon'], 400);
+
+    if (!$result) {
+        echo json_encode([
+            'status'   => 'none',
+            'msg'      => 'No OSM trailhead or parking found within 400 m of GPX start',
+            'gpx_lat'  => $gpx_stats['trailhead_lat'],
+            'gpx_lon'  => $gpx_stats['trailhead_lon'],
+        ]);
+        exit;
+    }
+
+    // Store result in global_gpx_tracks
+    $db->prepare("UPDATE global_gpx_tracks SET trailhead_lat = ?, trailhead_lon = ? WHERE id = ?")
+       ->execute([$result['lat'], $result['lon'], $track_id]);
+
+    // Also backfill any summit rows with this sota_ref that have no trailhead yet
     $upd = $db->prepare("
-        UPDATE summits
-        SET trailhead_lat = ?, trailhead_lng = ?
+        UPDATE summits SET trailhead_lat = ?, trailhead_lng = ?
         WHERE sota_ref = ? AND (trailhead_lat IS NULL OR trailhead_lat = 0)
     ");
     $upd->execute([$result['lat'], $result['lon'], $sota_ref]);
-    $affected = $upd->rowCount();
+    $summits_updated = $upd->rowCount();
 
     echo json_encode([
-        'status'   => 'found',
-        'lat'      => $result['lat'],
-        'lon'      => $result['lon'],
-        'dist_m'   => round($result['dist']),
-        'type'     => $result['type'],
-        'name'     => $result['name'],
-        'updated'  => $affected,
+        'status'          => 'found',
+        'lat'             => $result['lat'],
+        'lon'             => $result['lon'],
+        'dist_m'          => round($result['dist']),
+        'type'            => $result['type'],
+        'name'            => $result['name'],
+        'summits_updated' => $summits_updated,
     ]);
     exit;
 }
@@ -247,14 +269,14 @@ h2{font-size:.95rem;font-weight:600;margin-bottom:1rem;color:var(--ink-2)}
 <body>
 <div class="page">
   <h1>OSM Trailhead Lookup</h1>
-  <p class="subtitle">Queries <strong>OpenStreetMap</strong> (via Overpass API) for tagged trailheads and public parking areas within 5 km of each summit that has no trailhead location set. The nearest result (prioritising <code>highway=trailhead</code> and <code>tourism=trailhead</code> over generic parking) is stored as the trailhead. This unlocks drive-time calculations for those summits.</p>
+  <p class="subtitle">Queries <strong>OpenStreetMap</strong> (via Overpass API) for tagged trailheads and public parking areas for summits that have GPX track data but no trailhead location set. The GPX track's low-elevation endpoint is used as the precise search origin, and OSM is queried within <strong>400 m</strong> of that point. Summits without a GPX track are skipped. The nearest result (prioritising <code>highway=trailhead</code> and <code>tourism=trailhead</code> over generic parking) is stored as the trailhead.</p>
 
   <div class="note-box">
     Results are written directly to the <code>summits</code> table. OSM data quality varies by region — denser areas like W6/W7 are well-tagged; remote international associations may have little parking data. Manually-set trailheads are never overwritten.
   </div>
 
   <div class="stats-grid">
-    <div class="stat"><div class="stat-val ink" id="stat-total">—</div><div class="stat-lbl">Unique summits</div></div>
+    <div class="stat"><div class="stat-val ink" id="stat-total">—</div><div class="stat-lbl">GPX tracks in library</div></div>
     <div class="stat"><div class="stat-val green" id="stat-have">—</div><div class="stat-lbl">Have trailhead</div></div>
     <div class="stat"><div class="stat-val orange" id="stat-need">—</div><div class="stat-lbl">Need lookup</div></div>
   </div>
@@ -348,9 +370,8 @@ function runNext() {
 
   const s   = queue[idx++];
   const url = `admin_trailhead_osm.php?action=lookup`
-            + `&summit_id=${s.id}`
-            + `&sota_ref=${encodeURIComponent(s.sota_ref)}`
-            + `&lat=${s.lat}&lon=${s.lon}`;
+            + `&track_id=${s.track_id}`
+            + `&sota_ref=${encodeURIComponent(s.sota_ref)}`;
 
   setProgress(idx, queue.length);
 
@@ -360,10 +381,11 @@ function runNext() {
       if (d.status === 'found') {
         counts.found++;
         const typeLabel = d.name ? `${d.type} — "${d.name}"` : d.type;
-        log(`✓ ${s.sota_ref}  ${d.dist_m} m away  [${typeLabel}]`, 'ok');
+        const summitNote = d.summits_updated > 0 ? `  +${d.summits_updated} summit(s)` : '';
+        log(`✓ ${s.sota_ref}  ${d.dist_m} m away  [${typeLabel}]${summitNote}`, 'ok');
       } else if (d.status === 'none') {
         counts.none++;
-        log(`· ${s.sota_ref} — ${d.msg}`, 'none');
+        log(`· ${s.sota_ref} — no OSM match within 400 m of GPX start`, 'none');
       } else if (d.status === 'skip') {
         counts.skip++;
         log(`⏭ ${s.sota_ref} — already has trailhead`, 'skip');
