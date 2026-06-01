@@ -1,5 +1,5 @@
 <?php
-define('APP_VERSION', '1.4.3');
+define('APP_VERSION', '1.4.4');
 
 // Enable error reporting for debugging
 error_reporting(E_ALL);
@@ -67,40 +67,37 @@ function formatTime($minutes) {
 }
 
 // Calculate drive time using Google Maps Distance Matrix API
-function calculateDriveTime($origin_address, $dest_lat, $dest_lng) {
+function calculateDriveTime($origin_address, $dest_lat, $dest_lng, &$element_status = null) {
     if (GOOGLE_MAPS_API_KEY === 'YOUR_API_KEY_HERE') {
         return null;
     }
-    
-    $api_url = "https://maps.googleapis.com/maps/api/distancematrix/json";
-    $params = [
-        'origins' => $origin_address,
+
+    $url = "https://maps.googleapis.com/maps/api/distancematrix/json?" . http_build_query([
+        'origins'      => $origin_address,
         'destinations' => $dest_lat . ',' . $dest_lng,
-        'key' => GOOGLE_MAPS_API_KEY,
-        'units' => 'imperial'
-    ];
-    
-    $url = $api_url . '?' . http_build_query($params);
-    
+        'key'          => GOOGLE_MAPS_API_KEY,
+        'units'        => 'imperial',
+    ]);
+
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     $response = curl_exec($ch);
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
-    
+
     if ($http_code === 200 && $response) {
         $data = json_decode($response, true);
+        $element_status = $data['rows'][0]['elements'][0]['status'] ?? null;
 
-        if (isset($data['status']) && $data['status'] === 'OK' && isset($data['rows'][0]['elements'][0]['duration'])) {
-            $duration_seconds = $data['rows'][0]['elements'][0]['duration']['value'];
-            return round($duration_seconds / 60);
+        if ($data['status'] === 'OK' && isset($data['rows'][0]['elements'][0]['duration'])) {
+            return round($data['rows'][0]['elements'][0]['duration']['value'] / 60);
         }
-        error_log("SOTA Maps API non-OK: " . substr($response, 0, 500));
+        error_log("SOTA Maps Distance Matrix non-OK: top={$data['status']} element=$element_status dest=$dest_lat,$dest_lng");
         return null;
     }
 
-    error_log("SOTA Maps API HTTP $http_code: " . substr($response, 0, 200));
+    error_log("SOTA Maps Distance Matrix HTTP $http_code for dest=$dest_lat,$dest_lng");
     return null;
 }
 

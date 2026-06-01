@@ -326,7 +326,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $dest_lat = !empty($summit_data['trailhead_lat']) ? $summit_data['trailhead_lat'] : $summit_data['latitude'];
             $dest_lng = !empty($summit_data['trailhead_lng']) ? $summit_data['trailhead_lng'] : $summit_data['longitude'];
 
-            $drive_time = calculateDriveTime($selected_address['address'], $dest_lat, $dest_lng);
+            $element_status = null;
+            $drive_time = calculateDriveTime($selected_address['address'], $dest_lat, $dest_lng, $element_status);
+
+            // Trailhead coords can land on inaccessible road segments — retry with summit coords
+            if ($drive_time === null && $element_status === 'ZERO_RESULTS'
+                && !empty($summit_data['trailhead_lat'])
+                && ($dest_lat != $summit_data['latitude'] || $dest_lng != $summit_data['longitude'])) {
+                $drive_time = calculateDriveTime($selected_address['address'], $summit_data['latitude'], $summit_data['longitude']);
+            }
 
             if ($drive_time !== null) {
                 $drive_time_rt = $drive_time * 2;
@@ -335,7 +343,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $msg = urlencode("Drive time (RT): " . formatTime($drive_time_rt));
                 header("Location: summit_detail.php?id=" . $summit_id . "&group=" . ($current_group['id'] ?? '') . "&geocoded=" . $msg);
             } else {
-                error_log("SOTA drive time calc failed for summit $summit_id — origin: {$selected_address['address']}, dest: $dest_lat,$dest_lng");
                 header("Location: summit_detail.php?id=" . $summit_id . "&group=" . ($current_group['id'] ?? '') . "&drive_error=1");
             }
         } else {
@@ -557,7 +564,12 @@ $selected_address = getSelectedAddress($db);
 if (empty($summit['drive_time_min']) && $selected_address && !empty($summit['latitude'])) {
     $dest_lat = !empty($summit['trailhead_lat']) ? $summit['trailhead_lat'] : $summit['latitude'];
     $dest_lng = !empty($summit['trailhead_lng']) ? $summit['trailhead_lng'] : $summit['longitude'];
-    $auto_drive = calculateDriveTime($selected_address['address'], $dest_lat, $dest_lng);
+    $auto_el   = null;
+    $auto_drive = calculateDriveTime($selected_address['address'], $dest_lat, $dest_lng, $auto_el);
+    // Retry with summit coords if trailhead landed on an inaccessible road segment
+    if ($auto_drive === null && $auto_el === 'ZERO_RESULTS' && !empty($summit['trailhead_lat'])) {
+        $auto_drive = calculateDriveTime($selected_address['address'], $summit['latitude'], $summit['longitude']);
+    }
     if ($auto_drive !== null) {
         $auto_drive_rt = $auto_drive * 2;
         $db->prepare("UPDATE summits SET drive_time_min = ? WHERE id = ?")
@@ -1146,8 +1158,15 @@ if ($tl_show) {
     /* Geocoder box */
     .geocoder-box { background: var(--accent-bg); border: 1px solid var(--accent-border); border-radius: var(--r-md); padding: 1rem; margin-bottom: 1rem; }
 
-    /* Shared notice */
-    .shared-notice { background: var(--accent-bg); border: 1px solid var(--accent-border); border-radius: var(--r-md); padding: 1rem; margin-bottom: 1.25rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+    /* Coords-copy toast */
+    #coords-toast {
+      position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%) translateY(8px);
+      background: var(--ink); color: #fff; font-size: 0.82rem; font-weight: 500;
+      padding: 0.5rem 1rem; border-radius: var(--r-md); pointer-events: none;
+      opacity: 0; transition: opacity 0.18s, transform 0.18s; z-index: 9999;
+      white-space: nowrap;
+    }
+    #coords-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
     /* GPS prefs block */
     .gps-prefs { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.875rem 1rem; margin-top: 0.75rem; }
@@ -1264,22 +1283,6 @@ if ($tl_show) {
     </div>
   <?php endif; ?>
 
-  <?php if ($summit['uses_shared_data'] && $summit['source_group_id']): ?>
-    <?php
-      $stmt = $db->prepare("SELECT name FROM planning_groups WHERE id = ?");
-      $stmt->execute([$summit['source_group_id']]);
-      $source_group = $stmt->fetch();
-    ?>
-    <div class="shared-notice">
-      <div>
-        <div style="font-size:0.875rem; font-weight:600; color:var(--ink);">Using shared research</div>
-        <div style="font-size:0.8rem; color:var(--ink-3); margin-top:2px;">Trail data from: <?= htmlspecialchars($source_group['name'] ?? 'Another group') ?></div>
-      </div>
-      <form method="POST" style="margin:0;">
-        <button type="submit" name="use_custom_data" class="btn btn-ghost btn-sm">Clear Imported Data</button>
-      </form>
-    </div>
-  <?php endif; ?>
 
   <!-- STATUS PIPELINE -->
   <?php
@@ -1448,7 +1451,12 @@ if ($tl_show) {
         </div>
       </div>
       <div id="map-backdrop" class="map-backdrop" onclick="toggleMapExpand()"></div>
-      <div id="map-ctx-menu"><button type="button" id="ctx-set-trailhead">Set trailhead here</button></div>
+      <div id="map-ctx-menu">
+        <button type="button" id="ctx-copy-coords" style="color:var(--ink-2); font-family:var(--font-mono); font-size:0.78rem; letter-spacing:0.01em;"></button>
+        <div style="height:1px; background:var(--border); margin:0;"></div>
+        <button type="button" id="ctx-set-trailhead">Set trailhead here</button>
+      </div>
+      <div id="coords-toast">Copied to clipboard</div>
 
       <!-- Elevation profile (only if GPX) -->
       <?php if ($gpx_data): ?>
@@ -2062,18 +2070,21 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
-// ── Right-click to set trailhead ─────────────────────────────────────────────
+// ── Right-click context menu ──────────────────────────────────────────────────
 let ctxLatLng = null;
 const ctxMenu = document.getElementById('map-ctx-menu');
 
 map.on('contextmenu', function(e) {
   e.originalEvent.preventDefault();
   ctxLatLng = e.latlng;
+  const lat = parseFloat(e.latlng.lat.toFixed(6));
+  const lng = parseFloat(e.latlng.lng.toFixed(6));
+  document.getElementById('ctx-copy-coords').textContent = lat + ', ' + lng;
   const mapEl = document.getElementById('summit-map');
   const rect  = mapEl.getBoundingClientRect();
   const pt    = map.latLngToContainerPoint(e.latlng);
   // Position menu, keeping it within viewport
-  const menuW = 180, menuH = 38;
+  const menuW = 200, menuH = 76;
   const left  = Math.min(rect.left + pt.x + 4, window.innerWidth  - menuW - 8);
   const top   = Math.min(rect.top  + pt.y + 4, window.innerHeight - menuH - 8);
   ctxMenu.style.left = left + 'px';
@@ -2082,6 +2093,18 @@ map.on('contextmenu', function(e) {
 });
 
 document.addEventListener('click', function() { ctxMenu.style.display = 'none'; });
+
+// Copy coordinates to clipboard
+let _toastTimer = null;
+document.getElementById('ctx-copy-coords').addEventListener('click', function() {
+  const text = this.textContent;
+  navigator.clipboard.writeText(text).then(function() {
+    const toast = document.getElementById('coords-toast');
+    toast.classList.add('show');
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(function() { toast.classList.remove('show'); }, 2000);
+  });
+});
 
 document.getElementById('ctx-set-trailhead').addEventListener('click', function() {
   if (!ctxLatLng) return;

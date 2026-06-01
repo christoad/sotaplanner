@@ -230,12 +230,24 @@ session_start();
         <p>Release history and update notes for SOTA Planner</p>
     </div>
 
-    <!-- v1.4.3 -->
+    <!-- v1.4.4 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.4.4</span>
+            <span class="version-date">June 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Map right-click now shows GPS coordinates you can copy with one click.</p>
+        <ul>
+            <li>Right-clicking anywhere on the summit map shows the exact coordinates of that point — click them to copy to your clipboard, with a brief "Copied" confirmation just like Google Maps</li>
+        </ul>
+    </div>
+
+    <!-- v1.4.3 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.4.3</span>
             <span class="version-date">June 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">GPS track data is now on by default, with smarter trailhead detection and a branded loading animation.</p>
         <ul>
