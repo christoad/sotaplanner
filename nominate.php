@@ -30,7 +30,7 @@ function _link_global_gpx(PDO $db, int $summit_id, int $group_id, string $sota_r
             num_points, summit_lat, summit_lon, using_api,
             activation_zone_polygon, activation_zone_method,
             use_for_hike_time, use_for_elevation, from_global_library
-        ) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, 0, NULL, 'none', 0, 1, 1)
+        ) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, 0, NULL, 'none', 1, 1, 1)
     ")->execute([
         $summit_id, $group_id, $g['filename'], $g['file_path'],
         $g['total_distance'], $g['total_distance'],

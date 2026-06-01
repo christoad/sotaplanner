@@ -550,6 +550,7 @@ h2{font-size:.95rem;font-weight:600;margin-bottom:1rem;color:var(--ink-2)}
 </head>
 <body>
 <div class="page">
+  <p style="margin-bottom:.75rem"><a href="god_mode.php?tab=data" style="color:var(--ink-3);font-size:.875rem">&larr; Data Tools</a></p>
   <h1>Batch GPX Import</h1>
   <p class="subtitle">Fetches the best community track from <strong>SOTA Mapping Project</strong> for each summit in the selected association and adds it to the global GPX library. When any user nominates these summits, maps and trail stats will be pre-populated automatically. Tracks already in the library are skipped.</p>
 
@@ -614,7 +615,6 @@ h2{font-size:.95rem;font-weight:600;margin-bottom:1rem;color:var(--ink-2)}
     <div class="log" id="log"><div style="color:#555">Select an association to load the queue.</div></div>
   </div>
 
-  <p style="margin-top:1rem"><a href="admin.php" style="color:var(--ink-3);font-size:.875rem">&larr; Back to admin</a></p>
 </div>
 
 <script>

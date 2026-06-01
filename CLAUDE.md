@@ -2,8 +2,15 @@
 
 ## Pending Work — Ask Chris at Session Start
 
-**Google Maps API key — referrer restriction:**
-Billing is working. Distance Matrix and Geocoding APIs are functional. The Maps JavaScript API fails with `RefererNotAllowedMapError` because the key's HTTP referrer allowlist doesn't include the site domains. At the start of the next session, ask Chris: "Ready to fix the Google Maps JS API? You need to add `*.sotaplanner.com/*` and `*.ki6cr.com/*` to the allowed referrers on the API key in Google Cloud Console (APIs & Services → Credentials → key ending in W5Fo → Application restrictions). Once done, interactive maps will work and we can remove test_maps.php."
+**Google Maps API — two-key setup (completed 2026-06-01):**
+Two separate API keys are used. Both are in the same paid Google Cloud project.
+
+- **Server key** (ends in `s3W5Fo`) — used in `sotaplanner_secrets.php` as `GOOGLE_MAPS_API_KEY`. Application restrictions: **None**. API restrictions: **Geocoding API + Distance Matrix API only**. Never exposed in HTML.
+- **Browser key** (ends in `F9jRs`) — stored as `GOOGLE_MAPS_BROWSER_KEY` in `sotaplanner_secrets.php`. Used in HTML `<script>` tags for the Maps JavaScript API. Application restrictions: **HTTP referrers** — six entries required: `*.sotaplanner.com/*`, `sotaplanner.com/*`, `*.ki6cr.com/*`, `ki6cr.com/*`, `*.christopherreddick.com/*`, `christopherreddick.com/*`. (The `*` wildcard only matches subdomains, not the bare domain — both forms needed.) API restrictions: **Maps JavaScript API only**.
+
+**Why two keys:** HTTP referrer restrictions break server-side PHP calls (no Referer header). IP restrictions break browser calls. Two keys is the only way to properly secure both. The server key never appears in HTML; the browser key is referrer-locked so it can only be used from the three site domains.
+
+**History:** The original free-trial project (`oval-time-487620-k5`) was shut down May 20, 2026 when the trial ended. The current keys are in the paid project created at that time. DreamHost changed the server IP (from `::ea3:f5b2` to `::373:84d5`), which broke the old IP-restricted key — that's why everything stopped working suddenly.
 
 **Track 2 — SOTA API activation history: troubleshoot data not loading:**
 The activation history section was built on `summit_detail.php` and deployed, but it is not pulling in data correctly — a test activation Chris made did not appear. At the start of the next session, troubleshoot why activations aren't showing. Check: the SOTA API endpoint being called, whether the summit reference is being passed correctly, and whether the response is empty or contains an error. The section uses the public SOTA API (no OAuth needed).

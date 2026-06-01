@@ -230,12 +230,27 @@ session_start();
         <p>Release history and update notes for SOTA Planner</p>
     </div>
 
-    <!-- v1.4.2 -->
+    <!-- v1.4.3 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.4.3</span>
+            <span class="version-date">June 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">GPS track data is now on by default, with smarter trailhead detection and a branded loading animation.</p>
+        <ul>
+            <li>When a community route is imported, distance and elevation are automatically enabled as the source for hike planning — no need to manually check "Use GPS data"</li>
+            <li>Hovering over the locked distance or elevation fields shows a tooltip explaining they're set by the GPS track</li>
+            <li>The loading animation while searching for a community route now uses the SOTAplanner mountain logo — the path draws itself and the summit marker pulses when the peak is reached</li>
+            <li>Trailhead detection is now more reliable: if a cached community route had no trailhead stored, it's automatically re-derived from the GPS file on next use</li>
+        </ul>
+    </div>
+
+    <!-- v1.4.2 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.4.2</span>
             <span class="version-date">June 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Smarter summit search and smoother nomination flow.</p>
         <ul>

@@ -126,6 +126,13 @@ if (!$global) {
     // OSM trailhead lookup — 400 m around the GPX-derived trailhead point
     $trailhead_lat = $gpx_stats['trailhead_lat'];
     $trailhead_lon = $gpx_stats['trailhead_lon'];
+
+    // Fallback: elevation analysis returns NULL for flat tracks — use the raw first point instead
+    if (empty($trailhead_lat) && count($points) > 0) {
+        $trailhead_lat = floatval($points[0]['latitude']);
+        $trailhead_lon = floatval($points[0]['longitude']);
+    }
+
     $osm_source    = false;
     if (!empty($trailhead_lat) && !empty($trailhead_lon)) {
         $osm = _osm_trailhead((float)$trailhead_lat, (float)$trailhead_lon, 400);
@@ -164,14 +171,44 @@ if (!$global) {
     $track_type = $gpx_stats['track_type'] ?? 'round-trip';
 } else {
     // Already in global library — derive track type from the file if present
-    $track_type = 'round-trip';
-    if (!empty($global['file_path']) && file_exists($global['file_path'])) {
-        $gpx_stats  = analyze_gpx_track($global['file_path'], null);
-        $track_type = $gpx_stats['track_type'] ?? 'round-trip';
-    }
+    $track_type    = 'round-trip';
     $trailhead_lat = $global['trailhead_lat'];
     $trailhead_lon = $global['trailhead_lon'];
     $osm_source    = false;
+
+    if (!empty($global['file_path']) && file_exists($global['file_path'])) {
+        $gpx_stats  = analyze_gpx_track($global['file_path'], null);
+        if ($gpx_stats) {
+            $track_type = $gpx_stats['track_type'] ?? 'round-trip';
+
+            // Backfill NULL trailhead: stored NULL means the batch importer ran before
+            // trailhead extraction existed — re-derive it now from the GPX file.
+            if (empty($trailhead_lat)) {
+                $trailhead_lat = $gpx_stats['trailhead_lat'];
+                $trailhead_lon = $gpx_stats['trailhead_lon'];
+
+                // Last resort: if elevation analysis returned nothing (flat track),
+                // use the raw first trackpoint — it's always at the trailhead/parking lot.
+                if (empty($trailhead_lat)) {
+                    $fp = _gpxfetch_first_point($global['file_path']);
+                    if ($fp) { $trailhead_lat = $fp['lat']; $trailhead_lon = $fp['lon']; }
+                }
+
+                if (!empty($trailhead_lat)) {
+                    // Try OSM snap now that we have a candidate point
+                    $osm = _osm_trailhead((float)$trailhead_lat, (float)$trailhead_lon, 400);
+                    if ($osm) {
+                        $trailhead_lat = $osm['lat'];
+                        $trailhead_lon = $osm['lon'];
+                        $osm_source    = true;
+                    }
+                    // Persist backfilled trailhead so future page loads don't repeat this
+                    $db->prepare("UPDATE global_gpx_tracks SET trailhead_lat = ?, trailhead_lon = ? WHERE sota_ref = ?")
+                       ->execute([$trailhead_lat, $trailhead_lon, $sota_ref]);
+                }
+            }
+        }
+    }
 }
 
 // ── Link global track to this summit ─────────────────────────────────────────
@@ -185,7 +222,7 @@ if (!empty($global['file_path']) && file_exists($global['file_path'])) {
             num_points, summit_lat, summit_lon, using_api,
             activation_zone_polygon, activation_zone_method,
             use_for_hike_time, use_for_elevation, from_global_library, track_type
-        ) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, 0, NULL, 'none', 0, 1, 1, ?)
+        ) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, 0, NULL, 'none', 1, 1, 1, ?)
     ")->execute([
         $summit_id, $group_id, $global['filename'], $global['file_path'],
         $global['total_distance'], $global['total_distance'],
@@ -272,6 +309,17 @@ function _build_gpx(array $points, string $title, string $callsign): string {
 {$trkpts}  </trkseg></trk>
 </gpx>
 XML;
+}
+
+function _gpxfetch_first_point(string $filepath): ?array {
+    $content = @file_get_contents($filepath);
+    if (!$content) return null;
+    $xml = @simplexml_load_string($content);
+    if (!$xml) return null;
+    $xml->registerXPathNamespace('gpx', 'http://www.topografix.com/GPX/1/1');
+    $pts = $xml->xpath('//gpx:trkpt');
+    if (!$pts) return null;
+    return ['lat' => floatval($pts[0]['lat']), 'lon' => floatval($pts[0]['lon'])];
 }
 
 function _osm_trailhead(float $lat, float $lon, int $radius_m): ?array {

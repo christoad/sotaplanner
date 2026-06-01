@@ -25,7 +25,7 @@
       }
 
       .st6 {
-        fill: #2b8e8e;
+        fill: #b3363d;
       }
 
       .st2 {
@@ -48,7 +48,7 @@
       }
 
       .st4, .st5 {
-        stroke: #2b8e8e;
+        stroke: #b3363d;
       }
 
       .st5 {

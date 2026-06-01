@@ -212,7 +212,7 @@ if ($action === 'import') {
            ->execute([$summit_id, $current_group['id']]);
 
         // Route-only (no timestamps) — don't auto-enable hike time
-        $use_for_hike = 0;
+        $use_for_hike = 1;
 
         $stmt = $db->prepare("
             INSERT INTO gpx_tracks (

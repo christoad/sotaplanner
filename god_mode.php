@@ -241,7 +241,7 @@ if (is_dir($gpx_dir)) {
 }
 
 $active_tab = $_GET['tab'] ?? 'overview';
-$tabs = ['overview' => 'Overview', 'users' => 'Users', 'groups' => 'Groups', 'activity' => 'Activity', 'data' => 'Data Tools', 'cleanup' => 'Cleanup'];
+$tabs = ['overview' => 'Overview', 'users' => 'Users', 'groups' => 'Groups', 'activity' => 'Activity', 'data' => 'Data Tools', 'cleanup' => 'Cleanup', 'api' => 'API Status'];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -396,13 +396,13 @@ select.form-input { cursor: pointer; }
     </a>
     <div class="topbar-divider"></div>
     <span class="god-badge">God Mode</span>
+    <a href="index.php" class="btn-sm-ghost" style="margin-left:.5rem;">← Dashboard</a>
     <div class="topbar-right">
         <?php if ($real_callsign === 'KI6CR'): ?>
             <form method="POST" class="inline-form">
                 <button type="submit" name="exit_impersonate" class="btn btn-sm btn-danger">Exit impersonation</button>
             </form>
         <?php endif; ?>
-        <a href="index.php" class="btn-sm-ghost">← Dashboard</a>
     </div>
 </nav>
 
@@ -837,6 +837,235 @@ select.form-input { cursor: pointer; }
             </table>
             <?php endif; ?>
         </div>
+
+    <!-- ── API STATUS ── -->
+    <?php elseif ($active_tab === 'api'): ?>
+
+        <?php
+        // ── Server-side API tests ────────────────────────────────────────────
+        $key = defined('GOOGLE_MAPS_API_KEY') ? GOOGLE_MAPS_API_KEY : '';
+
+        function gm_curl_get($url) {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 8,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_USERAGENT      => 'SOTAPlanner/1.0',
+            ]);
+            $body = curl_exec($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err  = curl_error($ch);
+            curl_close($ch);
+            return ['body' => $body, 'code' => $code, 'err' => $err];
+        }
+
+        // Test 1: Geocoding API
+        $geo = null; $geo_ok = false; $geo_msg = '';
+        if ($key && $key !== 'YOUR_API_KEY_HERE') {
+            $r = gm_curl_get("https://maps.googleapis.com/maps/api/geocode/json?" . http_build_query([
+                'address' => 'Portland, Oregon, USA',
+                'key'     => $key,
+            ]));
+            if ($r['err']) {
+                $geo_msg = "cURL error: " . $r['err'];
+            } else {
+                $geo = json_decode($r['body'], true);
+                if ($geo && $geo['status'] === 'OK') {
+                    $geo_ok  = true;
+                    $loc     = $geo['results'][0]['geometry']['location'];
+                    $geo_msg = "OK — Portland, OR resolved to {$loc['lat']}, {$loc['lng']}";
+                } else {
+                    $geo_msg = "Status: " . ($geo['status'] ?? 'unknown');
+                    if (!empty($geo['error_message'])) $geo_msg .= " — " . $geo['error_message'];
+                }
+            }
+        } else {
+            $geo_msg = "API key not configured";
+        }
+
+        // Test 2: Distance Matrix API
+        $dm = null; $dm_ok = false; $dm_msg = '';
+        if ($key && $key !== 'YOUR_API_KEY_HERE') {
+            $r = gm_curl_get("https://maps.googleapis.com/maps/api/distancematrix/json?" . http_build_query([
+                'origins'      => 'Portland, Oregon, USA',
+                'destinations' => '45.3732,-121.6959',   // Mt Hood summit
+                'mode'         => 'driving',
+                'key'          => $key,
+            ]));
+            if ($r['err']) {
+                $dm_msg = "cURL error: " . $r['err'];
+            } else {
+                $dm = json_decode($r['body'], true);
+                if ($dm && $dm['status'] === 'OK') {
+                    $elem = $dm['rows'][0]['elements'][0] ?? [];
+                    if (($elem['status'] ?? '') === 'OK') {
+                        $dm_ok  = true;
+                        $dur    = $elem['duration']['text'] ?? '?';
+                        $dist   = $elem['distance']['text'] ?? '?';
+                        $dm_msg = "OK — Portland to Mt Hood: $dist, $dur";
+                    } else {
+                        $dm_msg = "Row status: " . ($elem['status'] ?? 'unknown');
+                    }
+                } else {
+                    $dm_msg = "Status: " . ($dm['status'] ?? 'unknown');
+                    if (!empty($dm['error_message'])) $dm_msg .= " — " . $dm['error_message'];
+                }
+            }
+        } else {
+            $dm_msg = "API key not configured";
+        }
+        ?>
+
+        <div class="section-head">
+            <div>
+                <h2>Google Maps API Diagnostics</h2>
+                <p>Live checks for every Maps API used by SOTA Planner. Server-side tests run on page load; browser test runs in your browser tab.</p>
+            </div>
+            <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="btn btn-ghost btn-sm">Google Cloud Console →</a>
+        </div>
+
+        <!-- API Key cards -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:var(--sp-4); margin-bottom:var(--sp-4);">
+            <div class="card">
+                <div style="font-size:0.75rem; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.4rem;">Server Key (Geocoding + Distance Matrix)</div>
+                <?php if ($key && $key !== 'YOUR_API_KEY_HERE'): ?>
+                    <div class="mono" style="font-size:0.9rem; color:var(--ink-2);"><?= htmlspecialchars(substr($key, 0, 8)) ?>...<?= htmlspecialchars(substr($key, -6)) ?></div>
+                    <div style="font-size:0.78rem; color:var(--ink-3); margin-top:0.4rem;">Application restrictions: None &nbsp;·&nbsp; API restrictions: Geocoding + Distance Matrix</div>
+                <?php else: ?>
+                    <div style="color:var(--red);">Not configured</div>
+                <?php endif; ?>
+            </div>
+            <div class="card">
+                <div style="font-size:0.75rem; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.4rem;">Browser Key (Maps JavaScript API)</div>
+                <?php $bkey = defined('GOOGLE_MAPS_BROWSER_KEY') ? GOOGLE_MAPS_BROWSER_KEY : ''; ?>
+                <?php if ($bkey): ?>
+                    <div class="mono" style="font-size:0.9rem; color:var(--ink-2);"><?= htmlspecialchars(substr($bkey, 0, 8)) ?>...<?= htmlspecialchars(substr($bkey, -6)) ?></div>
+                    <div style="font-size:0.78rem; color:var(--ink-3); margin-top:0.4rem;">Application restrictions: HTTP referrers (3 domains) &nbsp;·&nbsp; API restrictions: Maps JS only</div>
+                <?php else: ?>
+                    <div style="color:var(--red);">Not configured — add GOOGLE_MAPS_BROWSER_KEY to sotaplanner_secrets.php</div>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- Server-side test results -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:var(--sp-4); margin-bottom:var(--sp-4);">
+
+            <div class="card">
+                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
+                    <span style="font-size:1.25rem;"><?= $geo_ok ? '✅' : '❌' ?></span>
+                    <div style="font-weight:600;">Geocoding API</div>
+                    <span style="margin-left:auto; font-size:0.72rem; font-weight:600; color:<?= $geo_ok ? 'var(--green)' : 'var(--red)' ?>; text-transform:uppercase; letter-spacing:0.05em;"><?= $geo_ok ? 'PASS' : 'FAIL' ?></span>
+                </div>
+                <div style="font-size:0.82rem; color:var(--ink-2); line-height:1.5;"><?= htmlspecialchars($geo_msg) ?></div>
+                <div style="font-size:0.75rem; color:var(--ink-3); margin-top:0.5rem;">Used for: converting starting addresses to lat/lng</div>
+            </div>
+
+            <div class="card">
+                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
+                    <span style="font-size:1.25rem;"><?= $dm_ok ? '✅' : '❌' ?></span>
+                    <div style="font-weight:600;">Distance Matrix API</div>
+                    <span style="margin-left:auto; font-size:0.72rem; font-weight:600; color:<?= $dm_ok ? 'var(--green)' : 'var(--red)' ?>; text-transform:uppercase; letter-spacing:0.05em;"><?= $dm_ok ? 'PASS' : 'FAIL' ?></span>
+                </div>
+                <div style="font-size:0.82rem; color:var(--ink-2); line-height:1.5;"><?= htmlspecialchars($dm_msg) ?></div>
+                <div style="font-size:0.75rem; color:var(--ink-3); margin-top:0.5rem;">Used for: drive time from home to trailhead</div>
+            </div>
+
+        </div>
+
+        <!-- Browser / JS API test -->
+        <div class="card" style="margin-bottom:var(--sp-4);">
+            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem;">
+                <div style="font-weight:600;">Maps JavaScript API</div>
+                <span id="js-status-badge" style="margin-left:auto; font-size:0.72rem; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.05em;">LOADING…</span>
+            </div>
+            <div id="js-status-msg" style="font-size:0.82rem; color:var(--ink-2); margin-bottom:0.75rem;">Initialising map — watch for auth errors below.</div>
+            <div id="map-test-container" style="width:100%; height:220px; border-radius:var(--r-md); overflow:hidden; background:var(--bg-2); border:1px solid var(--border);">
+                <div id="map-test" style="width:100%; height:100%;"></div>
+            </div>
+            <div style="font-size:0.75rem; color:var(--ink-3); margin-top:0.5rem;">
+                Used for: interactive maps on summit detail and activation invite pages &nbsp;·&nbsp;
+                Referrer restrictions must allow <code>*.sotaplanner.com/*</code> and <code>*.ki6cr.com/*</code>
+            </div>
+        </div>
+
+        <!-- Troubleshooting checklist -->
+        <div class="card">
+            <div style="font-weight:600; margin-bottom:0.75rem;">Common failure causes &amp; fixes</div>
+            <table style="width:100%; font-size:0.83rem; border-collapse:collapse;">
+                <tbody>
+                    <tr style="border-bottom:1px solid var(--border);">
+                        <td style="padding:0.55rem 0.5rem 0.55rem 0; width:50%; font-weight:500;">Geocoding or Distance Matrix fails with <code>REQUEST_DENIED</code></td>
+                        <td style="padding:0.55rem 0; color:var(--ink-2);">Billing not enabled, or those APIs not activated in Google Cloud. <a href="https://console.cloud.google.com/apis/library" target="_blank" style="color:var(--accent);">Enable APIs →</a></td>
+                    </tr>
+                    <tr style="border-bottom:1px solid var(--border);">
+                        <td style="padding:0.55rem 0.5rem 0.55rem 0; font-weight:500;">JS map shows "This page can't load Google Maps correctly"</td>
+                        <td style="padding:0.55rem 0; color:var(--ink-2);">The key's HTTP referrer allowlist is missing the site domains. Add <code>*.sotaplanner.com/*</code> and <code>*.ki6cr.com/*</code> in the key's "Application restrictions." <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--accent);">Edit key →</a></td>
+                    </tr>
+                    <tr style="border-bottom:1px solid var(--border);">
+                        <td style="padding:0.55rem 0.5rem 0.55rem 0; font-weight:500;">Maps JS API works here (god_mode) but not on other pages</td>
+                        <td style="padding:0.55rem 0; color:var(--ink-2);">This admin page loads the map from the server domain. Other pages may be blocked if the referrer allowlist doesn't include all domains.</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:0.55rem 0.5rem 0.55rem 0; font-weight:500;">Everything was working, then suddenly stopped</td>
+                        <td style="padding:0.55rem 0; color:var(--ink-2);">Most common cause: billing lapsed, quota exceeded, or Google auto-rotated / revoked the key. Check <a href="https://console.cloud.google.com/billing" target="_blank" style="color:var(--accent);">Billing →</a> and <a href="https://console.cloud.google.com/apis/dashboard" target="_blank" style="color:var(--accent);">API dashboard →</a> for errors.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <script>
+        var mapPassed = false;
+
+        function setJsFail(msg) {
+            if (mapPassed) return;
+            document.getElementById('js-status-badge').textContent = 'FAIL';
+            document.getElementById('js-status-badge').style.color = 'var(--red)';
+            document.getElementById('js-status-msg').textContent = '❌ ' + msg;
+            document.getElementById('js-status-msg').style.color = 'var(--red)';
+            document.getElementById('map-test-container').style.background = 'var(--red-bg)';
+        }
+
+        window.gm_authfailure = function() {
+            setJsFail('Auth failure — the Maps JavaScript API rejected the key. ' +
+                'Likely a referrer restriction blocking this domain, billing disabled, ' +
+                'or the Maps JS API is not enabled for this key.');
+        };
+
+        function initMap() {
+            try {
+                var map = new google.maps.Map(document.getElementById('map-test'), {
+                    center: { lat: 45.37, lng: -121.70 },
+                    zoom: 9,
+                    mapTypeId: 'terrain',
+                    disableDefaultUI: true,
+                    gestureHandling: 'none',
+                });
+                // Only mark PASS when tiles actually load — not just when the Map object is created
+                google.maps.event.addListenerOnce(map, 'tilesloaded', function() {
+                    mapPassed = true;
+                    document.getElementById('js-status-badge').textContent = 'PASS';
+                    document.getElementById('js-status-badge').style.color = 'var(--green)';
+                    document.getElementById('js-status-msg').textContent =
+                        '✅ Maps JavaScript API loaded successfully — tiles rendered.';
+                    document.getElementById('js-status-msg').style.color = 'var(--green)';
+                });
+                // Timeout fallback — if tiles never load, something failed silently
+                setTimeout(function() {
+                    if (!mapPassed) {
+                        setJsFail('Map tiles never loaded (timed out after 8 s). ' +
+                            'This usually means a referrer restriction or billing issue.');
+                    }
+                }, 8000);
+            } catch(e) {
+                setJsFail('JS error: ' + e.message);
+            }
+        }
+        </script>
+        <script src="https://maps.googleapis.com/maps/api/js?key=<?= htmlspecialchars(defined('GOOGLE_MAPS_BROWSER_KEY') ? GOOGLE_MAPS_BROWSER_KEY : GOOGLE_MAPS_API_KEY) ?>&callback=initMap&loading=async"
+                async defer
+                onerror="document.getElementById('js-status-badge').textContent='ERROR';document.getElementById('js-status-msg').textContent='❌ Script failed to load — check network or API key.';">
+        </script>
 
     <?php endif; ?>
 

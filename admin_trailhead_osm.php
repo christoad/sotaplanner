@@ -268,6 +268,7 @@ h2{font-size:.95rem;font-weight:600;margin-bottom:1rem;color:var(--ink-2)}
 </head>
 <body>
 <div class="page">
+  <p style="margin-bottom:.75rem"><a href="god_mode.php?tab=data" style="color:var(--ink-3);font-size:.875rem">&larr; Data Tools</a></p>
   <h1>OSM Trailhead Lookup</h1>
   <p class="subtitle">Queries <strong>OpenStreetMap</strong> (via Overpass API) for tagged trailheads and public parking areas for summits that have GPX track data but no trailhead location set. The GPX track's low-elevation endpoint is used as the precise search origin, and OSM is queried within <strong>400 m</strong> of that point. Summits without a GPX track are skipped. The nearest result (prioritising <code>highway=trailhead</code> and <code>tourism=trailhead</code> over generic parking) is stored as the trailhead.</p>
 
@@ -320,7 +321,6 @@ h2{font-size:.95rem;font-weight:600;margin-bottom:1rem;color:var(--ink-2)}
     <div class="log" id="log"><div style="color:#555">Waiting to start…</div></div>
   </div>
 
-  <p style="margin-top:1rem"><a href="admin.php" style="color:var(--ink-3);font-size:.875rem">&larr; Back to admin</a></p>
 </div>
 
 <script>

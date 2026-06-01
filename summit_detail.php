@@ -37,7 +37,8 @@ $error = '';
 $current_group = getCurrentPlanningGroup($db);
 
 // Flag: fetch GPX from SOTAmaps in the background after page load
-$fetch_gpx_async = isset($_GET['fetch_gpx']) && $_GET['fetch_gpx'] === '1';
+$fetch_gpx_async        = isset($_GET['fetch_gpx']) && $_GET['fetch_gpx'] === '1';
+$show_nomination_overlay = isset($_GET['nominated']);
 
 // Check for success messages
 if (isset($_GET['nominated'])) {
@@ -948,6 +949,21 @@ if ($tl_show) {
     .time-bar-time  { color: rgba(255,255,255,0.8);  font-size: 0.65rem; font-weight: 400; white-space: nowrap; line-height: 1.25; }
 
     /* Map */
+    /* Tooltip wrapper for GPX-locked fields */
+    .gpx-tip { position: relative; display: block; }
+    .gpx-tip::before {
+      content: attr(data-tip);
+      position: absolute;
+      bottom: calc(100% + 5px);
+      left: 50%; transform: translateX(-50%);
+      background: var(--ink); color: #fff;
+      font-size: 0.7rem; font-weight: 500;
+      padding: 3px 8px; border-radius: var(--r-sm);
+      white-space: nowrap; pointer-events: none;
+      opacity: 0; transition: opacity 0.15s; z-index: 20;
+    }
+    .gpx-tip:hover::before { opacity: 1; }
+
     .map-wrap { position: relative; z-index: 0; }
 
     /* GPX fetch loading overlay */
@@ -960,13 +976,50 @@ if ($tl_show) {
       transition: opacity 0.4s;
     }
     .gpx-loading-overlay.hidden { opacity: 0; pointer-events: none; }
-    .gpx-spinner {
-      width: 36px; height: 36px; border-radius: 50%;
-      border: 3px solid var(--border-2);
-      border-top-color: var(--accent);
-      animation: gpx-spin 0.8s linear infinite;
+    /* Mountain trace loader — replaces generic spinner */
+    .gpx-loading-svg { width: 72px; height: 72px; overflow: visible; }
+    .gpx-logo-path {
+      stroke-dasharray: 116;
+      stroke-dashoffset: 116;
+      animation: gpx-path-draw 3s ease-in-out infinite;
     }
-    @keyframes gpx-spin { to { transform: rotate(360deg); } }
+    @keyframes gpx-path-draw {
+      0%   { stroke-dashoffset: 116; opacity: 0; }
+      7%   { stroke-dashoffset: 116; opacity: 1; }
+      62%  { stroke-dashoffset: 0;   opacity: 1; }
+      80%  { stroke-dashoffset: 0;   opacity: 1; }
+      94%  { stroke-dashoffset: 0;   opacity: 0; }
+      100% { stroke-dashoffset: 116; opacity: 0; }
+    }
+    .gpx-logo-dot {
+      fill: var(--red);
+      transform-box: fill-box; transform-origin: center;
+      animation: gpx-dot-pop 3s ease-in-out 1.2s infinite; opacity: 0;
+    }
+    @keyframes gpx-dot-pop {
+      0%   { transform: scale(0);   opacity: 0; }
+      15%  { transform: scale(1.4); opacity: 1; }
+      30%  { transform: scale(1);   opacity: 1; }
+      72%  { transform: scale(1);   opacity: 1; }
+      90%  { transform: scale(0.4); opacity: 0; }
+      100% { transform: scale(0);   opacity: 0; }
+    }
+    .gpx-logo-ring1 {
+      stroke: var(--red);
+      transform-box: fill-box; transform-origin: center;
+      animation: gpx-ring-pulse 3s ease-out 1.2s infinite; opacity: 0;
+    }
+    .gpx-logo-ring2 {
+      stroke: var(--red);
+      transform-box: fill-box; transform-origin: center;
+      animation: gpx-ring-pulse 3s ease-out 1.5s infinite; opacity: 0;
+    }
+    @keyframes gpx-ring-pulse {
+      0%   { transform: scale(0.5); opacity: 0; }
+      10%  { opacity: 0.5; }
+      68%  { transform: scale(2.4); opacity: 0; }
+      100% { transform: scale(2.4); opacity: 0; }
+    }
     .gpx-loading-label {
       font-size: 0.85rem; font-weight: 500; color: var(--ink-2);
       text-align: center; padding: 0 1rem; line-height: 1.4;
@@ -1358,11 +1411,20 @@ if ($tl_show) {
 
       <!-- Map -->
       <div class="map-wrap" id="map-wrap">
-        <?php if ($fetch_gpx_async && empty($gpx_data)): ?>
+        <?php if ($show_nomination_overlay): ?>
         <div class="gpx-loading-overlay" id="gpx-loading-overlay">
-          <div class="gpx-spinner"></div>
-          <div class="gpx-loading-label">Searching SOTA Mapping Project for a community route…</div>
+          <svg class="gpx-loading-svg" viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="55" cy="55" r="50" fill="none" stroke="#1c1b19" stroke-width="1.5" opacity="0.2"/>
+            <path class="gpx-logo-path" d="M26,79.5l17-30,7,8,12-20,22,42"
+                  fill="none" stroke="#1c1b19" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle class="gpx-logo-ring2" cx="62" cy="35.5" r="15" fill="none" stroke-width="0.8"/>
+            <circle class="gpx-logo-ring1" cx="62" cy="35.5" r="9"  fill="none" stroke-width="1.2"/>
+            <circle class="gpx-logo-dot"   cx="62" cy="35.5" r="3.5"/>
+          </svg>
+          <div class="gpx-loading-label"><?= ($fetch_gpx_async && empty($gpx_data)) ? 'Searching SOTA Mapping Project for a community route…' : '' ?></div>
+          <?php if ($fetch_gpx_async && empty($gpx_data)): ?>
           <div class="gpx-loading-sub">This only happens once</div>
+          <?php endif; ?>
         </div>
         <?php endif; ?>
         <div id="summit-map"></div>
@@ -1410,15 +1472,19 @@ if ($tl_show) {
       <div class="field-row-3" style="margin-bottom:1rem;">
         <div class="form-group" style="margin:0;">
           <label class="form-label">Distance (<?= getDistanceUnit($current_group['units']) ?>, RT)</label>
+          <?php if ($gpx_active): ?><div class="gpx-tip" data-tip="Set by GPS track — uncheck 'Use GPS data' to edit"><?php endif; ?>
           <input type="number" class="form-input" name="hike_distance_mi" step="0.01" min="0"
                  value="<?= htmlspecialchars($summit['hike_distance_mi'] ?? '') ?>" placeholder="0.0"
-                 <?= $gpx_active ? 'readonly title="Distance is pulled from the GPX file while \'Use GPS data\' is enabled" style="opacity:0.45;cursor:not-allowed;background:var(--bg-2);"' : '' ?>>
+                 <?= $gpx_active ? 'readonly style="opacity:0.45;cursor:not-allowed;background:var(--bg-2);"' : '' ?>>
+          <?php if ($gpx_active): ?></div><?php endif; ?>
         </div>
         <div class="form-group" style="margin:0;">
           <label class="form-label">Elev. Gain (<?= getElevationUnit($current_group['units']) ?>)</label>
+          <?php if ($gpx_active): ?><div class="gpx-tip" data-tip="Set by GPS track — uncheck 'Use GPS data' to edit"><?php endif; ?>
           <input type="number" class="form-input" name="hike_elevation_gain_ft" min="0"
                  value="<?= htmlspecialchars($summit['hike_elevation_gain_ft'] ?? '') ?>" placeholder="0"
-                 <?= $gpx_active ? 'readonly title="Elevation gain is pulled from the GPX file while \'Use GPS data\' is enabled" style="opacity:0.45;cursor:not-allowed;background:var(--bg-2);"' : '' ?>>
+                 <?= $gpx_active ? 'readonly style="opacity:0.45;cursor:not-allowed;background:var(--bg-2);"' : '' ?>>
+          <?php if ($gpx_active): ?></div><?php endif; ?>
         </div>
         <div class="form-group" style="margin:0;">
           <label class="form-label">Hike Difficulty</label>
@@ -2381,15 +2447,21 @@ if (flash) setTimeout(() => { flash.style.transition = 'opacity 0.5s'; flash.sty
 })();
 <?php endif; ?>
 
-<?php if ($fetch_gpx_async && empty($gpx_data)): ?>
-// ── Async GPX fetch ───────────────────────────────────────────────────────────
+<?php if ($show_nomination_overlay): ?>
+// ── Nomination overlay — async fetch or fast-path auto-dismiss ────────────────
 (function() {
     const overlay = document.getElementById('gpx-loading-overlay');
     const label   = overlay ? overlay.querySelector('.gpx-loading-label') : null;
+    function dismissOverlay() {
+        if (!overlay) return;
+        overlay.classList.add('hidden');
+        setTimeout(() => overlay.remove(), 500);
+    }
 
+    <?php if ($fetch_gpx_async && empty($gpx_data)): ?>
+    // Async path — summit not yet in library, fetch from SOTAmaps
     const fd = new FormData();
     fd.append('summit_id', '<?= $summit['id'] ?>');
-
     fetch('gpx_fetch.php', { method: 'POST', body: fd })
         .then(r => {
             if (!r.ok) return r.text().then(t => { throw new Error('HTTP ' + r.status + ': ' + t.substring(0, 200)); });
@@ -2399,18 +2471,22 @@ if (flash) setTimeout(() => { flash.style.transition = 'opacity 0.5s'; flash.sty
             if (!overlay) return;
             if (d.status === 'found') {
                 if (label) label.textContent = '✓ Community route found — loading map…';
-                overlay.querySelector('.gpx-spinner').style.display = 'none';
+                const svgEl = overlay.querySelector('.gpx-loading-svg');
+                if (svgEl) svgEl.style.opacity = '0';
                 setTimeout(() => window.location.replace(window.location.pathname + '?id=<?= $summit['id'] ?>&group=<?= $current_group['id'] ?>&nominated=1'), 800);
             } else {
                 console.log('gpx_fetch:', d.status, d.msg || '');
-                overlay.classList.add('hidden');
-                setTimeout(() => overlay.remove(), 500);
+                dismissOverlay();
             }
         })
         .catch(err => {
             console.error('gpx_fetch error:', err);
-            if (overlay) { overlay.classList.add('hidden'); setTimeout(() => overlay.remove(), 500); }
+            dismissOverlay();
         });
+    <?php else: ?>
+    // Fast path — track already linked, show animation briefly then reveal the page
+    setTimeout(dismissOverlay, 2000);
+    <?php endif; ?>
 })();
 <?php endif; ?>
 </script>

@@ -152,6 +152,7 @@ tbody td{padding:.55rem .75rem;font-size:.85rem;vertical-align:middle}
 </head>
 <body>
 <div class="page">
+  <p style="margin-bottom:.75rem"><a href="god_mode.php?tab=data" style="color:var(--ink-3);font-size:.875rem">&larr; Data Tools</a></p>
   <h1>Global GPX Library</h1>
   <p class="subtitle">Community tracks imported from <strong>SOTA Mapping Project</strong> — pre-populated for every user who nominates these summits.</p>
 
@@ -270,7 +271,6 @@ tbody td{padding:.55rem .75rem;font-size:.85rem;vertical-align:middle}
     <?php endif; ?>
   </div>
 
-  <p style="margin-top:.5rem"><a href="admin.php" style="color:var(--ink-3);font-size:.875rem">&larr; Back to admin</a></p>
 </div>
 </body>
 </html>
