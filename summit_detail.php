@@ -520,6 +520,8 @@ $summit = $stmt->fetch();
 // Get GPX data for this summit/group
 $gpx_data = null;
 $sotamaps_track_count = null;
+$sotamaps_contributor = '';
+$sotamaps_track_title = '';
 if ($current_group) {
     $stmt = $db->prepare("SELECT * FROM gpx_tracks WHERE summit_id = ? AND planning_group_id = ?");
     $stmt->execute([$summit_id, $current_group['id']]);
@@ -527,10 +529,14 @@ if ($current_group) {
 
     // If linked from global library, load the SOTAmaps track count for the swap UI
     if (!empty($gpx_data['from_global_library']) && !empty($summit['sota_ref'])) {
-        $st = $db->prepare("SELECT sotamaps_track_count FROM global_gpx_tracks WHERE sota_ref = ?");
+        $st = $db->prepare("SELECT sotamaps_track_count, source_callsign, source_track_title FROM global_gpx_tracks WHERE sota_ref = ?");
         $st->execute([$summit['sota_ref']]);
         $row = $st->fetch();
-        if ($row) $sotamaps_track_count = $row['sotamaps_track_count']; // null = unknown
+        if ($row) {
+            $sotamaps_track_count    = $row['sotamaps_track_count']; // null = unknown
+            $sotamaps_contributor    = $row['source_callsign'] ?? '';
+            $sotamaps_track_title    = $row['source_track_title'] ?? '';
+        }
     }
 }
 
@@ -1626,7 +1632,7 @@ if ($tl_show) {
           <?php if (!empty($gpx_data['from_global_library'])): ?>
           <div style="display:flex; align-items:center; justify-content:space-between; gap:0.75rem; margin-bottom:0.5rem; flex-wrap:wrap;">
             <div style="font-size:0.75rem; color:var(--blue); font-weight:500;">
-              Community route from <a href="https://sotamaps.org" target="_blank" style="color:var(--blue)">SOTA Mapping Project</a>
+              Community route from <a href="https://sotamaps.org" target="_blank" style="color:var(--blue)">SOTA Mapping Project</a><?php if (!empty($sotamaps_contributor)): ?> &middot; submitted by <span style="font-family:var(--font-mono)"><?= htmlspecialchars(strtoupper($sotamaps_contributor)) ?></span><?php endif; ?>
             </div>
             <?php if ($sotamaps_track_count === null): ?>
               <span id="sotamaps-count-badge" style="font-size:0.72rem; color:var(--ink-4);">Checking for other routes…</span>

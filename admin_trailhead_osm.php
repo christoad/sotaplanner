@@ -126,6 +126,18 @@ if ($action === 'stats') {
     exit;
 }
 
+if ($action === 'reset') {
+    header('Content-Type: application/json');
+    // Clear auto-imported trailheads only — never touch manually-set ones
+    $tracks_cleared  = $db->exec("UPDATE global_gpx_tracks SET trailhead_lat = NULL, trailhead_lon = NULL");
+    $summits_cleared = $db->exec("
+        UPDATE summits SET trailhead_lat = NULL, trailhead_lng = NULL
+        WHERE (trailhead_manual IS NULL OR trailhead_manual = 0)
+    ");
+    echo json_encode(['status' => 'ok', 'tracks_cleared' => $tracks_cleared, 'summits_cleared' => $summits_cleared]);
+    exit;
+}
+
 if ($action === 'queue') {
     header('Content-Type: application/json');
     $rows = $db->query("
@@ -178,35 +190,52 @@ if ($action === 'lookup') {
 
     $result = overpass_trailhead((float)$gpx_stats['trailhead_lat'], (float)$gpx_stats['trailhead_lon'], 400);
 
-    if (!$result) {
-        echo json_encode([
-            'status'   => 'none',
-            'msg'      => 'No OSM trailhead or parking found within 400 m of GPX start',
-            'gpx_lat'  => $gpx_stats['trailhead_lat'],
-            'gpx_lon'  => $gpx_stats['trailhead_lon'],
-        ]);
-        exit;
+    // Decide whether to use the OSM result or fall back to the GPX start point.
+    // Dedicated trailhead tags (highway/tourism=trailhead) are trusted up to 400 m.
+    // Generic parking is only used if within 100 m — a distant lot adds noise.
+    // If nothing qualifies, the GPX low-elevation endpoint is itself the trailhead.
+    $use_osm = false;
+    if ($result) {
+        $is_dedicated = ($result['type'] === 'trailhead');
+        $use_osm = $is_dedicated || $result['dist'] <= 100;
+    }
+
+    if ($use_osm) {
+        $trailhead_lat  = $result['lat'];
+        $trailhead_lon  = $result['lon'];
+        $trailhead_src  = 'osm';
+        $trailhead_type = $result['type'];
+        $trailhead_dist = round($result['dist']);
+        $trailhead_name = $result['name'];
+    } else {
+        $trailhead_lat  = (float)$gpx_stats['trailhead_lat'];
+        $trailhead_lon  = (float)$gpx_stats['trailhead_lon'];
+        $trailhead_src  = 'gpx';
+        $trailhead_type = 'gpx_start';
+        $trailhead_dist = 0;
+        $trailhead_name = '';
     }
 
     // Store result in global_gpx_tracks
     $db->prepare("UPDATE global_gpx_tracks SET trailhead_lat = ?, trailhead_lon = ? WHERE id = ?")
-       ->execute([$result['lat'], $result['lon'], $track_id]);
+       ->execute([$trailhead_lat, $trailhead_lon, $track_id]);
 
     // Also backfill any summit rows with this sota_ref that have no trailhead yet
     $upd = $db->prepare("
         UPDATE summits SET trailhead_lat = ?, trailhead_lng = ?
         WHERE sota_ref = ? AND (trailhead_lat IS NULL OR trailhead_lat = 0)
     ");
-    $upd->execute([$result['lat'], $result['lon'], $sota_ref]);
+    $upd->execute([$trailhead_lat, $trailhead_lon, $sota_ref]);
     $summits_updated = $upd->rowCount();
 
     echo json_encode([
         'status'          => 'found',
-        'lat'             => $result['lat'],
-        'lon'             => $result['lon'],
-        'dist_m'          => round($result['dist']),
-        'type'            => $result['type'],
-        'name'            => $result['name'],
+        'source'          => $trailhead_src,
+        'lat'             => $trailhead_lat,
+        'lon'             => $trailhead_lon,
+        'dist_m'          => $trailhead_dist,
+        'type'            => $trailhead_type,
+        'name'            => $trailhead_name,
         'summits_updated' => $summits_updated,
     ]);
     exit;
@@ -288,6 +317,7 @@ h2{font-size:.95rem;font-weight:600;margin-bottom:1rem;color:var(--ink-2)}
       <button class="btn btn-primary" id="btn-start" onclick="startLookup()">Start Lookup</button>
       <button class="btn btn-ghost"   id="btn-pause" onclick="pauseLookup()" disabled>Pause</button>
       <button class="btn btn-danger"  id="btn-stop"  onclick="stopLookup()"  disabled>Stop</button>
+      <button class="btn btn-ghost"   id="btn-reset" onclick="resetTrailheads()" style="margin-left:auto;border-color:var(--red);color:var(--red)">Reset All Trailheads</button>
     </div>
     <div class="delay-row">
       <span>Delay between requests:</span>
@@ -380,9 +410,13 @@ function runNext() {
     .then(d => {
       if (d.status === 'found') {
         counts.found++;
-        const typeLabel = d.name ? `${d.type} — "${d.name}"` : d.type;
         const summitNote = d.summits_updated > 0 ? `  +${d.summits_updated} summit(s)` : '';
-        log(`✓ ${s.sota_ref}  ${d.dist_m} m away  [${typeLabel}]${summitNote}`, 'ok');
+        if (d.source === 'gpx') {
+          log(`✓ ${s.sota_ref}  [GPX start point — no qualifying OSM result]${summitNote}`, 'ok');
+        } else {
+          const typeLabel = d.name ? `${d.type} — "${d.name}"` : d.type;
+          log(`✓ ${s.sota_ref}  ${d.dist_m} m away  [${typeLabel}]${summitNote}`, 'ok');
+        }
       } else if (d.status === 'none') {
         counts.none++;
         log(`· ${s.sota_ref} — no OSM match within 400 m of GPX start`, 'none');
@@ -451,6 +485,22 @@ function log(msg, type) {
 }
 function clearLog() {
   document.getElementById('log').innerHTML = '';
+}
+
+async function resetTrailheads() {
+  if (!confirm('Reset all auto-imported trailheads?\n\nThis clears trailhead coordinates from all global GPX tracks and all summits that do not have a manually-set trailhead. Manually-set trailheads are not affected.\n\nYou can then re-run the lookup with the current settings.')) return;
+  document.getElementById('btn-reset').disabled = true;
+  document.getElementById('btn-reset').textContent = 'Resetting…';
+  const r = await fetch('admin_trailhead_osm.php?action=reset');
+  const d = await r.json();
+  if (d.status === 'ok') {
+    log(`✓ Reset complete — ${d.tracks_cleared} global GPX track(s) cleared, ${d.summits_cleared} nominated summit(s) cleared. Ready to re-run lookup.`, 'ok');
+    loadStats();
+  } else {
+    log('✗ Reset failed', 'err');
+  }
+  document.getElementById('btn-reset').disabled = false;
+  document.getElementById('btn-reset').textContent = 'Reset All Trailheads';
 }
 </script>
 </body>

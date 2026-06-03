@@ -50,7 +50,12 @@ function _link_global_gpx(PDO $db, int $summit_id, int $group_id, string $sota_r
         $updates[] = "hike_distance_mi = COALESCE(hike_distance_mi, ?)";
         $params[]  = round($g['total_distance'] * 2 * 0.621371, 2);
     }
-    // Trailhead coordinates are not derived from GPX data — set by the OSM trailhead lookup tool.
+    if (!empty($g['trailhead_lat']) && $g['trailhead_lat'] != 0) {
+        $updates[] = "trailhead_lat = COALESCE(NULLIF(trailhead_lat, 0), ?)";
+        $params[]  = $g['trailhead_lat'];
+        $updates[] = "trailhead_lng = COALESCE(NULLIF(trailhead_lng, 0), ?)";
+        $params[]  = $g['trailhead_lon'];
+    }
     if ($updates) {
         $params[] = $summit_id;
         $db->prepare("UPDATE summits SET " . implode(', ', $updates) . " WHERE id = ?")->execute($params);
