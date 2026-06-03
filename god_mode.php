@@ -92,12 +92,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // Remove user from all non-owned groups
+    // Delete user entirely (remove from all groups + delete owned groups)
     if (isset($_POST['remove_user'])) {
         $target_cs = strtoupper(trim($_POST['target_callsign'] ?? ''));
         if ($target_cs && $target_cs !== 'KI6CR') {
-            $db->prepare("DELETE FROM planning_group_members WHERE callsign = ? AND role != 'owner'")->execute([$target_cs]);
-            $message = "Removed $target_cs from all member groups.";
+            // Cascade-delete all groups owned by this user
+            $owned = $db->prepare("SELECT id FROM planning_groups WHERE owner_callsign = ?");
+            $owned->execute([$target_cs]);
+            foreach ($owned->fetchAll(PDO::FETCH_COLUMN) as $gid) {
+                $stmt = $db->prepare("SELECT id FROM summits WHERE planning_group_id = ?");
+                $stmt->execute([$gid]);
+                $sids = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                if (!empty($sids)) {
+                    $ph = implode(',', array_fill(0, count($sids), '?'));
+                    $db->prepare("DELETE FROM summit_notes WHERE summit_id IN ($ph)")->execute($sids);
+                    $db->prepare("DELETE FROM gpx_tracks WHERE summit_id IN ($ph)")->execute($sids);
+                }
+                $db->prepare("DELETE FROM activations WHERE planning_group_id = ?")->execute([$gid]);
+                $db->prepare("DELETE FROM addresses WHERE planning_group_id = ?")->execute([$gid]);
+                $db->prepare("DELETE FROM app_settings WHERE setting_key = ?")->execute(["selected_address_group_$gid"]);
+                $db->prepare("DELETE FROM summits WHERE planning_group_id = ?")->execute([$gid]);
+                $db->prepare("DELETE FROM planning_group_members WHERE planning_group_id = ?")->execute([$gid]);
+                $db->prepare("DELETE FROM planning_groups WHERE id = ?")->execute([$gid]);
+            }
+            // Remove from any groups they're a member of
+            $db->prepare("DELETE FROM planning_group_members WHERE callsign = ?")->execute([$target_cs]);
+            $message = "Deleted $target_cs and all their groups.";
         } else {
             $error = "Cannot remove KI6CR.";
         }
@@ -553,7 +573,7 @@ select.form-input { cursor: pointer; }
                             <form method="POST" class="inline-form">
                                 <input type="hidden" name="target_callsign" value="<?= htmlspecialchars($u['callsign']) ?>">
                                 <button type="submit" name="remove_user" class="btn btn-sm btn-danger"
-                                    onclick="return confirm('Remove <?= htmlspecialchars($u['callsign']) ?> from all non-owned groups?')">Remove</button>
+                                    onclick="return confirm('Delete <?= htmlspecialchars($u['callsign']) ?> and all their groups? This cannot be undone.')">Delete</button>
                             </form>
                             <?php endif; ?>
                         </td>

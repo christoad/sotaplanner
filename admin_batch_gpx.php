@@ -289,9 +289,38 @@ if ($action === 'assoc_stats') {
             'count'             => (int)$row['track_count'],
             'multi_track_count' => (int)$row['multi_track_count'],
             'last_import'       => $row['last_import'],
+            'last_run'          => $row['last_import'],
         ];
     }
+    // Merge in run records (catches associations scanned but with zero tracks imported)
+    $run_rows = $db->query("SELECT setting_key, setting_value FROM app_settings WHERE setting_key LIKE 'gpx_run_%'")->fetchAll();
+    foreach ($run_rows as $r) {
+        $assoc = substr($r['setting_key'], strlen('gpx_run_'));
+        $data  = json_decode($r['setting_value'], true) ?? [];
+        $ts    = $data['last_run'] ?? null;
+        if (!isset($result[$assoc])) {
+            $result[$assoc] = ['count' => 0, 'multi_track_count' => 0, 'last_import' => null, 'last_run' => $ts];
+        } else {
+            $result[$assoc]['last_run'] = $ts;
+        }
+    }
     echo json_encode($result);
+    exit;
+}
+
+if ($action === 'record_run') {
+    header('Content-Type: application/json');
+    $assoc    = preg_replace('/[^A-Za-z0-9]/', '', $_GET['association'] ?? '');
+    $imported = (int)($_GET['imported'] ?? 0);
+    if ($assoc) {
+        $key = 'gpx_run_' . $assoc;
+        $val = json_encode(['last_run' => date('Y-m-d H:i:s'), 'imported' => $imported]);
+        $db->prepare("INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()")
+           ->execute([$key, $val]);
+        echo json_encode(['ok' => true]);
+    } else {
+        echo json_encode(['error' => 'missing association']);
+    }
     exit;
 }
 
@@ -650,10 +679,12 @@ function getAssoc() {
       opt.value = a.code;
       const s = statsData[a.code];
       if (s) {
-        const dt    = new Date(s.last_import);
-        const fmt   = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        const multi = s.multi_track_count > 0 ? ` · ${s.multi_track_count} with alt routes` : '';
-        opt.textContent = `${a.code} — ${a.name}  [${s.count.toLocaleString()} tracks · ${fmt}${multi}]`;
+        const dateStr = s.last_run || s.last_import;
+        const dt      = new Date(dateStr);
+        const fmt     = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const multi   = s.multi_track_count > 0 ? ` · ${s.multi_track_count} with alt routes` : '';
+        const label   = s.count > 0 ? `${s.count.toLocaleString()} tracks` : 'no tracks found';
+        opt.textContent = `${a.code} — ${a.name}  [${label} · ${fmt}${multi}]`;
       } else {
         opt.textContent = `${a.code} — ${a.name}`;
       }
@@ -689,10 +720,15 @@ async function onAssocChange() {
   document.getElementById('queue-status').style.color   = 'var(--ink-3)';
   const notice = document.getElementById('last-import-notice');
   if (assocStats[assoc]) {
-    const s   = assocStats[assoc];
-    const dt  = new Date(s.last_import);
-    const fmt = dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-    notice.textContent = `⚠ Previously imported: ${s.count.toLocaleString()} tracks as of ${fmt}. Only missing summits will be re-queued.`;
+    const s       = assocStats[assoc];
+    const dateStr = s.last_run || s.last_import;
+    const dt      = new Date(dateStr);
+    const fmt     = dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    if (s.count > 0) {
+      notice.textContent = `⚠ Previously imported: ${s.count.toLocaleString()} tracks as of ${fmt}. Only missing summits will be re-queued.`;
+    } else {
+      notice.textContent = `ℹ Previously scanned ${fmt} — no tracks were found on SOTAmaps.`;
+    }
     notice.style.display = 'block';
   } else {
     notice.style.display = 'none';
@@ -803,6 +839,16 @@ function finish() {
   updateSummary();
   log(`Done. Imported: ${counts.imported}  No tracks: ${counts.none}  Skipped: ${counts.skip}  Errors: ${counts.err}`, 'ok');
   setProgress(queue.length, queue.length);
+  const assoc = getAssoc();
+  if (assoc) {
+    fetch(`admin_batch_gpx.php?action=record_run&association=${encodeURIComponent(assoc)}&imported=${counts.imported}`)
+      .then(r => r.json())
+      .then(() => {
+        // Refresh assocStats so the dropdown reflects the run
+        fetch('admin_batch_gpx.php?action=assoc_stats').then(r => r.json()).then(d => { assocStats = d; });
+      })
+      .catch(() => {});
+  }
 }
 
 function setProgress(done, total) {
