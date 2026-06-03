@@ -16,10 +16,17 @@ function _link_global_gpx(PDO $db, int $summit_id, int $group_id, string $sota_r
     $g = $st->fetch();
     if (!$g || !file_exists($g['file_path'])) return;
 
-    // Don't add a second gpx_tracks row if one already exists
+    // Don't add a second gpx_tracks row if one already exists,
+    // but still update the trailhead on the summit if the global track has one
     $chk = $db->prepare("SELECT id FROM gpx_tracks WHERE summit_id = ? LIMIT 1");
     $chk->execute([$summit_id]);
-    if ($chk->fetch()) return;
+    if ($chk->fetch()) {
+        if (!empty($g['trailhead_lat']) && $g['trailhead_lat'] != 0) {
+            $db->prepare("UPDATE summits SET trailhead_lat = COALESCE(NULLIF(trailhead_lat, 0), ?), trailhead_lng = COALESCE(NULLIF(trailhead_lng, 0), ?) WHERE id = ?")
+               ->execute([$g['trailhead_lat'], $g['trailhead_lon'], $summit_id]);
+        }
+        return;
+    }
 
     $db->prepare("
         INSERT IGNORE INTO gpx_tracks (

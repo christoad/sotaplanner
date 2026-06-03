@@ -162,7 +162,7 @@ if ($action === 'lookup') {
     }
 
     // Fetch the global track row
-    $row_stmt = $db->prepare("SELECT id, file_path, trailhead_lat FROM global_gpx_tracks WHERE id = ? AND sota_ref = ?");
+    $row_stmt = $db->prepare("SELECT id, file_path, trailhead_lat, trailhead_lon FROM global_gpx_tracks WHERE id = ? AND sota_ref = ?");
     $row_stmt->execute([$track_id, $sota_ref]);
     $track_row = $row_stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -171,6 +171,11 @@ if ($action === 'lookup') {
         exit;
     }
     if (!empty($track_row['trailhead_lat'])) {
+        // Backfill any summit rows that were nominated after the tool last ran
+        $db->prepare("
+            UPDATE summits SET trailhead_lat = ?, trailhead_lng = ?
+            WHERE sota_ref = ? AND (trailhead_lat IS NULL OR trailhead_lat = 0)
+        ")->execute([$track_row['trailhead_lat'], $track_row['trailhead_lon'], $sota_ref]);
         echo json_encode(['status' => 'skip', 'msg' => 'Trailhead already set']);
         exit;
     }
@@ -422,7 +427,7 @@ function runNext() {
         log(`· ${s.sota_ref} — no OSM match within 400 m of GPX start`, 'none');
       } else if (d.status === 'skip') {
         counts.skip++;
-        log(`⏭ ${s.sota_ref} — already has trailhead`, 'skip');
+        log(`⏭ ${s.sota_ref} — ${d.msg}`, 'skip');
       } else {
         counts.err++;
         log(`✗ ${s.sota_ref} — ${d.msg}`, 'err');

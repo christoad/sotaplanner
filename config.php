@@ -418,8 +418,9 @@ function analyze_gpx_track($gpx_file_path, $summit_ref = null) {
     // Threshold: if an endpoint is within 25% of the range from min (low) or max (high),
     // it qualifies as "low" or "high". ascent = low→high, descent = high→low, else round-trip.
     $detected_track_type = 'round-trip';
-    $detected_trailhead_lat = null;
-    $detected_trailhead_lon = null;
+    // Default to first point — overridden below if elevation data is reliable
+    $detected_trailhead_lat = count($points) > 0 ? $points[0]['lat'] : null;
+    $detected_trailhead_lon = count($points) > 0 ? $points[0]['lon'] : null;
     if (count($points) >= 2 && ($max_elevation - $min_elevation) > 5) {
         $ele_range = $max_elevation - $min_elevation;
         $threshold = $ele_range * 0.25;
