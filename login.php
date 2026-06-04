@@ -67,6 +67,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
+
+// Count summits with both a GPX track and a trailhead coordinate
+$ready_count = 0;
+try {
+    $db_stat = getDbConnection();
+    $stat_stmt = $db_stat->query("SELECT COUNT(*) FROM global_gpx_tracks WHERE trailhead_lat IS NOT NULL AND trailhead_lon IS NOT NULL");
+    $ready_count = (int)$stat_stmt->fetchColumn();
+} catch (PDOException $e) {
+    $ready_count = 0;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -386,6 +396,34 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
 
         footer a { color: #bbb; text-decoration: none; }
 
+        .hero-stat-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.6rem;
+            background: rgba(255,255,255,0.12);
+            border: 1px solid rgba(255,255,255,0.22);
+            border-radius: 100px;
+            padding: 0.55rem 1.25rem 0.55rem 0.85rem;
+            font-size: 1rem;
+            font-weight: 600;
+            color: rgba(255,255,255,0.92);
+            margin-top: 1rem;
+            letter-spacing: 0.01em;
+        }
+
+        .hero-stat-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #6ee7b7;
+            flex-shrink: 0;
+        }
+
+        .hero-stat-num {
+            font-weight: 800;
+            color: #fff;
+        }
+
         @media (max-width: 600px) {
             .hero h1 { font-size: 1.8rem; }
             .features { padding: 1.25rem 0.75rem 0; }
@@ -401,6 +439,14 @@ $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
         <img src="sota-planner-logo-font.svg" width="280" height="280" alt="SOTA Planner">
     </div>
     <p class="tagline">Doorstep-to-doorstep planning for busy activators and collaborative teams — understand the full time commitment to getting that summit in your logbook.</p>
+    <?php if ($ready_count > 0): ?>
+    <div>
+        <span class="hero-stat-pill">
+            <span class="hero-stat-dot"></span>
+            <span class="hero-stat-num"><?= number_format($ready_count) ?></span> summits ready to activate
+        </span>
+    </div>
+    <?php endif; ?>
 </div>
 
 <!-- Feature highlights -->

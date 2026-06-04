@@ -230,12 +230,24 @@ session_start();
         <p>Release history and update notes for SOTA Planner</p>
     </div>
 
-    <!-- v1.4.4 -->
+    <!-- v1.4.5 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.4.5</span>
+            <span class="version-date">June 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">The home page now shows a live count of summits ready to plan — community route and trailhead already loaded.</p>
+        <ul>
+            <li>Login page shows how many summits in the global library already have a GPX route and trailhead coordinate, giving new visitors an at-a-glance sense of how much data is pre-loaded</li>
+        </ul>
+    </div>
+
+    <!-- v1.4.4 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.4.4</span>
             <span class="version-date">June 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Map right-click now shows GPS coordinates you can copy with one click.</p>
         <ul>

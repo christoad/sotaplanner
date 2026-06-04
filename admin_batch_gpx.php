@@ -17,6 +17,7 @@
 
 require_once 'config.php';
 require_once 'sota_cache_helper.php';
+require_once 'gpx_import_lib.php';
 session_start();
 requireLogin();
 
@@ -362,163 +363,8 @@ if ($action === 'process') {
         echo json_encode(['status' => 'error', 'msg' => 'Invalid sota_ref']);
         exit;
     }
-    $sota_ref = strtoupper($sota_ref);
 
-    // Skip if already in global library
-    $chk = $db->prepare("SELECT id FROM global_gpx_tracks WHERE sota_ref = ?");
-    $chk->execute([$sota_ref]);
-    if ($chk->fetch()) {
-        echo json_encode(['status' => 'skip', 'msg' => 'Already in global library']);
-        exit;
-    }
-
-    // Fetch track list from SOTA Mapping Project API
-    $parts   = explode('/', $sota_ref, 2);
-    $api_url = 'https://api-db.sota.org.uk/smp/gpx/summit/'
-             . rawurlencode($parts[0]) . '/' . rawurlencode($parts[1] ?? '');
-
-    $ctx = stream_context_create(['http' => [
-        'timeout'       => 20,
-        'ignore_errors' => true,
-        'header'        => "User-Agent: SOTAPlanner-BatchImport/1.0\r\n",
-    ]]);
-    $raw = @file_get_contents($api_url, false, $ctx);
-
-    if ($raw === false || $raw === '') {
-        echo json_encode(['status' => 'error', 'msg' => 'API unreachable']);
-        exit;
-    }
-
-    $data = json_decode($raw, true);
-    if (!is_array($data) || count($data) === 0) {
-        echo json_encode(['status' => 'none', 'msg' => 'No tracks on SOTAmaps']);
-        exit;
-    }
-
-    // Pick the shortest-distance track (best for planning; avoids long wandering routes)
-    $best = null;
-    $best_dist = PHP_FLOAT_MAX;
-    foreach ($data as $t) {
-        $pts = $t['points'] ?? [];
-        if (count($pts) < 2) continue;
-        $dist = _batch_track_distance($pts);
-        if ($dist < $best_dist) { $best = $t; $best_dist = $dist; }
-    }
-
-    if (!$best) {
-        echo json_encode(['status' => 'error', 'msg' => 'No usable tracks found']);
-        exit;
-    }
-
-    $points = $best['points'] ?? [];
-    if (count($points) < 2) {
-        echo json_encode(['status' => 'error', 'msg' => 'Best track has too few points (' . count($points) . ')']);
-        exit;
-    }
-
-    // Sort by pt_index
-    usort($points, fn($a, $b) => intval($a['pt_index']) - intval($b['pt_index']));
-
-    // Build GPX XML (route only, no timestamps)
-    $gpx_xml = _batch_build_gpx($points, $best['track_title'] ?? $sota_ref, $best['callsign'] ?? '');
-
-    // Save to disk in global subdirectory
-    $upload_dir = __DIR__ . '/gpx_files/global';
-    if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
-
-    $safe_ref = preg_replace('/[^a-zA-Z0-9_-]/', '_', $sota_ref);
-    $filename = $safe_ref . '_sotamaps_' . intval($best['hdr_id'] ?? time()) . '.gpx';
-    $filepath = $upload_dir . '/' . $filename;
-
-    if (file_put_contents($filepath, $gpx_xml) === false) {
-        echo json_encode(['status' => 'error', 'msg' => 'Could not write file to disk']);
-        exit;
-    }
-
-    // Analyse track
-    $gpx_stats = analyze_gpx_track($filepath, null);
-    if (!$gpx_stats) {
-        @unlink($filepath);
-        echo json_encode(['status' => 'error', 'msg' => 'GPX analysis failed']);
-        exit;
-    }
-
-    try {
-        // Store in global library
-        $stmt = $db->prepare("
-            INSERT INTO global_gpx_tracks (
-                sota_ref, filename, file_path, source, source_callsign, source_track_title,
-                total_distance, max_elevation, min_elevation, elevation_gain, elevation_loss,
-                num_points, summit_lat, summit_lon, trailhead_lat, trailhead_lon, sotamaps_track_count
-            ) VALUES (?, ?, ?, 'sotamaps', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ");
-        $stmt->execute([
-            $sota_ref, $filename, $filepath,
-            $best['callsign'] ?? '', $best['track_title'] ?? $sota_ref,
-            $gpx_stats['total_distance'], $gpx_stats['max_elevation'], $gpx_stats['min_elevation'],
-            $gpx_stats['elevation_gain'], $gpx_stats['elevation_loss'],
-            $gpx_stats['num_points'], $gpx_stats['summit_lat'], $gpx_stats['summit_lon'],
-            null, null, count($data),
-        ]);
-        $global_id = $db->lastInsertId();
-
-        // Retroactively backfill existing summit rows that have no GPX track
-        $need = $db->prepare("
-            SELECT s.id, s.planning_group_id,
-                   s.hike_distance_mi, s.hike_elevation_gain_ft,
-                   s.trailhead_lat, s.trailhead_lng
-            FROM summits s
-            WHERE s.sota_ref = ?
-              AND NOT EXISTS (SELECT 1 FROM gpx_tracks g WHERE g.summit_id = s.id)
-        ");
-        $need->execute([$sota_ref]);
-        $backfill = 0;
-        $ins = $db->prepare("
-            INSERT IGNORE INTO gpx_tracks (
-                summit_id, planning_group_id, filename, file_path,
-                total_time, hiking_time, activation_time, rest_break_time,
-                total_distance, hiking_distance, max_elevation, min_elevation,
-                elevation_gain, elevation_loss, avg_speed, hiking_speed,
-                num_points, summit_lat, summit_lon, using_api,
-                activation_zone_polygon, activation_zone_method,
-                use_for_hike_time, use_for_elevation, from_global_library
-            ) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, 0, NULL, 'none', 0, 1, 1)
-        ");
-        $upd = $db->prepare("
-            UPDATE summits
-            SET hike_distance_mi       = COALESCE(hike_distance_mi, ?),
-                hike_elevation_gain_ft = COALESCE(hike_elevation_gain_ft, ?)
-            WHERE id = ?
-        ");
-        $dist_mi = round($gpx_stats['total_distance'] * 2 * 0.621371, 2);
-        $gain_ft = round($gpx_stats['elevation_gain'] * 3.28084);
-        foreach ($need->fetchAll() as $s) {
-            $ins->execute([
-                $s['id'], $s['planning_group_id'], $filename, $filepath,
-                $gpx_stats['total_distance'], $gpx_stats['total_distance'],
-                $gpx_stats['max_elevation'], $gpx_stats['min_elevation'],
-                $gpx_stats['elevation_gain'], $gpx_stats['elevation_loss'],
-                $gpx_stats['num_points'], $gpx_stats['summit_lat'], $gpx_stats['summit_lon'],
-            ]);
-            $upd->execute([$dist_mi, $gain_ft, $s['id']]);
-            $backfill++;
-        }
-
-        echo json_encode([
-            'status'      => 'imported',
-            'title'       => $best['track_title'] ?? $sota_ref,
-            'callsign'    => $best['callsign'] ?? '',
-            'track_count' => count($data),
-            'points'      => count($points),
-            'dist_mi'     => round($gpx_stats['total_distance'] * 0.621371, 2),
-            'gain_ft'     => round($gpx_stats['elevation_gain'] * 3.28084),
-            'backfilled'  => $backfill,
-        ]);
-
-    } catch (Exception $e) {
-        @unlink($filepath);
-        echo json_encode(['status' => 'error', 'msg' => 'DB error: ' . $e->getMessage()]);
-    }
+    echo json_encode(import_sotamaps_track($db, $sota_ref));
     exit;
 }
 
@@ -830,6 +676,22 @@ function pauseImport() {
 }
 function stopImport() { stopped = true; }
 
+function playDone() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [[523, 0], [659, 0.12], [784, 0.24]].forEach(([freq, t]) => {
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine'; osc.frequency.value = freq;
+      const s = ctx.currentTime + t;
+      gain.gain.setValueAtTime(0, s);
+      gain.gain.linearRampToValueAtTime(0.28, s + 0.02);
+      gain.gain.linearRampToValueAtTime(0, s + 0.22);
+      osc.start(s); osc.stop(s + 0.25);
+    });
+  } catch(e) {}
+}
+
 function finish() {
   document.getElementById('btn-start').disabled    = true;
   document.getElementById('btn-pause').disabled    = true;
@@ -839,6 +701,7 @@ function finish() {
   updateSummary();
   log(`Done. Imported: ${counts.imported}  No tracks: ${counts.none}  Skipped: ${counts.skip}  Errors: ${counts.err}`, 'ok');
   setProgress(queue.length, queue.length);
+  playDone();
   const assoc = getAssoc();
   if (assoc) {
     fetch(`admin_batch_gpx.php?action=record_run&association=${encodeURIComponent(assoc)}&imported=${counts.imported}`)
@@ -877,45 +740,3 @@ function clearLog() { document.getElementById('log').innerHTML = ''; }
 </body>
 </html>
 
-<?php
-// ── Build GPX XML from SMP points array ──────────────────────────────────────
-function _batch_track_distance(array $points): float {
-    $total = 0.0; $prev = null;
-    foreach ($points as $pt) {
-        if ($prev !== null) {
-            $total += haversine_distance(
-                floatval($prev['latitude']), floatval($prev['longitude']),
-                floatval($pt['latitude']),  floatval($pt['longitude'])
-            );
-        }
-        $prev = $pt;
-    }
-    return $total;
-}
-
-function _batch_build_gpx(array $points, string $title, string $callsign): string {
-    $safe_title    = htmlspecialchars($title,    ENT_XML1);
-    $safe_callsign = htmlspecialchars($callsign, ENT_XML1);
-    $trkpts = '';
-    foreach ($points as $pt) {
-        $lat = floatval($pt['latitude']);
-        $lon = floatval($pt['longitude']);
-        $ele = floatval($pt['altitude']);
-        if ($ele > 0 && $ele < 9) $ele *= 1000;
-        $trkpts .= sprintf(
-            "    <trkpt lat=\"%.7f\" lon=\"%.7f\"><ele>%.1f</ele></trkpt>\n",
-            $lat, $lon, $ele
-        );
-    }
-    return <<<XML
-<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="SOTAPlanner-BatchImport"
-     xmlns="http://www.topografix.com/GPX/1/1">
-  <metadata><name>{$safe_title}</name>
-    <desc>Imported from SOTA Mapping Project. Submitted by {$safe_callsign}</desc>
-  </metadata>
-  <trk><name>{$safe_title}</name><trkseg>
-{$trkpts}  </trkseg></trk>
-</gpx>
-XML;
-}

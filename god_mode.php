@@ -185,6 +185,39 @@ $stats = [
     'global_gpx'      => $db->query("SELECT COUNT(*) FROM global_gpx_tracks")->fetchColumn(),
 ];
 
+// ── GPX import progress stats ────────────────────────────────────────────────
+require_once __DIR__ . '/sota_cache_helper.php';
+
+// Cache the total summit count in app_settings (re-read gz file at most once/day)
+$gpx_total_cache = 0;
+$cached_total_row = $db->query("SELECT setting_value, updated_at FROM app_settings WHERE setting_key = 'sota_cache_summit_count'")->fetch();
+if ($cached_total_row && strtotime($cached_total_row['updated_at']) > time() - 86400) {
+    $gpx_total_cache = (int)$cached_total_row['setting_value'];
+} else {
+    // Read from gz file — 2MB, fast enough to do once a day
+    if (file_exists(SOTA_CACHE_FILE)) {
+        $gz = @gzopen(SOTA_CACHE_FILE, 'rb');
+        if ($gz) {
+            $n = 0;
+            while (!gzeof($gz)) { $l = gzgets($gz, 64); if ($l && strpos($l, '/') !== false) $n++; }
+            gzclose($gz);
+            $gpx_total_cache = $n;
+            $db->prepare("INSERT INTO app_settings (setting_key, setting_value, updated_at) VALUES ('sota_cache_summit_count', ?, NOW()) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()")->execute([$n]);
+        }
+    }
+}
+
+$gpx_progress = [
+    'total'       => $gpx_total_cache,
+    'checked'     => (int)$db->query("SELECT COUNT(DISTINCT sota_ref) FROM (SELECT sota_ref FROM global_gpx_checked UNION SELECT sota_ref FROM global_gpx_tracks) AS combined")->fetchColumn(),
+    'has_track'   => (int)$db->query("SELECT COUNT(*) FROM global_gpx_tracks")->fetchColumn(),
+    'no_track'    => (int)$db->query("SELECT COUNT(*) FROM global_gpx_checked WHERE tracks_found = 0")->fetchColumn(),
+    'has_trail'   => (int)$db->query("SELECT COUNT(*) FROM global_gpx_tracks WHERE trailhead_lat IS NOT NULL AND trailhead_lon IS NOT NULL")->fetchColumn(),
+];
+$gpx_progress['remaining']  = max(0, $gpx_progress['total'] - $gpx_progress['checked']);
+$gpx_progress['pct']        = $gpx_progress['total'] > 0 ? round($gpx_progress['checked'] / $gpx_progress['total'] * 100, 1) : 0;
+$gpx_progress['trail_pct']  = $gpx_progress['has_track'] > 0 ? round($gpx_progress['has_trail'] / $gpx_progress['has_track'] * 100, 1) : 0;
+
 $banner_raw     = $db->query("SELECT setting_value FROM app_settings WHERE setting_key = 'sitewide_banner'")->fetchColumn();
 $current_banner = $banner_raw ? json_decode($banner_raw, true) : null;
 
@@ -247,6 +280,33 @@ try {
     // Table not yet created — run db_migrate.php
     $activity_feed = [];
     $activity_feed_source = 'none';
+}
+
+// ── Cron log reader ──────────────────────────────────────────────────────────
+$cron_log_path   = dirname(__DIR__) . '/logs/gpx_cron.log';
+$cron_log_lines  = [];
+$cron_last_run   = null;
+$cron_last_stats = null;
+if (file_exists($cron_log_path) && is_readable($cron_log_path)) {
+    $fsize = filesize($cron_log_path);
+    $read  = min($fsize, 40960); // tail last 40 KB
+    $fh    = fopen($cron_log_path, 'rb');
+    fseek($fh, -$read, SEEK_END);
+    $chunk = fread($fh, $read);
+    fclose($fh);
+    $raw_lines = explode("\n", $chunk);
+    if ($fsize > $read && count($raw_lines) > 1) array_shift($raw_lines); // drop partial first line
+    $cron_log_lines = array_slice(array_values(array_filter($raw_lines, fn($l) => $l !== '')), -180);
+    foreach (array_reverse($cron_log_lines) as $line) {
+        if (preg_match('/\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] ((?:Done|GPX cron|Trailhead cron).+)/', $line, $m)) {
+            if (!$cron_last_run) { $cron_last_run = $m[1]; $cron_last_stats = $m[2]; }
+        }
+        if (preg_match('/\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] Done/', $line, $m)) {
+            $cron_last_run   = $m[1];
+            $cron_last_stats = trim(substr($line, strpos($line, 'Done')));
+            break;
+        }
+    }
 }
 
 $gpx_dir      = __DIR__ . '/gpx_files';
@@ -727,6 +787,64 @@ select.form-input { cursor: pointer; }
             </div>
         </div>
 
+        <!-- GPX Import Progress -->
+        <?php
+        $pct = $gpx_progress['pct'];
+        $remaining = $gpx_progress['remaining'];
+        $is_done = $remaining === 0 && $gpx_progress['total'] > 0;
+        $bar_color = $is_done ? 'var(--green)' : 'var(--accent)';
+        ?>
+        <div class="card" style="margin-bottom:var(--sp-4);">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:var(--sp-4); margin-bottom:var(--sp-4);">
+                <div style="font-weight:600; font-size:1rem;">Initial Import Progress</div>
+                <?php if ($is_done): ?>
+                    <span style="font-size:0.78rem; font-weight:700; color:var(--green); background:var(--green-bg); border:1px solid oklch(85% 0.07 155); border-radius:20px; padding:0.2rem 0.7rem;">Complete</span>
+                <?php else: ?>
+                    <span style="font-size:0.78rem; font-weight:600; color:var(--accent-2); background:var(--accent-bg); border:1px solid var(--accent-border); border-radius:20px; padding:0.2rem 0.7rem;">In progress</span>
+                <?php endif; ?>
+            </div>
+
+            <!-- Progress bar -->
+            <div style="background:var(--bg-3); border-radius:100px; height:10px; margin-bottom:var(--sp-4); overflow:hidden;">
+                <div style="background:<?= $bar_color ?>; width:<?= $pct ?>%; height:100%; border-radius:100px; transition:width 0.3s;"></div>
+            </div>
+
+            <!-- Stat grid -->
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:var(--sp-3);">
+                <div style="background:var(--bg); border:1px solid var(--border); border-radius:var(--r-md); padding:0.75rem 1rem;">
+                    <div style="font-size:1.3rem; font-weight:700; color:var(--ink); line-height:1.1;"><?= number_format($gpx_progress['checked']) ?></div>
+                    <div style="font-size:0.72rem; color:var(--ink-3); font-weight:600; text-transform:uppercase; letter-spacing:0.05em; margin-top:0.25rem;">Checked</div>
+                    <div style="font-size:0.75rem; color:var(--ink-3); margin-top:0.1rem;"><?= $pct ?>% of <?= number_format($gpx_progress['total']) ?></div>
+                </div>
+                <div style="background:var(--bg); border:1px solid var(--border); border-radius:var(--r-md); padding:0.75rem 1rem;">
+                    <div style="font-size:1.3rem; font-weight:700; color:var(--green); line-height:1.1;"><?= number_format($gpx_progress['has_track']) ?></div>
+                    <div style="font-size:0.72rem; color:var(--ink-3); font-weight:600; text-transform:uppercase; letter-spacing:0.05em; margin-top:0.25rem;">With Route</div>
+                    <div style="font-size:0.75rem; color:var(--ink-3); margin-top:0.1rem;">community GPX found</div>
+                </div>
+                <div style="background:var(--bg); border:1px solid var(--border); border-radius:var(--r-md); padding:0.75rem 1rem;">
+                    <div style="font-size:1.3rem; font-weight:700; color:var(--ink-3); line-height:1.1;"><?= number_format($gpx_progress['no_track']) ?></div>
+                    <div style="font-size:0.72rem; color:var(--ink-3); font-weight:600; text-transform:uppercase; letter-spacing:0.05em; margin-top:0.25rem;">No Route</div>
+                    <div style="font-size:0.75rem; color:var(--ink-3); margin-top:0.1rem;">nothing on SOTAmaps</div>
+                </div>
+                <div style="background:var(--bg); border:1px solid var(--border); border-radius:var(--r-md); padding:0.75rem 1rem;">
+                    <div style="font-size:1.3rem; font-weight:700; color:var(--blue); line-height:1.1;"><?= number_format($gpx_progress['has_trail']) ?></div>
+                    <div style="font-size:0.72rem; color:var(--ink-3); font-weight:600; text-transform:uppercase; letter-spacing:0.05em; margin-top:0.25rem;">With Trailhead</div>
+                    <div style="font-size:0.75rem; color:var(--ink-3); margin-top:0.1rem;"><?= $gpx_progress['trail_pct'] ?>% of routes</div>
+                </div>
+                <div style="background:<?= $is_done ? 'var(--green-bg)' : 'var(--accent-bg)' ?>; border:1px solid <?= $is_done ? 'oklch(85% 0.07 155)' : 'var(--accent-border)' ?>; border-radius:var(--r-md); padding:0.75rem 1rem;">
+                    <div style="font-size:1.3rem; font-weight:700; color:<?= $is_done ? 'var(--green)' : 'var(--accent)' ?>; line-height:1.1;"><?= number_format($remaining) ?></div>
+                    <div style="font-size:0.72rem; color:var(--ink-3); font-weight:600; text-transform:uppercase; letter-spacing:0.05em; margin-top:0.25rem;"><?= $is_done ? 'Done!' : 'Remaining' ?></div>
+                    <div style="font-size:0.75rem; color:var(--ink-3); margin-top:0.1rem;"><?= $is_done ? 'Enable cron jobs ↓' : 'use Batch GPX Import →' ?></div>
+                </div>
+            </div>
+
+            <?php if (!$is_done && $remaining > 0): ?>
+            <div style="margin-top:var(--sp-3); font-size:0.8rem; color:var(--ink-3); line-height:1.5;">
+                Use the <strong>Batch GPX Import</strong> tool below to continue. When Remaining reaches 0, run <strong>Trailhead Lookup</strong> once, then enable the three DreamHost cron jobs.
+            </div>
+            <?php endif; ?>
+        </div>
+
         <div class="card" style="margin-bottom:var(--sp-4);">
             <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:var(--sp-6);">
                 <div>
@@ -767,6 +885,49 @@ select.form-input { cursor: pointer; }
                 <a href="admin_trailhead_osm.php" class="btn btn-primary" style="flex-shrink:0;">Open →</a>
             </div>
         </div>
+
+        <!-- Cron Activity Log -->
+        <div class="section-head" style="margin-top:var(--sp-8);">
+            <div>
+                <h2>Cron Activity Log</h2>
+                <p>Output from the automated GPX and trailhead cron jobs. Updates daily at midnight and weekly on Saturdays.</p>
+            </div>
+            <a href="god_mode.php?tab=data" class="btn btn-ghost btn-sm">Refresh</a>
+        </div>
+
+        <?php if (empty($cron_log_lines)): ?>
+        <div class="card" style="margin-bottom:var(--sp-4);">
+            <div style="font-size:0.85rem; color:var(--ink-3);">No log file yet — the log appears here once the cron job has run for the first time.</div>
+        </div>
+        <?php else: ?>
+        <div class="card" style="padding:0; margin-bottom:var(--sp-4);">
+            <?php if ($cron_last_run): ?>
+            <div style="padding:0.6rem 1rem; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
+                <span style="font-size:0.78rem; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.05em;">Last run</span>
+                <span style="font-size:0.82rem; color:var(--ink-2); font-family:var(--font-mono);"><?= htmlspecialchars($cron_last_run) ?></span>
+                <?php if ($cron_last_stats): ?>
+                <span style="font-size:0.82rem; color:var(--ink-3);"><?= htmlspecialchars($cron_last_stats) ?></span>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+            <div id="cron-log-box" style="background:#1a1a1a; border-radius:0 0 var(--r-lg) var(--r-lg); font-family:var(--font-mono); font-size:0.74rem; line-height:1.65; padding:0.9rem 1rem; max-height:420px; overflow-y:auto;">
+                <?php foreach ($cron_log_lines as $line):
+                    $esc = htmlspecialchars($line);
+                    if (str_contains($line, '✓') || str_contains($line, 'Done —')) $c = '#4ade80';
+                    elseif (str_contains($line, '✗') || str_contains($line, 'Error')) $c = '#f87171';
+                    elseif (str_contains($line, '⏭') || str_contains($line, 'Capped')) $c = '#facc15';
+                    elseif (str_contains($line, '·') || str_contains($line, 'no tracks')) $c = '#888';
+                    elseif (str_contains($line, str_repeat('-', 20))) $c = '#333';
+                    else $c = '#60a5fa';
+                ?>
+                <div style="color:<?= $c ?>"><?= $esc ?></div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <script>
+        (function(){ var b = document.getElementById('cron-log-box'); if(b) b.scrollTop = b.scrollHeight; })();
+        </script>
+        <?php endif; ?>
 
     <!-- ── CLEANUP ── -->
     <?php elseif ($active_tab === 'cleanup'): ?>

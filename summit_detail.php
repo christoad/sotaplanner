@@ -564,6 +564,8 @@ $stmt = $db->prepare("SELECT * FROM summit_notes WHERE summit_id = ? ORDER BY cr
 $stmt->execute([$summit_id]);
 $notes = $stmt->fetchAll();
 
+$trailhead_needs_validation = !empty($summit['trailhead_lat']) && empty($summit['trailhead_manual']);
+
 $selected_address = getSelectedAddress($db);
 
 // Auto-calculate drive time on first load if it's missing and we have an address + coordinates
@@ -1533,6 +1535,12 @@ if ($tl_show) {
               <span id="trailhead-coords-display" style="font-family:var(--font-mono); font-size:0.7rem; color:var(--ink-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><?= htmlspecialchars($summit['trailhead_lat'] ?? '') ?>, <?= htmlspecialchars($summit['trailhead_lng'] ?? '') ?></span>
               <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0; height:26px; padding:0 0.5rem; font-size:0.75rem;" onclick="resetTrailhead()">Reset</button>
             </div>
+            <?php if ($trailhead_needs_validation): ?>
+            <div id="trailhead-validate-banner" style="margin-top:0.4rem; background:var(--orange-bg); border:1px solid oklch(84% 0.08 58); border-radius:var(--r-md); padding:0.45rem 0.75rem; display:flex; align-items:center; justify-content:space-between; gap:0.75rem;">
+              <span style="font-size:0.78rem; color:var(--orange); line-height:1.3;">Auto-detected trailhead — check the pin on the map and right-click to move it if needed.</span>
+              <button type="button" class="btn btn-sm" style="flex-shrink:0; background:var(--orange); color:#fff; height:28px; padding:0 0.6rem; font-size:0.75rem; white-space:nowrap;" onclick="confirmTrailhead()">Looks good</button>
+            </div>
+            <?php endif; ?>
             <input type="hidden" name="trailhead_lat" id="trailhead-lat-hidden" value="<?= htmlspecialchars($summit['trailhead_lat'] ?? '') ?>">
             <input type="hidden" name="trailhead_lng" id="trailhead-lng-hidden" value="<?= htmlspecialchars($summit['trailhead_lng'] ?? '') ?>">
           </div>
@@ -2149,7 +2157,30 @@ document.getElementById('ctx-set-trailhead').addEventListener('click', function(
     .then(r => r.json())
     .then(d => showMapToast(d.ok ? '✓ Trailhead saved — no other save needed' : 'Error saving trailhead'))
     .catch(() => showMapToast('Error saving trailhead'));
+
+  // Moving the pin counts as confirming — dismiss the validation banner
+  const banner = document.getElementById('trailhead-validate-banner');
+  if (banner) banner.remove();
 });
+
+function confirmTrailhead() {
+  const lat = document.getElementById('trailhead-lat-hidden').value;
+  const lng = document.getElementById('trailhead-lng-hidden').value;
+  const fd = new FormData();
+  fd.append('set_trailhead', '1');
+  fd.append('trailhead_lat', lat);
+  fd.append('trailhead_lng', lng);
+  fetch('summit_detail.php?id=<?= $summit_id ?>', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        const banner = document.getElementById('trailhead-validate-banner');
+        if (banner) banner.remove();
+        showMapToast('✓ Trailhead confirmed');
+      }
+    })
+    .catch(() => showMapToast('Error confirming trailhead'));
+}
 
 function showMapToast(msg) {
   let t = document.getElementById('map-toast');

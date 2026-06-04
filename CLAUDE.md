@@ -19,30 +19,44 @@ Context: VK3ARR (SOTA team) granted an SSO client for identity login. Chris sent
 
 **Track 4 — Batch data pre-population (Global GPX Library):**
 
-`admin_batch_gpx.php` has been reworked into a **global GPX library** system. Architecture:
+Infrastructure is **fully built and deployed to production**. As of 2026-06-03: **1,816 of 181,126 summits checked** (1,137 with routes, 679 no route found, 873 with trailhead). ~179,310 remain. The three DreamHost cron jobs are **not yet in the crontab** — they need to be added once the initial import strategy is decided (see below).
 
-- New `global_gpx_tracks` table: one row per `sota_ref`, keyed globally (not per planning group). Populated by the admin batch importer from the SOTAmaps API.
-- GPX files for global tracks go in `gpx_files/global/` on the server.
-- `gpx_tracks` table gained a `from_global_library` flag — rows with this flag=1 point to the shared global file (no file copy).
-- When a user nominates a summit, `nominate.php` checks `global_gpx_tracks` and auto-links the track + fills in distance/elevation/trailhead.
-- When the batch importer imports a new global track, it retroactively backfills `gpx_tracks` for any existing planning-group summits that have no track yet.
-- The batch importer UI now has an **association dropdown** — pick one association at a time, shows progress within that association.
-- Summit detail shows "Community route from SOTA Mapping Project" attribution when `from_global_library=1`.
-- Deletion of a user's GPX track does not unlink the physical file when `from_global_library=1`.
+**What's built:**
+- `global_gpx_tracks` table — one row per imported summit, keyed globally
+- `global_gpx_checked` table — one row per summit ever queried against SOTAmaps (tracks_found=0 means nothing found; used to avoid re-querying and schedule retries)
+- `gpx_import_lib.php` — shared library with the canonical `import_sotamaps_track()` function used by both the browser importer and the cron
+- `batch_gpx_cron.php` — CLI cron for new-summit discovery and no-track retries
+- `trailhead_osm_cron.php` — CLI cron for OSM trailhead lookup on newly imported tracks
+- **Progress panel** in God Mode → Data Tools tab — shows Checked / With Route / No Route / With Trailhead / Remaining with a progress bar. Total count is cached in `app_settings` key `sota_cache_summit_count` (refreshed once/day from the gz file).
+- **Login page badge** on `login.php` — shows count of summits in `global_gpx_tracks` with `trailhead_lat IS NOT NULL AND trailhead_lon IS NOT NULL` as a live stat in the hero.
 
-**Trailhead extraction:** The batch importer now extracts trailhead lat/lon from the first vs. last trackpoint (lower elevation = trailhead). Stored in `global_gpx_tracks.trailhead_lat/lon` and copied to `summits.trailhead_lat/lng` when the summit has none.
+**What remains:**
+1. Complete the initial import — **recommended approach: add the cron to `/home/chrisr069` crontab (via `crontab -e` over SSH) running hourly at `--limit=2000 --delay=1000`**. At 48,000/day this finishes in ~4 days with no browser tab required. Also add trailhead cron at the same frequency (offset 30 min). Once Remaining hits 0, swap both to the lighter steady-state schedule.
+2. When Remaining = 0: run `admin_trailhead_osm.php` once to catch any stragglers, then replace hourly cron entries with steady-state daily/weekly jobs.
 
-**Deployment status:** Code is built on `dev` branch. Requires `db_migrate.php` to be run on production before first use.
+**Crontab lines for the initial catch-up phase (hourly, aggressive):**
+```
+0 * * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=new --limit=2000 --delay=1000 >> /home/chrisr069/logs/gpx_cron.log 2>&1
+30 * * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/trailhead_osm_cron.php >> /home/chrisr069/logs/gpx_cron.log 2>&1
+```
+
+**Crontab lines for steady-state (after initial import complete):**
+```
+5 0 * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=new --limit=500 >> /home/chrisr069/logs/gpx_cron.log 2>&1
+30 0 * * 6 /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=retry --limit=500 >> /home/chrisr069/logs/gpx_cron.log 2>&1
+0 1 * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/trailhead_osm_cron.php >> /home/chrisr069/logs/gpx_cron.log 2>&1
+```
 
 **Important lessons learned the hard way:**
 - Staging (christopherreddick.com/sotaplanner) shares the production database. The importer blocks itself if run on staging (`HTTP_HOST` check). Always run batch tools on production only.
+- GPX files for global tracks live in `gpx_files/global/` on the server. When `from_global_library=1`, never delete the physical file on track removal.
 
-**OSM Trailhead Lookup (`admin_trailhead_osm.php`):**
-Queries the Overpass API (OpenStreetMap) for `highway=trailhead`, `tourism=trailhead`, and non-private `amenity=parking` within 5 km of each summit that lacks a trailhead location. Picks the nearest result, prioritising dedicated trailhead tags over generic parking. Writes to `summits.trailhead_lat/lng`. Unlocks drive-time calculations for those summits. Admin-only. Production-only. Same start/pause/stop UI as the GPX importer. Default delay 1.5 s between requests (Overpass is a public API). Run at `sotaplanner.com/admin_trailhead_osm.php` or via the admin panel link.
+**OSM Trailhead Lookup:**
+- **Browser tool** (`admin_trailhead_osm.php`): interactive start/pause/stop UI. Queries Overpass within 400m of the GPX low-elevation endpoint. Falls back to the GPX endpoint itself. Default 1.5s delay. Run manually after the initial GPX import.
+- **Cron script** (`trailhead_osm_cron.php`): CLI-only, processes `global_gpx_tracks` rows missing a trailhead (newest-first so recently cron-imported tracks get filled promptly). 100/run at 2s delay.
 
-**Next steps for data pre-population:**
-
-1. **Drive-up summit status from Google My Maps:** A public map exists marking SOTA summits reachable by car (no hiking required). URL: `https://www.google.com/maps/@39.0603443,-99.2805547,3153051m/data=!3m1!1e3!4m2!6m1!1s1JPDeCfGjFoAVlJlXkXvCPxv5-SvDOt4?entry=ttu` — research how to extract the underlying KML from a public Google My Maps layer and import drive-up status into the summits table.
+**Remaining data pre-population idea:**
+- **Drive-up summit status from Google My Maps:** A public map exists marking SOTA summits reachable by car (no hiking required). URL: `https://www.google.com/maps/@39.0603443,-99.2805547,3153051m/data=!3m1!1e3!4m2!6m1!1s1JPDeCfGjFoAVlJlXkXvCPxv5-SvDOt4?entry=ttu` — research how to extract the underlying KML from a public Google My Maps layer and import drive-up status into the summits table.
 
 **Track 3 — SOTAwatch write API (post/delete spots and alerts):**
 Research complete and tested 2026-05-28. All endpoints and auth headers are fully understood (see "SOTAwatch Write API" section below). `test_sotawatch_write.php` exists on dev for testing. oauth_callback.php updated to store `id_token`. **Blocked on VK3ARR** — our `sotaplanner` client returns HTTP 403 on the write API despite valid tokens. Chris has messaged VK3ARR requesting write access. Once granted, re-run the test page to confirm, then build the real UI (spot/alert buttons on summit_detail.php).
@@ -75,6 +89,7 @@ Before merging, always:
   rsync -avz --exclude='.git' --exclude='.claude' --exclude='.playwright-mcp' --exclude='playwright' "/Users/chris/Dropbox/ham - amateur radio/sotaplanner/" dreamhost-sota:/home/chrisr069/christopherreddick.com/sotaplanner/
   ```
 - After confirming on staging, merge `dev` → `main` in GitHub Desktop, then deploy to production as usual.
+- **GPX files + SOTA cache** are synced from production → staging daily at 2am via `/home/chrisr069/sync_sites.sh`. No need to manually copy GPX files when testing on staging.
 
 ---
 
@@ -286,11 +301,96 @@ Key tables:
 - `summits` — one row per summit per group (or shared via source_group_id)
 - `addresses` — starting addresses per group
 - `activations` — logged past activations per summit
-- `gpx_tracks` — uploaded/analyzed GPX files with parsed stats
+- `gpx_tracks` — uploaded/analyzed GPX files with parsed stats; `from_global_library=1` means the row points to a shared file in `gpx_files/global/`
 - `summit_notes` — free-text notes per summit per user
 - `users` — callsign, name, home address, lat/lng
 - `user_settings` — per-user preferences (default activation time)
-- `app_settings` — key-value store for per-group settings (e.g. selected address ID)
+- `app_settings` — key-value store for per-group settings (e.g. selected address ID); also stores `sota_cache_summit_count` (total SOTA summits from gz cache, refreshed daily) used by the God Mode progress panel
+- `global_gpx_tracks` — global GPX library; one row per `sota_ref` that has an imported community route; keyed globally, not per planning group; columns include `trailhead_lat` / `trailhead_lon` (note: `_lon` not `_lng`)
+- `global_gpx_checked` — audit log of every summit ever queried against SOTAmaps; `tracks_found=0` means nothing was available; used by cron to avoid redundant re-queries and to schedule periodic retries
+
+---
+
+## Data Gathering Architecture
+
+The app pre-populates summit data (GPX routes, trailheads, elevation/distance stats) from external community sources so that when a user nominates a summit, it already has route and planning data ready. This is a multi-layer pipeline with browser-based tools for the initial load and background cron jobs for ongoing maintenance.
+
+### Data Sources
+
+| Source | What it provides | API |
+|---|---|---|
+| **SOTA Mapping Project** | Community-submitted GPX routes | `https://api-db.sota.org.uk/smp/gpx/summit/ASSOC/REF` |
+| **OpenStreetMap / Overpass** | Tagged trailheads and parking areas | `https://overpass-api.de/api/interpreter` |
+
+For SOTAmaps, each summit may have multiple submitted tracks — the shortest-distance track is selected (best for planning; avoids long wandering routes). For OSM, the GPX track's low-elevation endpoint is used as the search origin, queried within 400m. Dedicated trailhead tags (`highway=trailhead`, `tourism=trailhead`) are preferred over generic parking. If nothing qualifies, the GPX low-elevation endpoint itself becomes the trailhead coordinate.
+
+### Key Files
+
+| File | Type | Purpose |
+|---|---|---|
+| `gpx_import_lib.php` | Shared library | The single canonical `import_sotamaps_track($db, $sota_ref)` function. Fetches from SOTAmaps, saves GPX file, analyzes, inserts into `global_gpx_tracks`, backfills `gpx_tracks` for any existing nominated summits, and records the check result in `global_gpx_checked`. Used by both the browser tool and the cron. |
+| `admin_batch_gpx.php` | Browser tool (admin) | Association-by-association import UI with live log, progress bar, pause/stop, and completion chime. Use for the one-time initial full import. Writes to `global_gpx_checked` via the shared lib. |
+| `admin_trailhead_osm.php` | Browser tool (admin) | Interactive OSM trailhead lookup — start/pause/stop UI. Processes all `global_gpx_tracks` rows missing a trailhead. Run once after the initial GPX import. Default 1.5s delay. |
+| `batch_gpx_cron.php` | CLI cron | Two modes: `--mode=new` (summits in SOTA cache not yet in `global_gpx_checked`) and `--mode=retry` (summits with `tracks_found=0` older than 30 days). Default `--limit=500`, `--delay=1500`. |
+| `trailhead_osm_cron.php` | CLI cron | Queries OSM for any `global_gpx_tracks` rows that are missing a trailhead. Processes newest-first (so recently cron-imported tracks get trailheads promptly). Default `--limit=100`, `--delay=2000`. |
+
+### How `global_gpx_checked` Works
+
+This table is the key to efficient ongoing cron operation:
+- Every time a summit is queried against SOTAmaps — whether a track was found or not — a row is written with `last_checked = NOW()` and `tracks_found = N` (0 if nothing).
+- The `--mode=new` cron finds summits in the SOTA cache with **no row in `global_gpx_checked` at all** — these are genuinely new summits added to SOTA since the last scan.
+- The `--mode=retry` cron finds rows where `tracks_found = 0` and `last_checked < 30 days ago` — retrying in case community tracks have since been uploaded.
+- Summits that have been imported never appear in either queue because they have a row in `global_gpx_checked` with `tracks_found > 0`.
+- The table was backfilled from `global_gpx_tracks` when first created, so previously imported summits won't be re-processed.
+
+### Initial Full Import Workflow (one-time, in progress as of 2026-06-03)
+
+**Status: 1,816 of 181,126 checked (~1%). Recommended approach going forward: enable hourly cron (not browser tool).**
+
+The browser tool (`admin_batch_gpx.php`) is fine for spot-checking but too slow for the remaining 179K summits. Instead, add these two lines to the server crontab via `ssh dreamhost-sota "crontab -e"`:
+
+```
+0 * * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=new --limit=2000 --delay=1000 >> /home/chrisr069/logs/gpx_cron.log 2>&1
+30 * * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/trailhead_osm_cron.php >> /home/chrisr069/logs/gpx_cron.log 2>&1
+```
+
+At 48,000 summits/day this completes in ~4 days. Monitor progress in **God Mode → Data Tools → Initial Import Progress** panel. When Remaining = 0, replace with the steady-state schedule below.
+
+### Cron Jobs (steady-state, after initial import)
+
+**Not yet active.** Add to crontab via `ssh dreamhost-sota "crontab -e"` after Remaining = 0.
+
+```
+5 0 * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=new --limit=500 >> /home/chrisr069/logs/gpx_cron.log 2>&1
+30 0 * * 6 /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=retry --limit=500 >> /home/chrisr069/logs/gpx_cron.log 2>&1
+0 1 * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/trailhead_osm_cron.php >> /home/chrisr069/logs/gpx_cron.log 2>&1
+```
+
+All three log to `/home/chrisr069/logs/gpx_cron.log`. In steady state the daily new-summits job has near-zero work — SOTA adds only ~100–200 summits per year globally.
+
+### Cron Log Viewer
+
+The log is visible without SSH in **God Mode → Data Tools tab → Cron Activity Log**. Shows the last 180 lines color-coded: green = success, red = error, yellow = skip/capped, gray = no-tracks/separator. Auto-scrolls to most recent entry. Includes a "Last run" summary line parsed from the log.
+
+### Rate Limiting
+
+| Tool | Delay |
+|---|---|
+| Browser GPX importer | 500ms default (adjustable in UI) |
+| Browser trailhead tool | 1500ms default (adjustable in UI) |
+| GPX cron | 1500ms (`--delay=1500`) |
+| Trailhead cron | 2000ms (`--delay=2000`) |
+
+Overpass API is a shared public service — never reduce trailhead delays below 1500ms.
+
+### What Happens at Nomination Time
+
+When a user nominates a summit (`nominate.php`), the code checks `global_gpx_tracks` for a matching `sota_ref`. If found:
+- A row is inserted into `gpx_tracks` with `from_global_library=1`, pointing to the shared file in `gpx_files/global/`
+- `summits.hike_distance_mi` and `hike_elevation_gain_ft` are pre-filled from the global track stats
+- `summits.trailhead_lat/lng` is pre-filled if the global track has a trailhead stored
+- Summit detail shows "Community route from SOTA Mapping Project" attribution
+- Deleting the user's GPX track does **not** delete the physical file when `from_global_library=1`
 
 ---
 
