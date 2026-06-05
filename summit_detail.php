@@ -35,6 +35,7 @@ $error = '';
 
 // Get current planning group (needed for all handlers)
 $current_group = getCurrentPlanningGroup($db);
+$user_units = getUserUnits($db);
 
 // Flag: fetch GPX from SOTAmaps in the background after page load
 $fetch_gpx_async        = isset($_GET['fetch_gpx']) && $_GET['fetch_gpx'] === '1';
@@ -540,6 +541,17 @@ if ($current_group) {
     }
 }
 
+// Lazy fix: if track_type is the migration default and the file exists, re-detect it now.
+// Runs once per affected row, then the DB value is correct and this block skips.
+if ($gpx_data && $gpx_data['track_type'] === 'round-trip' && file_exists($gpx_data['file_path'])) {
+    $re = analyze_gpx_track($gpx_data['file_path'], null);
+    if ($re && $re['track_type'] !== 'round-trip') {
+        $db->prepare("UPDATE gpx_tracks SET track_type = ? WHERE id = ?")
+           ->execute([$re['track_type'], $gpx_data['id']]);
+        $gpx_data['track_type'] = $re['track_type'];
+    }
+}
+
 // User's preferred activation/radio time — used for planning, not overridden by GPX
 $_us = $db->prepare("SELECT default_activation_time_min FROM user_settings WHERE user_callsign = ?");
 $_us->execute([$_SESSION['sota_callsign']]);
@@ -588,6 +600,7 @@ if (empty($summit['drive_time_min']) && $selected_address && !empty($summit['lat
 
 // ── SOTA API: official activation history for group members ─────────────────
 $sota_member_activations = [];
+$last_global_activation  = null;
 if ($current_group && !empty($summit['sota_ref'])) {
     // Collect all group member callsigns (owner + members)
     $member_stmt = $db->prepare("
@@ -638,6 +651,14 @@ if ($current_group && !empty($summit['sota_ref'])) {
             }
         }
         usort($sota_member_activations, fn($a,$b) => strcmp($b['date'], $a['date']));
+
+        // Most recent activation globally (anyone, worldwide)
+        $sorted_all = $all_sota_activations;
+        usort($sorted_all, fn($a,$b) => strcmp($b['activationDate'] ?? '', $a['activationDate'] ?? ''));
+        $last_global_activation = !empty($sorted_all) ? [
+            'date'     => $sorted_all[0]['activationDate'] ?? '',
+            'callsign' => strtoupper(trim($sorted_all[0]['ownCallsign'] ?? '')),
+        ] : null;
 
         // Push the most recent group-member activation back to the summits table
         // so the dashboard last-activated field stays current
@@ -989,14 +1010,21 @@ if ($tl_show) {
     /* GPX fetch loading overlay */
     .gpx-loading-overlay {
       position: absolute; inset: 0; z-index: 10;
-      background: rgba(247,246,243,0.88);
+      background: rgba(20,19,18,0.48);
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 0.75rem; border-radius: inherit;
-      backdrop-filter: blur(2px);
+      border-radius: inherit;
       transition: opacity 0.4s;
     }
     .gpx-loading-overlay.hidden { opacity: 0; pointer-events: none; }
-    /* Mountain trace loader — replaces generic spinner */
+    .gpx-loading-card {
+      background: #fff;
+      border-radius: var(--r-xl);
+      padding: 1.5rem 2rem;
+      display: flex; flex-direction: column; align-items: center;
+      gap: 0.65rem;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.22);
+    }
+    /* Mountain trace loader */
     .gpx-loading-svg { width: 72px; height: 72px; overflow: visible; }
     .gpx-logo-path {
       stroke-dasharray: 116;
@@ -1042,7 +1070,7 @@ if ($tl_show) {
     }
     .gpx-loading-label {
       font-size: 0.85rem; font-weight: 500; color: var(--ink-2);
-      text-align: center; padding: 0 1rem; line-height: 1.4;
+      text-align: center; line-height: 1.4;
     }
     .gpx-loading-sub {
       font-size: 0.75rem; color: var(--ink-3);
@@ -1220,6 +1248,7 @@ if ($tl_show) {
             <?php if (getCurrentCallsign() === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
                 <a href="god_mode.php">God Mode</a>
             <?php endif; ?>
+            <a href="user_settings.php">Settings</a>
             <a href="logout.php">Sign Out</a>
         </div>
     </div>
@@ -1422,22 +1451,22 @@ if ($tl_show) {
 
       <!-- Map -->
       <div class="map-wrap" id="map-wrap">
-        <?php if ($show_nomination_overlay): ?>
         <div class="gpx-loading-overlay" id="gpx-loading-overlay">
-          <svg class="gpx-loading-svg" viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="55" cy="55" r="50" fill="none" stroke="#1c1b19" stroke-width="1.5" opacity="0.2"/>
-            <path class="gpx-logo-path" d="M26,79.5l17-30,7,8,12-20,22,42"
-                  fill="none" stroke="#1c1b19" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-            <circle class="gpx-logo-ring2" cx="62" cy="35.5" r="15" fill="none" stroke-width="0.8"/>
-            <circle class="gpx-logo-ring1" cx="62" cy="35.5" r="9"  fill="none" stroke-width="1.2"/>
-            <circle class="gpx-logo-dot"   cx="62" cy="35.5" r="3.5"/>
-          </svg>
-          <div class="gpx-loading-label"><?= ($fetch_gpx_async && empty($gpx_data)) ? 'Searching SOTA Mapping Project for a community route…' : '' ?></div>
-          <?php if ($fetch_gpx_async && empty($gpx_data)): ?>
-          <div class="gpx-loading-sub">This only happens once</div>
-          <?php endif; ?>
+          <div class="gpx-loading-card">
+            <svg class="gpx-loading-svg" viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="55" cy="55" r="50" fill="none" stroke="#1c1b19" stroke-width="1.5" opacity="0.2"/>
+              <path class="gpx-logo-path" d="M26,79.5l17-30,7,8,12-20,22,42"
+                    fill="none" stroke="#1c1b19" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle class="gpx-logo-ring2" cx="62" cy="35.5" r="15" fill="none" stroke-width="0.8"/>
+              <circle class="gpx-logo-ring1" cx="62" cy="35.5" r="9"  fill="none" stroke-width="1.2"/>
+              <circle class="gpx-logo-dot"   cx="62" cy="35.5" r="3.5"/>
+            </svg>
+            <div class="gpx-loading-label"><?= ($fetch_gpx_async && empty($gpx_data)) ? 'Searching SOTA Mapping Project for a community route…' : '' ?></div>
+            <?php if ($fetch_gpx_async && empty($gpx_data)): ?>
+            <div class="gpx-loading-sub">This only happens once</div>
+            <?php endif; ?>
+          </div>
         </div>
-        <?php endif; ?>
         <div id="summit-map"></div>
         <div class="map-buttons">
           <button type="button" id="btn-base-street"    class="btn btn-sm btn-map-active"  onclick="switchBase('street')">Street</button>
@@ -1487,7 +1516,7 @@ if ($tl_show) {
       <?php $gpx_active = $gpx_data && $gpx_data['use_for_hike_time']; ?>
       <div class="field-row-3" style="margin-bottom:1rem;">
         <div class="form-group" style="margin:0;">
-          <label class="form-label">Distance (<?= getDistanceUnit($current_group['units']) ?>, RT)</label>
+          <label class="form-label">Distance (<?= getDistanceUnit($user_units) ?>, RT)</label>
           <?php if ($gpx_active): ?><div class="gpx-tip" data-tip="Set by GPS track — uncheck 'Use GPS data' to edit"><?php endif; ?>
           <input type="number" class="form-input" name="hike_distance_mi" step="0.01" min="0"
                  value="<?= htmlspecialchars($summit['hike_distance_mi'] ?? '') ?>" placeholder="0.0"
@@ -1495,7 +1524,7 @@ if ($tl_show) {
           <?php if ($gpx_active): ?></div><?php endif; ?>
         </div>
         <div class="form-group" style="margin:0;">
-          <label class="form-label">Elev. Gain (<?= getElevationUnit($current_group['units']) ?>)</label>
+          <label class="form-label">Elev. Gain (<?= getElevationUnit($user_units) ?>)</label>
           <?php if ($gpx_active): ?><div class="gpx-tip" data-tip="Set by GPS track — uncheck 'Use GPS data' to edit"><?php endif; ?>
           <input type="number" class="form-input" name="hike_elevation_gain_ft" min="0"
                  value="<?= htmlspecialchars($summit['hike_elevation_gain_ft'] ?? '') ?>" placeholder="0"
@@ -1598,8 +1627,8 @@ if ($tl_show) {
           <span class="info-label">Elevation</span>
           <span class="info-val">
             <?php
-              $elev_disp = convertElevation($summit['elevation_ft'], $current_group['units']);
-              echo number_format($elev_disp) . ' ' . getElevationUnit($current_group['units']);
+              $elev_disp = convertElevation($summit['elevation_ft'], $user_units);
+              echo number_format($elev_disp) . ' ' . getElevationUnit($user_units);
             ?>
           </span>
         </div>
@@ -1614,22 +1643,43 @@ if ($tl_show) {
         <?php if ($distance_display_mi): ?>
         <div class="info-row">
           <span class="info-label">Distance (RT)</span>
-          <span class="info-val"><?= number_format($distance_display_mi, 1) ?> <?= getDistanceUnit($current_group['units']) ?> <span style="color:var(--ink-3); font-size:0.72rem;"><?= $distance_source ?></span></span>
+          <span class="info-val"><?= number_format($distance_display_mi, 1) ?> <?= getDistanceUnit($user_units) ?> <span style="color:var(--ink-3); font-size:0.72rem;"><?= $distance_source ?></span></span>
         </div>
         <?php endif; ?>
         <?php if ($elevation_gain_display): ?>
         <div class="info-row">
           <span class="info-label">Elevation Gain</span>
-          <span class="info-val"><?= number_format(convertElevation($elevation_gain_display, $current_group['units'])) ?> <?= getElevationUnit($current_group['units']) ?> <span style="color:var(--ink-3); font-size:0.72rem;"><?= $elevation_source ?></span></span>
+          <span class="info-val"><?= number_format(convertElevation($elevation_gain_display, $user_units)) ?> <?= getElevationUnit($user_units) ?> <span style="color:var(--ink-3); font-size:0.72rem;"><?= $elevation_source ?></span></span>
         </div>
         <?php endif; ?>
         <div class="info-row">
           <span class="info-label">Nominated</span>
           <span class="info-val"><?= $summit['nominated_date'] ? date('M j, Y', strtotime($summit['nominated_date'])) : '—' ?></span>
         </div>
-        <div class="info-row" style="border-bottom:none; padding-bottom:0;">
+        <div class="info-row">
           <span class="info-label">Last Activated</span>
-          <span class="info-val"><?= $summit['last_activated_date'] ? date('M j, Y', strtotime($summit['last_activated_date'])) : 'Never' ?></span>
+          <?php if ($last_global_activation && $last_global_activation['date']): ?>
+            <span class="info-val">
+              <span style="font-family:var(--font-mono); font-size:0.8rem;"><?= htmlspecialchars($last_global_activation['callsign']) ?></span>
+              <span style="color:var(--ink-3); font-size:0.78rem; margin-left:0.3rem;"><?= date('M j, Y', strtotime($last_global_activation['date'])) ?></span>
+            </span>
+          <?php else: ?>
+            <span class="info-val">Never</span>
+          <?php endif; ?>
+        </div>
+        <div class="info-row" style="border-bottom:none; padding-bottom:0;">
+          <span class="info-label">By This Group</span>
+          <?php
+            $last_group = $sota_member_activations[0] ?? null;
+          ?>
+          <?php if ($last_group && $last_group['date']): ?>
+            <span class="info-val">
+              <span style="font-family:var(--font-mono); font-size:0.8rem;"><?= htmlspecialchars($last_group['callsign']) ?></span>
+              <span style="color:var(--ink-3); font-size:0.78rem; margin-left:0.3rem;"><?= date('M j, Y', strtotime($last_group['date'])) ?></span>
+            </span>
+          <?php else: ?>
+            <span class="info-val" style="color:var(--ink-4);">Never</span>
+          <?php endif; ?>
         </div>
       </div>
 
@@ -1668,7 +1718,7 @@ if ($tl_show) {
             </div>
           </div>
           <?php else: ?>
-            <div style="font-size:0.78rem; color:var(--ink-3); margin-bottom:0.75rem;">Route-only GPX (no timestamps) — map &amp; elevation data loaded.</div>
+            <div style="font-size:0.78rem; color:var(--ink-3); margin-bottom:0.75rem;">Route-only GPX (no timestamps) — map loaded<?= $gpx_data['elevation_gain'] > 0 ? ', elevation data loaded' : ' (no elevation data in track)' ?>.</div>
           <?php endif; ?>
           <?php
             $track_type_label = ['ascent' => 'Ascent only', 'descent' => 'Descent only', 'round-trip' => 'Round-trip'][$track_type] ?? 'Round-trip';
@@ -2269,6 +2319,7 @@ fetch('load_gpx.php?id=<?= $gpx_data['id'] ?>')
     const elevState = drawElevationProfile(elevPts);
     if (elevState) setupElevMapHover(elevState, map);
     map.fitBounds(L.polyline(coords).getBounds(), { padding: [50, 50] });
+    if (window._dismissGpxOverlay) { window._dismissGpxOverlay(); window._dismissGpxOverlay = null; }
     <?php if ($gpx_data['using_api'] && $gpx_data['activation_zone_polygon']): ?>
     initActivationZone(<?= $gpx_data['activation_zone_polygon'] ?>);
     <?php elseif (!empty($summit['sota_ref'])): ?>
@@ -2284,6 +2335,7 @@ function drawElevationProfile(elevPts) {
   const note   = document.getElementById('elev-note');
   if (!canvas) return null;
   if (elevPts.length < 2) { if (note) note.textContent = 'No elevation data.'; return null; }
+  if (elevPts.every(p => p[2] === 0)) { if (note) note.textContent = 'No elevation data in track.'; return null; }
   const W = Math.floor(canvas.getBoundingClientRect().width) || 600, H = 120;
   const dpr = window.devicePixelRatio || 1;
   canvas.width = W * dpr; canvas.height = H * dpr;
@@ -2295,7 +2347,7 @@ function drawElevationProfile(elevPts) {
     const a = Math.sin(dLat/2)**2 + Math.cos(lat1*r)*Math.cos(lat2*r)*Math.sin(dLon/2)**2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   }
-  const useMetric = <?= $current_group['units'] === 'metric' ? 'true' : 'false' ?>;
+  const useMetric = <?= $user_units === 'metric' ? 'true' : 'false' ?>;
   const eleConv = useMetric ? 1 : 3.28084, distConv = useMetric ? 1 : 0.621371;
   const eleUnit = useMetric ? 'm' : 'ft', distUnit = useMetric ? 'km' : 'mi';
   const data = []; let cumD = 0;
@@ -2507,19 +2559,18 @@ if (flash) setTimeout(() => { flash.style.transition = 'opacity 0.5s'; flash.sty
 })();
 <?php endif; ?>
 
-<?php if ($show_nomination_overlay): ?>
-// ── Nomination overlay — async fetch or fast-path auto-dismiss ────────────────
+// ── Map overlay dismiss logic ─────────────────────────────────────────────────
 (function() {
     const overlay = document.getElementById('gpx-loading-overlay');
-    const label   = overlay ? overlay.querySelector('.gpx-loading-label') : null;
+    if (!overlay) return;
+    const label = overlay.querySelector('.gpx-loading-label');
     function dismissOverlay() {
-        if (!overlay) return;
         overlay.classList.add('hidden');
         setTimeout(() => overlay.remove(), 500);
     }
 
     <?php if ($fetch_gpx_async && empty($gpx_data)): ?>
-    // Async path — summit not yet in library, fetch from SOTAmaps
+    // Nomination async path — fetch from SOTAmaps
     const fd = new FormData();
     fd.append('summit_id', '<?= $summit['id'] ?>');
     fetch('gpx_fetch.php', { method: 'POST', body: fd })
@@ -2528,7 +2579,6 @@ if (flash) setTimeout(() => { flash.style.transition = 'opacity 0.5s'; flash.sty
             return r.json();
         })
         .then(d => {
-            if (!overlay) return;
             if (d.status === 'found') {
                 if (label) label.textContent = '✓ Community route found — loading map…';
                 const svgEl = overlay.querySelector('.gpx-loading-svg');
@@ -2543,12 +2593,22 @@ if (flash) setTimeout(() => { flash.style.transition = 'opacity 0.5s'; flash.sty
             console.error('gpx_fetch error:', err);
             dismissOverlay();
         });
-    <?php else: ?>
-    // Fast path — track already linked, show animation briefly then reveal the page
+
+    <?php elseif ($show_nomination_overlay): ?>
+    // Nomination fast path — track already linked, show briefly
     setTimeout(dismissOverlay, 2000);
+
+    <?php elseif ($gpx_data): ?>
+    // Normal load with GPX — dismissed by the GPX fetch/draw block above
+    window._dismissGpxOverlay = dismissOverlay;
+    setTimeout(dismissOverlay, 8000); // safety fallback
+
+    <?php else: ?>
+    // No GPX — dismiss when base tile layer finishes loading
+    baseLayers.street.once('load', dismissOverlay);
+    setTimeout(dismissOverlay, 5000); // safety fallback
     <?php endif; ?>
 })();
-<?php endif; ?>
 </script>
 
 <!-- Floating save / top widget -->

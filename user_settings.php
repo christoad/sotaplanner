@@ -1,314 +1,263 @@
 <?php
-// Enable error reporting for debugging
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
 require_once 'config.php';
 session_start();
 requireLogin();
 
-$db = getDbConnection();
+$db           = getDbConnection();
 $current_user = getCurrentCallsign();
+$message      = '';
 
-$message = '';
-
-// Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Update user information
-    $stmt = $db->prepare("
-        UPDATE users SET
-            name = ?,
-            home_address = ?
-        WHERE callsign = ?
-    ");
-    $stmt->execute([
-        $_POST['name'],
-        $_POST['home_address'],
-        $current_user
-    ]);
-    
-    // Update or insert user settings
-    $stmt = $db->prepare("
-        INSERT INTO user_settings (user_callsign, default_activation_time_min)
-        VALUES (?, ?)
+    $new_units       = in_array($_POST['units'] ?? '', ['imperial', 'metric']) ? $_POST['units'] : detectUnitsFromCallsign($current_user);
+    $activation_time = max(15, min(300, (int)($_POST['default_activation_time'] ?? 60)));
+
+    $db->prepare("
+        INSERT INTO user_settings (user_callsign, default_activation_time_min, units)
+        VALUES (?, ?, ?)
         ON DUPLICATE KEY UPDATE
-        default_activation_time_min = VALUES(default_activation_time_min)
-    ");
-    $stmt->execute([
-        $current_user,
-        $_POST['default_activation_time']
-    ]);
-    
-    $message = "Settings saved successfully!";
+            default_activation_time_min = VALUES(default_activation_time_min),
+            units = VALUES(units)
+    ")->execute([$current_user, $activation_time, $new_units]);
+
+    $_SESSION['user_units'] = $new_units;
+    $message = 'Settings saved.';
 }
 
-// Fetch current user data
-$stmt = $db->prepare("SELECT * FROM users WHERE callsign = ?");
-$stmt->execute([$current_user]);
-$user = $stmt->fetch();
-
-// Fetch user settings
 $stmt = $db->prepare("SELECT * FROM user_settings WHERE user_callsign = ?");
 $stmt->execute([$current_user]);
 $settings = $stmt->fetch();
 
-$default_activation_time = $settings['default_activation_time_min'] ?? 60;
+$current_units       = $settings['units'] ?? detectUnitsFromCallsign($current_user);
+$default_activation  = (int)($settings['default_activation_time_min'] ?? 60);
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Settings - SOTA Planner</title>
-    <link href="https://fonts.googleapis.com/css2?family=Overpass:wght@300;600;800&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --peak-brown: #6B4423;
-            --trail-green: #4A7C59;
-            --forest-dark: #2C4A3E;
-            --summit-gold: #E6B84A;
-            --snow-white: #F5F5F0;
-            --earth-tan: #D4A574;
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings — SOTA Planner</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:            #F7F6F3;
+      --bg-2:          #EFEDE8;
+      --bg-3:          #E5E2DA;
+      --ink:           #1C1B19;
+      --ink-2:         #4A4844;
+      --ink-3:         #8C8A86;
+      --ink-4:         #B8B5B0;
+      --accent:        oklch(52% 0.13 50);
+      --accent-2:      oklch(44% 0.13 50);
+      --accent-bg:     oklch(96% 0.04 65);
+      --accent-border: oklch(84% 0.08 65);
+      --green:         oklch(52% 0.13 155);
+      --green-bg:      oklch(95% 0.04 155);
+      --green-border:  oklch(85% 0.07 155);
+      --surface:       #FFFFFF;
+      --border:        #E5E2DA;
+      --border-2:      #D4D0C8;
+      --font-sans:     'DM Sans', system-ui, sans-serif;
+      --font-mono:     'DM Mono', 'Courier New', monospace;
+      --r-sm: 4px; --r-md: 8px; --r-lg: 12px;
+      --shadow-sm: 0 1px 3px rgba(28,27,25,0.07), 0 1px 2px rgba(28,27,25,0.05);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+    body { font-family: var(--font-sans); background: var(--bg); color: var(--ink); line-height: 1.5; min-height: 100vh; }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+    .topbar {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      height: 56px; display: flex; align-items: center;
+      padding: 0 2rem; gap: 1rem; position: sticky; top: 0; z-index: 100;
+    }
+    .topbar-logo {
+      display: flex; align-items: center; gap: 0.75rem;
+      text-decoration: none; color: var(--ink);
+      font-weight: 600; font-size: 0.95rem; letter-spacing: -0.01em; flex-shrink: 0;
+    }
+    .topbar-logo:hover { color: var(--ink); }
+    .topbar-logo .logo-mark { width: 32px; height: 32px; flex-shrink: 0; }
+    .topbar-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+    .topbar-nav { display: flex; align-items: center; gap: 0.25rem; }
+    .topbar-nav a {
+      color: var(--ink-3); font-size: 0.875rem; font-weight: 500;
+      padding: 0.5rem 0.75rem; border-radius: var(--r-sm);
+      transition: color 0.15s, background 0.15s; text-decoration: none;
+    }
+    .topbar-nav a:hover { color: var(--ink); background: var(--bg-2); }
+    .topbar-right { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; flex-shrink: 0; }
+    .user-chip {
+      position: relative; display: flex; align-items: center; gap: 0.35rem;
+      cursor: pointer; padding: 0.25rem 0.6rem; border-radius: var(--r-sm);
+      font-size: 0.8rem; font-weight: 600; color: var(--ink-2);
+      border: 1px solid var(--border); background: var(--bg); user-select: none;
+    }
+    .user-chip:hover { background: var(--bg-2); }
+    .user-chip-chevron { transition: transform 0.15s; }
+    .user-chip.open .user-chip-chevron { transform: rotate(180deg); }
+    .user-dropdown {
+      display: none; position: absolute; top: calc(100% + 6px); right: 0;
+      background: #fff; border: 1px solid var(--border); border-radius: var(--r-sm);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.10); min-width: 130px; overflow: hidden; z-index: 200;
+    }
+    .user-chip.open .user-dropdown { display: block; }
+    .user-dropdown a {
+      display: block; padding: 0.6rem 1rem;
+      font-size: 0.82rem; font-weight: 500; color: var(--ink-2); text-decoration: none;
+    }
+    .user-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
 
-        body {
-            font-family: 'Overpass', sans-serif;
-            background: linear-gradient(135deg, #F5F5F0 0%, #E8E4D8 100%);
-            color: var(--forest-dark);
-            min-height: 100vh;
-            padding: 2rem;
-        }
+    .page { padding: 2rem; max-width: 560px; margin: 0 auto; }
 
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-        }
+    .page-header { margin-bottom: 1.75rem; }
+    .page-header h1 { font-size: 1.375rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 0.2rem; }
+    .page-header p  { font-size: 0.875rem; color: var(--ink-3); }
 
-        .back-link {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            color: white;
-            background: var(--trail-green);
-            border: 2px solid var(--trail-green);
-            text-decoration: none;
-            font-weight: 700;
-            font-size: 0.95rem;
-            padding: 0.55rem 1.2rem;
-            border-radius: 8px;
-            transition: opacity 0.2s;
-            margin-bottom: 1.5rem;
-        }
-        .back-link:hover {
-            opacity: 0.85;
-        }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r-lg); box-shadow: var(--shadow-sm);
+      overflow: hidden; margin-bottom: 1.25rem;
+    }
+    .card-section {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .card-section:last-child { border-bottom: none; }
+    .section-label {
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--ink-3); margin-bottom: 0.75rem;
+    }
 
-        h1 {
-            font-size: 2.5rem;
-            font-weight: 800;
-            color: var(--peak-brown);
-            margin-bottom: 2rem;
-        }
+    .msg-success {
+      display: flex; align-items: center; gap: 0.75rem;
+      background: var(--green-bg); color: var(--green);
+      border: 1px solid var(--green-border);
+      border-radius: var(--r-md); padding: 0.75rem 1rem;
+      font-size: 0.875rem; font-weight: 500; margin-bottom: 1.25rem;
+    }
 
-        .card {
-            background: white;
-            border-radius: 12px;
-            padding: 2rem;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-        }
+    /* Units toggle */
+    .units-toggle { display: flex; border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; width: fit-content; }
+    .units-toggle input[type="radio"] { display: none; }
+    .units-toggle label {
+      padding: 0.5rem 1.25rem; font-size: 0.875rem; font-weight: 500;
+      color: var(--ink-3); cursor: pointer; transition: background 0.12s, color 0.12s;
+      border-right: 1px solid var(--border); white-space: nowrap;
+    }
+    .units-toggle label:last-of-type { border-right: none; }
+    .units-toggle input[type="radio"]:checked + label {
+      background: var(--ink); color: #fff;
+    }
+    .hint { font-size: 0.775rem; color: var(--ink-3); margin-top: 0.5rem; line-height: 1.4; }
 
-        .message {
-            padding: 1rem;
-            background: #E6F4EA;
-            color: #1E7E34;
-            border-left: 4px solid #1E7E34;
-            border-radius: 6px;
-            margin-bottom: 1.5rem;
-            font-weight: 600;
-        }
+    /* Activation time */
+    .time-row { display: flex; align-items: center; gap: 0.75rem; }
+    .time-input {
+      width: 90px; padding: 0.5rem 0.75rem;
+      border: 1px solid var(--border); border-radius: var(--r-md);
+      font-family: var(--font-sans); font-size: 0.9375rem; color: var(--ink);
+      background: var(--surface); outline: none; transition: border-color 0.15s;
+    }
+    .time-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+    .time-unit { font-size: 0.875rem; color: var(--ink-3); }
 
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-
-        label {
-            display: block;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            color: var(--forest-dark);
-            text-transform: uppercase;
-            font-size: 0.85rem;
-            letter-spacing: 0.05em;
-        }
-
-        input[type="text"],
-        input[type="number"],
-        textarea {
-            width: 100%;
-            padding: 0.75rem;
-            border: 2px solid var(--earth-tan);
-            border-radius: 6px;
-            font-family: 'Overpass', sans-serif;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-        }
-
-        input:focus,
-        textarea:focus {
-            outline: none;
-            border-color: var(--trail-green);
-            box-shadow: 0 0 0 3px rgba(74, 124, 89, 0.1);
-        }
-
-        textarea {
-            resize: vertical;
-            min-height: 100px;
-        }
-
-        .helper-text {
-            font-size: 0.85rem;
-            color: #666;
-            margin-top: 0.5rem;
-            font-style: italic;
-        }
-
-        .btn {
-            padding: 0.75rem 1.5rem;
-            background: linear-gradient(135deg, var(--trail-green) 0%, var(--forest-dark) 100%);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            font-size: 0.9rem;
-            transition: all 0.3s ease;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
-        }
-
-        /* ── User chip ── */
-        .user-chip-fixed {
-            position: fixed; top: 1rem; right: 1rem; z-index: 500;
-            display: flex; align-items: center; gap: 0.35rem;
-            cursor: pointer; padding: 0.3rem 0.7rem;
-            border-radius: 6px; font-size: 0.8rem; font-weight: 700;
-            color: var(--forest-dark); background: white;
-            border: 1px solid var(--earth-tan);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            user-select: none; white-space: nowrap;
-        }
-        .user-chip-fixed:hover { background: var(--snow-white); }
-        .user-chip-chevron { transition: transform 0.15s; }
-        .user-chip-fixed.open .user-chip-chevron { transform: rotate(180deg); }
-        .user-dropdown {
-            display: none; position: absolute; top: calc(100% + 6px); right: 0;
-            background: white; border: 1px solid var(--earth-tan);
-            border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-            min-width: 130px; overflow: hidden;
-        }
-        .user-chip-fixed.open .user-dropdown { display: block; }
-        .user-dropdown a {
-            display: block; padding: 0.6rem 1rem;
-            font-size: 0.82rem; font-weight: 500; color: var(--forest-dark); text-decoration: none;
-        }
-        .user-dropdown a:hover { background: var(--snow-white); }
-    </style>
+    .btn-save {
+      display: inline-flex; align-items: center; justify-content: center;
+      height: 38px; padding: 0 1.25rem; border-radius: var(--r-md);
+      background: var(--ink); color: #fff;
+      font-family: var(--font-sans); font-size: 0.875rem; font-weight: 500;
+      border: none; cursor: pointer; transition: background 0.15s;
+    }
+    .btn-save:hover { background: var(--ink-2); }
+    .btn-save:active { transform: scale(0.98); }
+  </style>
 </head>
 <body>
-<div class="user-chip-fixed" id="userChip">
-    <?= htmlspecialchars($current_user) ?>
-    <svg class="user-chip-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="2,3.5 5,6.5 8,3.5"/></svg>
-    <div class="user-dropdown">
-        <?php if (($current_user ?? '') === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
-            <a href="god_mode.php">God Mode</a>
+
+<nav class="topbar">
+  <a href="index.php" class="topbar-logo">
+    <span class="logo-mark"><img src="sota-planner-logo.svg" width="32" height="32" alt=""></span>
+    <span>SOTAplanner</span>
+  </a>
+  <div class="topbar-divider"></div>
+  <div class="topbar-nav">
+    <a href="index.php">Dashboard</a>
+    <a href="planning_groups.php">Groups</a>
+  </div>
+  <div class="topbar-right">
+    <div class="user-chip" onclick="this.classList.toggle('open')" id="userChip">
+      <span><?= htmlspecialchars($current_user) ?></span>
+      <svg class="user-chip-chevron" width="10" height="6" viewBox="0 0 10 6" fill="none">
+        <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="user-dropdown">
+        <?php if ($current_user === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
+          <a href="god_mode.php">God Mode</a>
         <?php endif; ?>
+        <a href="user_settings.php">Settings</a>
         <a href="logout.php">Sign Out</a>
+      </div>
     </div>
-</div>
-    <div class="container">
-        <a href="index.php" class="back-link">← Back to Dashboard</a>
-        
-        <h1>⚙️ User Settings</h1>
+  </div>
+</nav>
 
-        <?php if ($message): ?>
-            <div class="message"><?= htmlspecialchars($message) ?></div>
-        <?php endif; ?>
+<div class="page">
 
-        <div class="card">
-            <form method="POST">
-                <div class="form-group">
-                    <label for="callsign">Callsign</label>
-                    <input 
-                        type="text" 
-                        id="callsign" 
-                        value="<?= htmlspecialchars($current_user) ?>"
-                        disabled
-                        style="opacity: 0.6; cursor: not-allowed;"
-                    >
-                    <p class="helper-text">Your callsign cannot be changed</p>
-                </div>
+  <div class="page-header">
+    <h1>Settings</h1>
+    <p>Preferences for <?= htmlspecialchars($current_user) ?></p>
+  </div>
 
-                <div class="form-group">
-                    <label for="name">Name</label>
-                    <input 
-                        type="text" 
-                        id="name" 
-                        name="name"
-                        value="<?= htmlspecialchars($user['name'] ?? '') ?>"
-                        placeholder="Your name"
-                    >
-                </div>
+  <?php if ($message): ?>
+  <div class="msg-success">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.4"/><path d="M5 8l2 2 4-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <?= htmlspecialchars($message) ?>
+  </div>
+  <?php endif; ?>
 
-                <div class="form-group">
-                    <label for="home_address">Home Address</label>
-                    <textarea 
-                        id="home_address" 
-                        name="home_address"
-                        placeholder="1234 Main St, City, State 12345"
-                    ><?= htmlspecialchars($user['home_address'] ?? '') ?></textarea>
-                    <p class="helper-text">Used to calculate drive times to trailheads</p>
-                </div>
+  <form method="POST">
+    <div class="card">
 
-                <div class="form-group">
-                    <label for="default_activation_time">Default Activation Time (minutes)</label>
-                    <input 
-                        type="number" 
-                        id="default_activation_time" 
-                        name="default_activation_time"
-                        value="<?= $default_activation_time ?>"
-                        min="15"
-                        max="300"
-                        step="15"
-                        required
-                    >
-                    <p class="helper-text">How long you typically spend activating a summit (default: 60 minutes)</p>
-                </div>
-
-                <button type="submit" class="btn">Save Settings</button>
-            </form>
+      <div class="card-section">
+        <div class="section-label">Units of Measurement</div>
+        <div class="units-toggle">
+          <input type="radio" id="units_imperial" name="units" value="imperial" <?= $current_units === 'imperial' ? 'checked' : '' ?>>
+          <label for="units_imperial">Imperial &mdash; miles &amp; feet</label>
+          <input type="radio" id="units_metric" name="units" value="metric" <?= $current_units === 'metric' ? 'checked' : '' ?>>
+          <label for="units_metric">Metric &mdash; km &amp; meters</label>
         </div>
+        <div class="hint">Applies to all distances and elevations across the app. Auto-detected from your callsign.</div>
+      </div>
+
+      <div class="card-section">
+        <div class="section-label">Default Time on Summit</div>
+        <div class="time-row">
+          <input type="number" class="time-input" name="default_activation_time"
+            value="<?= $default_activation ?>" min="15" max="300" step="15" required>
+          <span class="time-unit">minutes</span>
+        </div>
+        <div class="hint">How long you typically spend operating from a summit. Used as the default when planning a new activation.</div>
+      </div>
+
     </div>
-<footer style="text-align:center; padding:2rem 1rem 1.5rem; color:#aaa; font-size:0.78rem;">
-    SOTA Planner &nbsp;·&nbsp; <a href="changelog.php" style="color:#aaa; text-decoration:none;">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com" style="color:#aaa; text-decoration:none;">sotaplanner.com</a>
+
+    <button type="submit" class="btn-save">Save Settings</button>
+  </form>
+
+</div>
+
+<footer style="text-align:center; padding:2rem 1rem 1.5rem; color:var(--ink-4); font-size:0.78rem;">
+  SOTA Planner &nbsp;·&nbsp;
+  <a href="changelog.php" style="color:var(--ink-4); text-decoration:none;">v<?= APP_VERSION ?></a>
+  &nbsp;·&nbsp;
+  <a href="https://sotaplanner.com" style="color:var(--ink-4); text-decoration:none;">sotaplanner.com</a>
 </footer>
+
 <script>
-(function() {
-    var chip = document.getElementById('userChip');
-    if (!chip) return;
-    chip.addEventListener('click', function(e) { e.stopPropagation(); this.classList.toggle('open'); });
-    document.addEventListener('click', function() { chip.classList.remove('open'); });
-})();
+document.addEventListener('click', function(e) {
+  var chip = document.getElementById('userChip');
+  if (chip && !chip.contains(e.target)) chip.classList.remove('open');
+});
 </script>
 </body>
 </html>

@@ -283,7 +283,7 @@ try {
 }
 
 // ── Cron log reader ──────────────────────────────────────────────────────────
-$cron_log_path   = dirname(__DIR__) . '/logs/gpx_cron.log';
+$cron_log_path   = dirname(__DIR__) . '/sota_logs/gpx_cron.log';
 $cron_log_lines  = [];
 $cron_last_run   = null;
 $cron_last_stats = null;

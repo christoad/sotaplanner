@@ -556,6 +556,7 @@ $google_maps = "https://www.google.com/maps/search/" . urlencode($summit_name . 
         <?php if (($current_user ?? '') === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
             <a href="god_mode.php">God Mode</a>
         <?php endif; ?>
+        <a href="user_settings.php">Settings</a>
         <a href="logout.php">Sign Out</a>
     </div>
 </div>

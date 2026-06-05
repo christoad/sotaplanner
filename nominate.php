@@ -69,6 +69,24 @@ function _link_global_gpx(PDO $db, int $summit_id, int $group_id, string $sota_r
     }
 }
 
+// Set summit status to 'researched' if it has both a GPX track and a valid trailhead.
+function _maybe_set_researched(PDO $db, int $summit_id): void {
+    $chk = $db->prepare("
+        SELECT s.id
+        FROM summits s
+        JOIN gpx_tracks g ON g.summit_id = s.id
+        WHERE s.id = ?
+          AND s.trailhead_lat IS NOT NULL AND s.trailhead_lat != 0
+          AND s.trailhead_lng IS NOT NULL AND s.trailhead_lng != 0
+          AND s.status = 'nominated'
+        LIMIT 1
+    ");
+    $chk->execute([$summit_id]);
+    if ($chk->fetch()) {
+        $db->prepare("UPDATE summits SET status = 'researched' WHERE id = ?")->execute([$summit_id]);
+    }
+}
+
 // ── AJAX search endpoint ─────────────────────────────────────────────────────
 if (isset($_GET['action']) && $_GET['action'] === 'search') {
     header('Content-Type: application/json');
@@ -91,12 +109,100 @@ $error = '';
 // Get current planning group
 $current_group = getCurrentPlanningGroup($db);
 
-// Handle direct nomination
+// ── POST handler ─────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
+
+    // ── Batch nomination ──────────────────────────────────────────────────────
+    if (($_POST['form_mode'] ?? 'single') === 'bulk') {
+        $raw_refs = $_POST['sota_refs'] ?? '';
+        $refs = array_filter(array_unique(array_map('strtoupper', array_map('trim', explode(',', $raw_refs)))));
+
+        $succeeded  = 0;
+        $new_ids    = [];
+        foreach ($refs as $sota_ref) {
+            if (!preg_match('/^[A-Z0-9]{1,6}\/[A-Z0-9]{1,6}-\d{3,}$/', $sota_ref)) continue;
+
+            $ch = curl_init("https://api2.sota.org.uk/api/summits/" . $sota_ref);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER    => ['Accept: application/json'],
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_TIMEOUT       => 10,
+            ]);
+            $response  = curl_exec($ch);
+            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($http_code !== 200 || !$response) continue;
+            $summit_data = json_decode($response, true);
+            if (!$summit_data) continue;
+
+            $name         = $summit_data['name'] ?? $summit_data['summitName'] ?? 'Unknown';
+            $region       = $summit_data['regionName'] ?? $summit_data['region'] ?? '';
+            $points       = $summit_data['points'] ?? 1;
+            $elevation_m  = $summit_data['altM'] ?? $summit_data['altitude'] ?? 0;
+            $elevation_ft = $summit_data['altFt'] ?? round($elevation_m * 3.28084);
+            $latitude     = $summit_data['latitude'] ?? $summit_data['lat'] ?? 0;
+            $longitude    = $summit_data['longitude'] ?? $summit_data['lng'] ?? $summit_data['long'] ?? 0;
+
+            try {
+                // Already nominated by this group — count as success, don't re-insert
+                $chk = $db->prepare("SELECT id FROM summits WHERE sota_ref = ? AND planning_group_id = ?");
+                $chk->execute([$sota_ref, $current_group['id']]);
+                if ($chk->fetch()) { $succeeded++; continue; }
+
+                $chk = $db->prepare("SELECT * FROM summits WHERE sota_ref = ? AND planning_group_id != ? AND (trail_link IS NOT NULL OR hike_distance_mi IS NOT NULL) LIMIT 1");
+                $chk->execute([$sota_ref, $current_group['id']]);
+                $source_summit = $chk->fetch();
+
+                $sotlas_link = "https://sotl.as/summits/" . $sota_ref;
+
+                $ins = $db->prepare("
+                    INSERT INTO summits
+                    (planning_group_id, source_group_id, uses_shared_data, sota_ref, name, region, points,
+                     elevation_m, elevation_ft, latitude, longitude, nominated_date, sotlas_link, status,
+                     trail_link, hike_distance_mi, hike_elevation_gain_ft, difficulty,
+                     trailhead_lat, trailhead_lng)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), ?, 'nominated', ?, ?, ?, ?, ?, ?)
+                ");
+
+                if ($source_summit) {
+                    $ins->execute([
+                        $current_group['id'], $source_summit['planning_group_id'], true,
+                        $sota_ref, $name, $region, $points, $elevation_m, $elevation_ft, $latitude, $longitude, $sotlas_link,
+                        $source_summit['trail_link'], $source_summit['hike_distance_mi'],
+                        $source_summit['hike_elevation_gain_ft'], $source_summit['difficulty'],
+                        $source_summit['trailhead_lat'], $source_summit['trailhead_lng'],
+                    ]);
+                } else {
+                    $ins->execute([
+                        $current_group['id'], null, false,
+                        $sota_ref, $name, $region, $points, $elevation_m, $elevation_ft, $latitude, $longitude, $sotlas_link,
+                        null, null, null, null, null, null
+                    ]);
+                }
+
+                $summit_id = $db->lastInsertId();
+                _link_global_gpx($db, $summit_id, $current_group['id'], $sota_ref);
+                _maybe_set_researched($db, $summit_id);
+                $new_ids[] = $summit_id;
+                $succeeded++;
+            } catch (PDOException $e) {
+                // skip failed inserts
+            }
+        }
+
+        $ids_param = $new_ids ? '&new_ids=' . implode(',', $new_ids) : '';
+        header("Location: index.php?group=" . $current_group['id'] . "&bulk_nominated=" . $succeeded . $ids_param);
+        exit;
+    }
+
+    // ── Single nomination ─────────────────────────────────────────────────────
     $sota_ref = strtoupper(trim($_POST['sota_ref']));
-    
+
     $api_url = "https://api2.sota.org.uk/api/summits/" . $sota_ref;
-    
+
     $ch = curl_init($api_url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, ['Accept: application/json']);
@@ -105,10 +211,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
     $response = curl_exec($ch);
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
-    
+
     if ($http_code === 200 && $response) {
         $summit_data = json_decode($response, true);
-        
+
         if ($summit_data) {
             $name = $summit_data['name'] ?? $summit_data['summitName'] ?? 'Unknown';
             $region = $summit_data['regionName'] ?? $summit_data['region'] ?? '';
@@ -117,34 +223,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
             $elevation_ft = $summit_data['altFt'] ?? round($elevation_m * 3.28084);
             $latitude = $summit_data['latitude'] ?? $summit_data['lat'] ?? 0;
             $longitude = $summit_data['longitude'] ?? $summit_data['lng'] ?? $summit_data['long'] ?? 0;
-            
+
             try {
                 // Check if this group already nominated this summit
                 $stmt = $db->prepare("SELECT id FROM summits WHERE sota_ref = ? AND planning_group_id = ?");
                 $stmt->execute([$sota_ref, $current_group['id']]);
                 $existing = $stmt->fetch();
-                
+
                 if ($existing) {
-                    // Already nominated by this group - redirect to it
                     header("Location: summit_detail.php?id=" . $existing['id'] . "&group=" . $current_group['id']);
                     exit;
                 }
-                
-                // Check if ANY other group has researched this summit (has trail data)
+
+                // Check if ANY other group has researched this summit
                 $stmt = $db->prepare("
-                    SELECT * FROM summits 
-                    WHERE sota_ref = ? 
-                    AND planning_group_id != ? 
+                    SELECT * FROM summits
+                    WHERE sota_ref = ?
+                    AND planning_group_id != ?
                     AND (trail_link IS NOT NULL OR hike_distance_mi IS NOT NULL)
                     LIMIT 1
                 ");
                 $stmt->execute([$sota_ref, $current_group['id']]);
                 $source_summit = $stmt->fetch();
-                
-                // Create new nomination for THIS group
+
                 $stmt = $db->prepare("
-                    INSERT INTO summits 
-                    (planning_group_id, source_group_id, uses_shared_data, sota_ref, name, region, points, 
+                    INSERT INTO summits
+                    (planning_group_id, source_group_id, uses_shared_data, sota_ref, name, region, points,
                      elevation_m, elevation_ft, latitude, longitude, nominated_date, sotlas_link, status,
                      trail_link, hike_distance_mi, hike_elevation_gain_ft, difficulty,
                      trailhead_lat, trailhead_lng)
@@ -154,11 +258,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
                 $sotlas_link = "https://sotl.as/summits/" . $sota_ref;
 
                 if ($source_summit) {
-                    // Use existing research as starting point
                     $stmt->execute([
                         $current_group['id'],
-                        $source_summit['planning_group_id'], // Track source
-                        true, // Using shared data
+                        $source_summit['planning_group_id'],
+                        true,
                         $sota_ref, $name, $region, $points, $elevation_m, $elevation_ft,
                         $latitude, $longitude, $sotlas_link,
                         $source_summit['trail_link'],
@@ -168,10 +271,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
                         $source_summit['trailhead_lat'],
                         $source_summit['trailhead_lng'],
                     ]);
-                    
+
                     $summit_id = $db->lastInsertId();
 
-                    // Copy GPX track from source group if one exists
                     $stmt = $db->prepare("SELECT * FROM gpx_tracks WHERE summit_id = ? AND planning_group_id = ?");
                     $stmt->execute([$source_summit['id'], $source_summit['planning_group_id']]);
                     $source_gpx = $stmt->fetch();
@@ -211,25 +313,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
                         }
                     }
 
-                    // If source group had no GPX, fall through to global library check below
                     if (!($source_gpx && file_exists($source_gpx['file_path']))) {
                         _link_global_gpx($db, $summit_id, $current_group['id'], $sota_ref);
                     }
 
-                    // Show message about using shared data
+                    _maybe_set_researched($db, $summit_id);
                     header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&shared_data=1");
                     exit;
                 } else {
-                    // No existing research - start fresh
                     $stmt->execute([
                         $current_group['id'],
-                        null, // No source
-                        false, // Original research
+                        null,
+                        false,
                         $sota_ref, $name, $region, $points, $elevation_m, $elevation_ft,
                         $latitude, $longitude, $sotlas_link,
                         null, null, null, null, null, null
                     ]);
-                    
+
                     $summit_id = $db->lastInsertId();
 
                     // Try to import data from SOTLAS
@@ -241,17 +341,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
                             'header' => 'User-Agent: SOTA-Planner/1.0'
                         ]
                     ]);
-                    
+
                     $sotlas_response = @file_get_contents($api_url_sotlas, false, $context);
                     $sotlas_imported = [];
-                    
+
                     if ($sotlas_response) {
                         $sotlas_data = json_decode($sotlas_response, true);
-                        
+
                         if ($sotlas_data && isset($sotlas_data['routes']) && !empty($sotlas_data['routes'])) {
                             $route = $sotlas_data['routes'][0];
-                            
-                            // Import trail data
+
                             $updates = [];
                             if (isset($route['distance'])) {
                                 $distance_km = floatval($route['distance']);
@@ -276,7 +375,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
                                 $updates[] = "trailhead_lng = " . floatval($route['start_point']['longitude']);
                                 $sotlas_imported[] = 'trailhead';
                             }
-                            
+
                             if (!empty($updates)) {
                                 $updates[] = "data_source = 'sotlas'";
                                 $updates[] = "sotlas_data_fetched = 1";
@@ -285,11 +384,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
                             }
                         }
                     }
-                    
-                    // Link global GPX library track if one exists (fills in map, elevation, trailhead)
-                    _link_global_gpx($db, $summit_id, $current_group['id'], $sota_ref);
 
-                    // If no GPX was found in the library, signal summit_detail to fetch one async
+                    _link_global_gpx($db, $summit_id, $current_group['id'], $sota_ref);
+                    _maybe_set_researched($db, $summit_id);
+
                     $gpx_chk = $db->prepare("SELECT id FROM gpx_tracks WHERE summit_id = ? LIMIT 1");
                     $gpx_chk->execute([$summit_id]);
                     $has_gpx = (bool)$gpx_chk->fetchColumn();
@@ -330,8 +428,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
       --accent-border: oklch(84% 0.08 65);
       --green:         oklch(52% 0.13 155);
       --green-bg:      oklch(95% 0.04 155);
+      --green-border:  oklch(85% 0.07 155);
       --red:           oklch(52% 0.16 22);
       --red-bg:        oklch(96% 0.04 22);
+      --red-border:    oklch(85% 0.08 22);
       --surface:       #FFFFFF;
       --border:        #E5E2DA;
       --border-2:      #D4D0C8;
@@ -404,8 +504,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
       padding: 0.75rem 1rem; border-radius: var(--r-md);
       font-size: 0.875rem; font-weight: 500; margin-bottom: 1rem;
     }
-    .msg-success { background: var(--green-bg); color: var(--green); border: 1px solid oklch(85% 0.07 155); }
-    .msg-error   { background: var(--red-bg);   color: var(--red);   border: 1px solid oklch(85% 0.08 22); }
+    .msg-success { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+    .msg-error   { background: var(--red-bg);   color: var(--red);   border: 1px solid var(--red-border); }
 
     /* Form */
     .form-label {
@@ -443,7 +543,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
       margin-bottom: 1.25rem;
     }
 
-    /* Search results */
+    /* Search results (single mode) */
     .result-item {
       display: flex; align-items: center; justify-content: space-between; gap: 1rem;
       padding: 0.7rem 0.875rem; border: 1px solid var(--border); border-radius: var(--r-md);
@@ -458,9 +558,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
     .search-status { padding: 0.75rem 0; color: var(--ink-3); font-size: 0.85rem; }
     .search-count  { font-size: 0.75rem; color: var(--ink-4); margin-bottom: 0.5rem; }
 
-    /* Selected summit */
+    /* Selected summit (single mode) */
     .selected-box {
-      display: none; background: var(--green-bg); border: 1px solid oklch(85% 0.07 155);
+      display: none; background: var(--green-bg); border: 1px solid var(--green-border);
       border-radius: var(--r-md); padding: 0.875rem 1rem; margin-bottom: 1rem;
     }
     .selected-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--green); margin-bottom: 0.3rem; }
@@ -470,18 +570,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
     .clear-btn { background: none; border: none; color: var(--ink-4); cursor: pointer; font-size: 1rem; line-height: 1; padding: 0.2rem; border-radius: var(--r-sm); }
     .clear-btn:hover { color: var(--ink-2); background: var(--bg-2); }
 
-    /* Info panel */
-    .info-panel {
-      background: var(--bg-2); border: 1px solid var(--border);
-      border-radius: var(--r-lg); padding: 1rem 1.25rem;
+    /* Batch results */
+    .batch-summary {
+      font-size: 0.8rem; font-weight: 600; color: var(--ink-3);
+      margin-bottom: 0.6rem;
     }
-    .info-panel p { font-size: 0.8rem; color: var(--ink-3); line-height: 1.6; }
-    .info-panel strong { color: var(--ink-2); }
+    .batch-item {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.6rem 0.875rem; border-radius: var(--r-md);
+      border: 1px solid; margin-bottom: 0.35rem;
+    }
+    .batch-item-found    { background: var(--green-bg); border-color: var(--green-border); }
+    .batch-item-notfound { background: var(--red-bg);   border-color: var(--red-border); }
+    .batch-item-icon { flex-shrink: 0; }
+    .batch-item-info { flex: 1; min-width: 0; }
+    .batch-item-name { font-size: 0.875rem; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .batch-item-ref  { font-family: var(--font-mono); font-size: 0.75rem; color: var(--ink-3); }
+    .batch-item-status { font-size: 0.775rem; color: var(--red); font-weight: 500; }
+    .batch-item-pts  { font-size: 0.775rem; font-weight: 700; color: var(--green); white-space: nowrap; flex-shrink: 0; }
+
+    /* Ways panel */
+    .ways-panel {
+      display: flex; align-items: stretch;
+      margin-bottom: 1.25rem;
+    }
+    .way-card {
+      flex: 1; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r-lg); padding: 1rem;
+    }
+    .way-or {
+      display: flex; align-items: center; justify-content: center;
+      padding: 0 0.5rem; flex-shrink: 0;
+      font-size: 0.68rem; font-weight: 600; color: var(--ink-4);
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .way-icon {
+      width: 28px; height: 28px; border-radius: var(--r-sm);
+      background: var(--accent-bg); display: flex; align-items: center; justify-content: center;
+      margin-bottom: 0.5rem; color: var(--accent);
+    }
+    .way-title { font-size: 0.8rem; font-weight: 600; color: var(--ink); margin-bottom: 0.25rem; }
+    .way-desc  { font-size: 0.75rem; color: var(--ink-3); line-height: 1.4; }
+    .way-example { font-family: var(--font-mono); font-size: 0.72rem; color: var(--accent-2); background: var(--accent-bg); border-radius: var(--r-sm); padding: 0.15rem 0.4rem; display: inline-block; margin-top: 0.3rem; }
 
     @media (max-width: 640px) {
-      .topbar { padding: 0 var(--sp-4); }
+      .topbar { padding: 0 1rem; }
       .topbar-nav { display: none; }
-      .page { padding: var(--sp-4); }
+      .page { padding: 1rem; }
+      .ways-panel { flex-direction: column; }
+      .way-or { padding: 0.25rem 0; }
     }
   </style>
 </head>
@@ -507,6 +644,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
         <?php if (getCurrentCallsign() === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
           <a href="god_mode.php">God Mode</a>
         <?php endif; ?>
+        <a href="user_settings.php">Settings</a>
         <a href="logout.php">Sign Out</a>
       </div>
     </div>
@@ -517,7 +655,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
 
   <div style="margin-bottom: 1.5rem;">
     <h1 style="font-size: 1.375rem; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); margin-bottom: 0.25rem;">Nominate a Summit</h1>
-    <p style="font-size: 0.875rem; color: var(--ink-3);">Add a summit to your planning group to start researching it.</p>
+    <p style="font-size: 0.875rem; color: var(--ink-3);">Add one summit or a whole list to your planning group.</p>
   </div>
 
   <?php if ($message): ?>
@@ -532,31 +670,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
     Nominating for: <strong><?= htmlspecialchars($current_group['name']) ?></strong>
   </div>
 
+  <!-- Ways to nominate -->
+  <div class="ways-panel">
+    <div class="way-card">
+      <div class="way-icon">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 9.5l3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </div>
+      <div class="way-title">Search by Name</div>
+      <div class="way-desc">Type a summit name and pick from the list.</div>
+      <span class="way-example">Mount Adams</span>
+    </div>
+    <div class="way-or">or</div>
+    <div class="way-card">
+      <div class="way-icon">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="2.5" width="11" height="9" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M4 6h6M4 8.5h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      </div>
+      <div class="way-title">Paste a Reference</div>
+      <div class="way-desc">Paste a SOTA designator directly into the field.</div>
+      <span class="way-example">W7O/NC-001</span>
+    </div>
+    <div class="way-or">or</div>
+    <div class="way-card">
+      <div class="way-icon">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 4h10M2 7h10M2 10h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </div>
+      <div class="way-title">Multiple at Once</div>
+      <div class="way-desc">Paste several references separated by commas.</div>
+      <span class="way-example">W7O/NC-001, W7O/NC-002</span>
+    </div>
+  </div>
+
   <div class="card">
     <div style="font-size: 0.8rem; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 1rem;">Find a Summit</div>
     <form method="POST" id="nominate-form">
-      <input type="hidden" id="sota_ref" name="sota_ref">
+      <input type="hidden" id="sota_ref"    name="sota_ref"    value="">
+      <input type="hidden" id="sota_refs"   name="sota_refs"   value="">
+      <input type="hidden" id="form_mode"   name="form_mode"   value="single">
+
       <div style="margin-bottom: 1rem;">
         <label class="form-label" for="summit_search">Summit Name or Reference</label>
         <input
           type="text"
           class="form-input"
           id="summit_search"
-          placeholder="Search summit name or designator"
+          placeholder="Search by name, or paste one or more SOTA references"
           autocomplete="off"
           autofocus
         >
-        <div class="form-hint" id="search-hint">Type a name to search, or paste a SOTA reference directly.</div>
+        <div class="form-hint" id="search-hint">Type a name to search, or paste a SOTA reference. Separate multiple references with commas.</div>
       </div>
 
       <div id="search-results" style="display:none; margin-bottom:1rem;"></div>
 
+      <!-- Single mode: selected summit box -->
       <div class="selected-box" id="selected-summit">
         <div class="selected-label">Selected Summit</div>
         <div class="selected-row">
           <div>
             <span class="selected-name" id="selected-name"></span>
-            <span class="selected-ref" id="selected-ref"></span>
+            <span class="selected-ref"  id="selected-ref"></span>
           </div>
           <button type="button" class="clear-btn" onclick="clearSelection()">✕</button>
         </div>
@@ -564,14 +736,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
 
       <button type="submit" name="nominate" id="nominate-btn" class="btn btn-primary" disabled>Nominate Summit</button>
     </form>
-  </div>
-
-  <div class="info-panel">
-    <p>
-      <strong>How it works:</strong> Type a name like "Mount Adams" or a reference like "W7O/NC-001".
-      Select a summit from the results, then click Nominate.
-      If another group already researched this summit, you'll inherit their trail data automatically.
-    </p>
   </div>
 
 </div>
@@ -589,9 +753,11 @@ document.addEventListener('click', function(e) {
   if (chip && !chip.contains(e.target)) chip.classList.remove('open');
 });
 
-// ── Summit search ─────────────────────────────────────────────────────────────
+// ── Elements ─────────────────────────────────────────────────────────────────
 const searchInput  = document.getElementById('summit_search');
 const refInput     = document.getElementById('sota_ref');
+const refsInput    = document.getElementById('sota_refs');
+const formMode     = document.getElementById('form_mode');
 const resultsBox   = document.getElementById('search-results');
 const selectedBox  = document.getElementById('selected-summit');
 const selectedName = document.getElementById('selected-name');
@@ -599,32 +765,47 @@ const selectedRef  = document.getElementById('selected-ref');
 const nominateBtn  = document.getElementById('nominate-btn');
 const searchHint   = document.getElementById('search-hint');
 
-// Matches a complete SOTA reference like W6/CT-225 or W7O/NC-001 (requires 3+ digits)
+// Matches a complete SOTA reference like W6/CT-225 or W7O/NC-001
 const refPattern = /^[A-Za-z0-9]{1,6}\/[A-Za-z0-9]{1,6}-\d{3,}$/;
 
 let debounceTimer = null;
+let currentMode   = 'single'; // 'single' | 'batch'
 
+// ── Input handler ─────────────────────────────────────────────────────────────
 searchInput.addEventListener('input', function() {
-    const val = this.value.trim();
+    const val = this.value;
     clearTimeout(debounceTimer);
 
-    if (!val) {
+    // Batch mode: input contains a comma
+    if (val.includes(',')) {
+        setSingleMode(false);
+        const rawRefs = val.split(',').map(r => r.trim()).filter(r => r.length > 0);
+        if (rawRefs.length === 0) { hideResults(); setNominateEnabled(false); return; }
+        searchHint.textContent = 'Checking ' + rawRefs.length + ' reference' + (rawRefs.length !== 1 ? 's' : '') + '…';
+        debounceTimer = setTimeout(() => doBatchLookup(rawRefs), 500);
+        return;
+    }
+
+    // Single mode
+    setSingleMode(true);
+
+    if (!val.trim()) {
         hideResults();
         setNominateEnabled(false);
         searchHint.textContent = 'Type a summit name to search, or enter a SOTA reference directly (e.g., W6/CT-225).';
         return;
     }
 
-    if (refPattern.test(val)) {
-        // Looks like a direct reference — select it immediately, then look up the name
+    if (refPattern.test(val.trim())) {
+        // Looks like a direct reference — select it immediately
         hideResults();
-        const ref = val.toUpperCase();
+        const ref = val.trim().toUpperCase();
         refInput.value = ref;
         selectedName.textContent = ref;
-        selectedRef.textContent = '';
+        selectedRef.textContent  = '';
         selectedBox.style.display = 'block';
         setNominateEnabled(true);
-        searchHint.textContent = 'Looking up summit name...';
+        searchHint.textContent = 'Looking up summit name…';
 
         fetch('nominate.php?action=search&q=' + encodeURIComponent(ref))
             .then(r => r.json())
@@ -633,7 +814,7 @@ searchInput.addEventListener('input', function() {
                     const match = data.find(s => s.ref.toUpperCase() === ref) || data[0];
                     if (match) {
                         selectedName.textContent = match.name;
-                        selectedRef.textContent = ref;
+                        selectedRef.textContent  = ref;
                     }
                 }
                 searchHint.textContent = 'Looks like a SOTA reference — ready to nominate.';
@@ -644,15 +825,16 @@ searchInput.addEventListener('input', function() {
         return;
     }
 
-    if (val.length < 2) return;
+    if (val.trim().length < 2) return;
 
-    searchHint.textContent = 'Searching...';
-    debounceTimer = setTimeout(() => doSearch(val), 380);
+    searchHint.textContent = 'Searching…';
+    debounceTimer = setTimeout(() => doSearch(val.trim()), 380);
 });
 
+// ── Single mode search ────────────────────────────────────────────────────────
 function doSearch(q) {
     resultsBox.style.display = 'block';
-    resultsBox.innerHTML = '<div class="search-status">Searching summit cache...</div>';
+    resultsBox.innerHTML = '<div class="search-status">Searching summit cache…</div>';
 
     fetch('nominate.php?action=search&q=' + encodeURIComponent(q))
         .then(r => r.json())
@@ -713,17 +895,123 @@ function clearSelection() {
     searchHint.textContent = 'Type a summit name to search, or enter a SOTA reference directly (e.g., W6/CT-225).';
 }
 
+// ── Batch mode ────────────────────────────────────────────────────────────────
+async function doBatchLookup(rawRefs) {
+    resultsBox.style.display = 'block';
+    resultsBox.innerHTML = '<div class="search-status">Checking ' + rawRefs.length + ' reference' + (rawRefs.length !== 1 ? 's' : '') + '…</div>';
+
+    const lookups = rawRefs.map(async (rawRef) => {
+        const ref = rawRef.toUpperCase();
+        if (!refPattern.test(ref)) {
+            return { ref, found: false, invalid: true };
+        }
+        try {
+            const data = await fetch('nominate.php?action=search&q=' + encodeURIComponent(ref)).then(r => r.json());
+            const match = Array.isArray(data) ? data.find(s => s.ref.toUpperCase() === ref) : null;
+            return { ref, found: !!match, summit: match || null };
+        } catch {
+            return { ref, found: false, error: true };
+        }
+    });
+
+    const results = await Promise.all(lookups);
+    renderBatchResults(results);
+}
+
+function renderBatchResults(results) {
+    const found    = results.filter(r => r.found);
+    const notFound = results.filter(r => !r.found);
+
+    let html = '<div class="batch-summary">';
+    html += found.length + ' of ' + results.length + ' summit' + (results.length !== 1 ? 's' : '') + ' found';
+    if (notFound.length > 0) html += ' &nbsp;·&nbsp; ' + notFound.length + ' not found';
+    html += '</div>';
+
+    results.forEach(r => {
+        if (r.found) {
+            const pts = r.summit.points;
+            html += `<div class="batch-item batch-item-found">
+                <div class="batch-item-icon">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <circle cx="8" cy="8" r="7" fill="var(--green)" fill-opacity="0.15" stroke="var(--green)" stroke-width="1.2"/>
+                    <path d="M5 8l2.2 2.2L11 5.5" stroke="var(--green)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
+                <div class="batch-item-info">
+                  <div class="batch-item-name">${escHtml(r.summit.name)}</div>
+                  <div class="batch-item-ref">${escHtml(r.ref)}</div>
+                </div>
+                <div class="batch-item-pts">${pts} pt${pts !== 1 ? 's' : ''}</div>
+            </div>`;
+        } else {
+            const label = r.invalid ? 'Invalid format' : 'Not found';
+            html += `<div class="batch-item batch-item-notfound">
+                <div class="batch-item-icon">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <circle cx="8" cy="8" r="7" fill="var(--red)" fill-opacity="0.12" stroke="var(--red)" stroke-width="1.2"/>
+                    <path d="M5.5 10.5l5-5M10.5 10.5l-5-5" stroke="var(--red)" stroke-width="1.4" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <div class="batch-item-info">
+                  <div class="batch-item-ref" style="color:var(--ink-2)">${escHtml(r.ref)}</div>
+                  <div class="batch-item-status">${label}</div>
+                </div>
+            </div>`;
+        }
+    });
+
+    resultsBox.innerHTML = html;
+    resultsBox.style.display = 'block';
+
+    // Wire up form for batch submit
+    refsInput.value = found.map(r => r.ref).join(',');
+    formMode.value  = 'bulk';
+
+    if (found.length > 0) {
+        setNominateEnabled(true);
+        nominateBtn.textContent = found.length === 1
+            ? 'Nominate 1 Summit'
+            : 'Nominate ' + found.length + ' Summits';
+        searchHint.textContent = '';
+    } else {
+        setNominateEnabled(false);
+        nominateBtn.textContent = 'Nominate Summit';
+        searchHint.textContent = 'None of the references were found. Check the format: ASSOC/CODE-NNN (e.g. W7O/NC-001).';
+    }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function setSingleMode(on) {
+    if (on) {
+        currentMode = 'single';
+        formMode.value = 'single';
+        nominateBtn.textContent = 'Nominate Summit';
+        selectedBox.style.display = 'none';
+    } else {
+        currentMode = 'batch';
+        selectedBox.style.display = 'none';
+        refInput.value = '';
+    }
+}
+
 function hideResults() { resultsBox.style.display = 'none'; resultsBox.innerHTML = ''; }
 function setNominateEnabled(on) { nominateBtn.disabled = !on; nominateBtn.style.opacity = on ? '1' : '0.45'; }
 
 function escHtml(s)  { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function escAttr(s)  { return String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
 
-// Handle form submit validation
+// ── Form submit validation ────────────────────────────────────────────────────
 document.getElementById('nominate-form').addEventListener('submit', function(e) {
-    if (!refInput.value.trim()) {
-        e.preventDefault();
-        alert('Please select a summit first.');
+    if (formMode.value === 'bulk') {
+        if (!refsInput.value.trim()) {
+            e.preventDefault();
+            alert('No valid summits to nominate.');
+        }
+    } else {
+        if (!refInput.value.trim()) {
+            e.preventDefault();
+            alert('Please select a summit first.');
+        }
     }
 });
 </script>

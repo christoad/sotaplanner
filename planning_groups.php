@@ -8,6 +8,7 @@ requireLogin();
 
 $db = getDbConnection();
 $current_callsign = getCurrentCallsign();
+$user_units = getUserUnits($db);
 
 $message = '';
 $error = '';
@@ -21,11 +22,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Create new planning group
     if (isset($_POST['create_group'])) {
         $group_name = trim($_POST['group_name']);
-        $units = $_POST['units'] ?? 'imperial';
         if (!empty($group_name)) {
             try {
                 $stmt = $db->prepare("INSERT INTO planning_groups (name, units, owner_callsign) VALUES (?, ?, ?)");
-                $stmt->execute([$group_name, $units, $current_callsign]);
+                $stmt->execute([$group_name, $user_units, $current_callsign]);
                 $new_group_id = $db->lastInsertId();
 
                 // Add creator as owner in members table
@@ -637,6 +637,7 @@ a:hover { text-decoration: underline; }
                 <?php if (($current_callsign ?? '') === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
                     <a href="god_mode.php">God Mode</a>
                 <?php endif; ?>
+                <a href="user_settings.php">Settings</a>
                 <a href="logout.php">Sign Out</a>
             </div>
         </div>
@@ -757,10 +758,6 @@ a:hover { text-decoration: underline; }
                     </form>
                 </div>
                 <div style="display: flex; gap: 2rem; flex-wrap: wrap; padding-top: 0.75rem; border-top: 1px solid var(--border);">
-                    <div>
-                        <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3); margin-bottom: 3px;">Units</div>
-                        <div style="font-size: 0.875rem; color: var(--ink); text-transform: capitalize;"><?= htmlspecialchars($managing_group['units']) ?></div>
-                    </div>
                     <?php $counts = $group_counts[$managing_group['id']] ?? null; ?>
                     <div>
                         <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3); margin-bottom: 3px;">Summits</div>
@@ -902,13 +899,6 @@ a:hover { text-decoration: underline; }
                 <label class="form-label">Group Name</label>
                 <input type="text" name="group_name" class="form-input" placeholder="e.g., KI6CR & Friends, Weekend Warriors" required autofocus>
                 <div class="form-hint">Name it after your crew or callsign</div>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Preferred Units</label>
-                <select name="units" class="form-select">
-                    <option value="imperial">Imperial (miles, feet)</option>
-                    <option value="metric">Metric (km, meters)</option>
-                </select>
             </div>
             <div class="form-group">
                 <label class="form-label">Co-activators <span style="font-weight:400; color:var(--ink-4);">(optional)</span></label>

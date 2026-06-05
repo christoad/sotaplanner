@@ -1,5 +1,5 @@
 <?php
-define('APP_VERSION', '1.4.5');
+define('APP_VERSION', '1.5.0');
 
 // Enable error reporting for debugging
 error_reporting(E_ALL);
@@ -159,6 +159,41 @@ function getCurrentPlanningGroup($db) {
 // Set current planning group in SESSION
 function setCurrentPlanningGroup($group_id) {
     $_SESSION['current_planning_group_id'] = $group_id;
+}
+
+// Returns 'imperial' for US/Canada callsigns, 'metric' for everyone else.
+function detectUnitsFromCallsign($callsign) {
+    $cs = strtoupper(trim($callsign));
+    if (preg_match('/^[WKNA]\d/', $cs)) return 'imperial'; // US
+    if (preg_match('/^V[EA]\d/', $cs)) return 'imperial';  // Canada
+    return 'metric';
+}
+
+// Returns the logged-in user's preferred units. Reads from user_settings,
+// auto-detects from callsign on first use, and caches in session.
+function getUserUnits(PDO $db) {
+    if (isset($_SESSION['user_units'])) return $_SESSION['user_units'];
+
+    $cs = getCurrentCallsign();
+    if (!$cs) return 'imperial';
+
+    $row = $db->prepare("SELECT units FROM user_settings WHERE user_callsign = ?");
+    $row->execute([$cs]);
+    $row = $row->fetch();
+
+    if ($row && !empty($row['units'])) {
+        $_SESSION['user_units'] = $row['units'];
+        return $row['units'];
+    }
+
+    // First time: detect from callsign and persist
+    $units = detectUnitsFromCallsign($cs);
+    $db->prepare("
+        INSERT INTO user_settings (user_callsign, units) VALUES (?, ?)
+        ON DUPLICATE KEY UPDATE units = IF(units IS NULL OR units = '', VALUES(units), units)
+    ")->execute([$cs, $units]);
+    $_SESSION['user_units'] = $units;
+    return $units;
 }
 
 // Convert distance based on group's units preference

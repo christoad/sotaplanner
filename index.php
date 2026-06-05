@@ -135,6 +135,7 @@ if (isset($_POST['calculate_drive_times'])) {
 
 // Get selected address (will be null if no group selected)
 $current_group = getCurrentPlanningGroup($db);
+$user_units = getUserUnits($db);
 $selected_address = null;
 $all_addresses = [];
 
@@ -543,12 +544,21 @@ $summits = $stmt->fetchAll();
       border-radius: var(--r-md); font-size: 0.875rem; font-weight: 500;
       margin-bottom: var(--sp-4);
     }
-    .msg-info { background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent-border); }
+    .msg-info    { background: var(--accent-bg); color: var(--accent);   border: 1px solid var(--accent-border); }
+    .msg-success { background: var(--green-bg);  color: var(--green);    border: 1px solid oklch(85% 0.07 155); }
     .msg-dismiss {
       background: none; border: none; cursor: pointer; color: inherit;
       opacity: 0.5; font-size: 1.1rem; padding: 0; line-height: 1; flex-shrink: 0;
     }
     .msg-dismiss:hover { opacity: 1; }
+
+    /* ── New-summit row highlight ── */
+    @keyframes rowHighlight {
+      0%   { background: oklch(88% 0.10 58); }
+      60%  { background: oklch(88% 0.10 58); }
+      100% { background: transparent; }
+    }
+    tr.row-new-highlight { animation: rowHighlight 2.5s ease-out forwards; }
 
     /* ── Toolbar ── */
     .toolbar {
@@ -853,6 +863,7 @@ $summits = $stmt->fetchAll();
                     <a href="god_mode.php">God Mode</a>
                 <?php endif; ?>
                 <a href="planning_groups.php" class="dropdown-mobile-only">Planning Groups</a>
+                <a href="user_settings.php">Settings</a>
                 <a href="logout.php">Sign Out</a>
             </div>
         </div>
@@ -876,6 +887,14 @@ $summits = $stmt->fetchAll();
     <?php if ($message): ?>
     <div class="msg msg-info">
         <span><?= htmlspecialchars($message) ?><?php if (str_contains($message, '⭐')): ?> <span style="color:var(--accent); font-size:0.8rem; font-weight:400; opacity:0.75"> · Saved in browser cookie for 1 year.</span><?php endif; ?></span>
+        <button class="msg-dismiss" onclick="this.parentElement.remove()">×</button>
+    </div>
+    <?php endif; ?>
+
+    <?php if (!empty($_GET['bulk_nominated'])): ?>
+    <?php $bn = (int)$_GET['bulk_nominated']; ?>
+    <div class="msg msg-success" style="margin-bottom:1rem;">
+        <span><?= $bn ?> summit<?= $bn !== 1 ? 's' : '' ?> added to your group.</span>
         <button class="msg-dismiss" onclick="this.parentElement.remove()">×</button>
     </div>
     <?php endif; ?>
@@ -1035,8 +1054,8 @@ $summits = $stmt->fetchAll();
                         $mobile_parts = array_filter([
                             $hike_time_total ? 'Hike ' . formatTime($hike_time_total) : null,
                             $drive_time      ? 'Drive ' . formatTime($drive_time) : null,
-                            $distance_display_mi ? convertDistance($distance_display_mi, $current_group['units']) . ' ' . getDistanceUnit($current_group['units']) : null,
-                            $elevation_for_display ? number_format(convertElevation($elevation_for_display, $current_group['units'])) . ' ' . getElevationUnit($current_group['units']) . ' gain' : null,
+                            $distance_display_mi ? convertDistance($distance_display_mi, $user_units) . ' ' . getDistanceUnit($user_units) : null,
+                            $elevation_for_display ? number_format(convertElevation($elevation_for_display, $user_units)) . ' ' . getElevationUnit($user_units) . ' gain' : null,
                         ]);
                     ?>
                     <tr class="<?= $row_class ?>" data-summit-id="<?= $summit['id'] ?>" onclick="window.location='summit_detail.php?id=<?= $summit['id'] ?>&group=<?= $current_group['id'] ?>';">
@@ -1058,23 +1077,23 @@ $summits = $stmt->fetchAll();
                         </td>
                         <td class="td-hide-mobile">
                             <?php
-                            $elevation = convertElevation($summit['elevation_ft'], $current_group['units']);
-                            $unit = getElevationUnit($current_group['units']);
+                            $elevation = convertElevation($summit['elevation_ft'], $user_units);
+                            $unit = getElevationUnit($user_units);
                             ?>
                             <span class="stat-val"><?= number_format($elevation) ?></span> <span class="stat-unit"><?= $unit ?></span>
                         </td>
                         <td class="td-hide-mobile">
                             <?php if ($distance_display_mi): ?>
-                                <span class="stat-val"><?= convertDistance($distance_display_mi, $current_group['units']) ?></span>
-                                <span class="stat-unit"><?= getDistanceUnit($current_group['units']) ?></span>
+                                <span class="stat-val"><?= convertDistance($distance_display_mi, $user_units) ?></span>
+                                <span class="stat-unit"><?= getDistanceUnit($user_units) ?></span>
                             <?php else: ?>
                                 <span style="color:var(--ink-4)">—</span>
                             <?php endif; ?>
                         </td>
                         <td class="td-hide-mobile">
                             <?php if ($elevation_for_display): ?>
-                                <span class="stat-val"><?= number_format(convertElevation($elevation_for_display, $current_group['units'])) ?></span>
-                                <span class="stat-unit"><?= getElevationUnit($current_group['units']) ?></span>
+                                <span class="stat-val"><?= number_format(convertElevation($elevation_for_display, $user_units)) ?></span>
+                                <span class="stat-unit"><?= getElevationUnit($user_units) ?></span>
                             <?php else: ?>
                                 <span style="color:var(--ink-4)">—</span>
                             <?php endif; ?>
@@ -1522,6 +1541,35 @@ window.addEventListener('load', function() { show(0); });
   // Start 3 concurrent workers after page is idle
   requestIdleCallback ? requestIdleCallback(() => { next(); next(); next(); })
                       : setTimeout(() => { next(); next(); next(); }, 1500);
+})();
+</script>
+
+<script>
+// Highlight newly-batch-nominated rows, then fade back to normal.
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get('new_ids');
+  if (!raw) return;
+  const ids = new Set(raw.split(',').map(s => s.trim()).filter(Boolean));
+  if (!ids.size) return;
+
+  // Scroll to first matched row and apply highlight class
+  let firstRow = null;
+  ids.forEach(id => {
+    const row = document.querySelector('tr[data-summit-id="' + id + '"]');
+    if (!row) return;
+    row.classList.add('row-new-highlight');
+    if (!firstRow) firstRow = row;
+  });
+  if (firstRow) {
+    // Small delay so the page has settled before scrolling
+    setTimeout(() => firstRow.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
+  }
+
+  // Clean up URL so refreshing doesn't re-trigger the highlight
+  const clean = new URL(window.location.href);
+  clean.searchParams.delete('new_ids');
+  window.history.replaceState({}, '', clean.toString());
 })();
 </script>
 </body>

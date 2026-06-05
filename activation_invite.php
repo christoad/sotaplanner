@@ -20,10 +20,12 @@ $stmt = $db->prepare("
            s.hike_time_up_min, s.hike_time_down_min,
            s.drive_time_min, s.difficulty, s.cell_service,
            s.trail_link, s.sotlas_link,
-           pg.name as group_name, pg.units
+           pg.name as group_name, pg.units, pg.owner_callsign,
+           COALESCE(us.units, pg.units) AS owner_units
     FROM planned_activations pa
     JOIN summits s ON s.id = pa.summit_id
     JOIN planning_groups pg ON pg.id = pa.planning_group_id
+    LEFT JOIN user_settings us ON us.user_callsign = pg.owner_callsign
     WHERE pa.id = ?
 ");
 $stmt->execute([$pa_id]);
@@ -92,7 +94,7 @@ $gpx_download_name = preg_replace('/[^a-zA-Z0-9]+/', '-', $pa['summit_name'] ?? 
     . '.gpx';
 
 // Timeline math
-$units         = $pa['units'];
+$units         = $pa['owner_units'] ?? $pa['units'];
 $drive_one_way = round(($pa['drive_time_min'] ?? 0) / 2);
 $hike_up_min   = (int)($pa['hike_time_up_min'] ?? 0);
 $hike_down_min = (int)($pa['hike_time_down_min'] ?? 0);

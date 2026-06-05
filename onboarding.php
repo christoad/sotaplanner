@@ -33,12 +33,19 @@ if ($existing_group) {
 // Handle: create group (step 1)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_group'])) {
     $group_name = trim($_POST['group_name'] ?? '');
-    $units = in_array($_POST['units'] ?? '', ['imperial', 'metric']) ? $_POST['units'] : 'imperial';
+    $units = in_array($_POST['units'] ?? '', ['imperial', 'metric']) ? $_POST['units'] : detectUnitsFromCallsign($callsign);
 
     if ($group_name === '') {
         $error = 'Please give your group a name.';
     } else {
         try {
+            // Save units as the user's personal preference
+            $db->prepare("
+                INSERT INTO user_settings (user_callsign, units) VALUES (?, ?)
+                ON DUPLICATE KEY UPDATE units = VALUES(units)
+            ")->execute([$callsign, $units]);
+            $_SESSION['user_units'] = $units;
+
             $stmt = $db->prepare("INSERT INTO planning_groups (name, units, owner_callsign) VALUES (?, ?, ?)");
             $stmt->execute([$group_name, $units, $callsign]);
             $new_group_id = $db->lastInsertId();
@@ -581,21 +588,23 @@ window.addEventListener('pageshow', snapTopAndFocus);
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">Units</label>
+                    <label class="form-label">Your Preferred Units</label>
                     <div class="units-toggle">
+                        <?php $detected_units = detectUnitsFromCallsign($callsign); ?>
                         <input type="radio" id="units_imperial" name="units" value="imperial"
-                            <?= ($_POST['units'] ?? 'imperial') === 'imperial' ? 'checked' : '' ?>>
+                            <?= ($_POST['units'] ?? $detected_units) === 'imperial' ? 'checked' : '' ?>>
                         <label for="units_imperial">
                             Imperial<br>
                             <span style="font-size:0.75rem; opacity:0.65;">miles &amp; feet</span>
                         </label>
                         <input type="radio" id="units_metric" name="units" value="metric"
-                            <?= ($_POST['units'] ?? '') === 'metric' ? 'checked' : '' ?>>
+                            <?= ($_POST['units'] ?? $detected_units) === 'metric' ? 'checked' : '' ?>>
                         <label for="units_metric">
                             Metric<br>
                             <span style="font-size:0.75rem; opacity:0.65;">km &amp; meters</span>
                         </label>
                     </div>
+                    <div class="form-hint" style="margin-top:0.5rem;">We detected <?= $detected_units === 'imperial' ? 'imperial' : 'metric' ?> from your callsign. You can change this any time in User Settings.</div>
                 </div>
             </div>
 

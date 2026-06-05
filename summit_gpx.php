@@ -17,6 +17,7 @@ $summit_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
 // Get current planning group
 $current_group = getCurrentPlanningGroup($db);
+$user_units = getUserUnits($db);
 
 if (!$current_group) {
     header("Location: index.php");
@@ -354,8 +355,8 @@ $gpx_data = $stmt->fetch();
                         <div class="stat-icon">📏</div>
                         <div class="stat-value">
                             <?php
-                            $distance = convertDistance($gpx_data['total_distance'] * 0.621371, $current_group['units']);
-                            echo $distance . ' ' . getDistanceUnit($current_group['units']);
+                            $distance = convertDistance($gpx_data['total_distance'] * 0.621371, $user_units);
+                            echo $distance . ' ' . getDistanceUnit($user_units);
                             ?>
                         </div>
                         <div class="stat-label">Total Distance</div>
@@ -366,8 +367,8 @@ $gpx_data = $stmt->fetch();
                         <div class="stat-icon">⛰️</div>
                         <div class="stat-value">
                             <?php
-                            $gain = convertElevation($gpx_data['elevation_gain'] * 3.28084, $current_group['units']);
-                            echo number_format($gain) . ' ' . getElevationUnit($current_group['units']);
+                            $gain = convertElevation($gpx_data['elevation_gain'] * 3.28084, $user_units);
+                            echo number_format($gain) . ' ' . getElevationUnit($user_units);
                             ?>
                         </div>
                         <div class="stat-label">Elevation Gain</div>
@@ -378,9 +379,9 @@ $gpx_data = $stmt->fetch();
                         <div class="stat-icon">⚡</div>
                         <div class="stat-value">
                             <?php
-                            $speed = $current_group['units'] === 'metric' ? $gpx_data['hiking_speed'] : $gpx_data['hiking_speed'] * 0.621371;
+                            $speed = $user_units === 'metric' ? $gpx_data['hiking_speed'] : $gpx_data['hiking_speed'] * 0.621371;
                             echo number_format($speed, 1);
-                            ?> <?= $current_group['units'] === 'metric' ? 'km/h' : 'mph' ?>
+                            ?> <?= $user_units === 'metric' ? 'km/h' : 'mph' ?>
                         </div>
                         <div class="stat-label">Hiking Speed</div>
                         <div class="stat-secondary">Average while moving</div>

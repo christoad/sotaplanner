@@ -230,12 +230,27 @@ session_start();
         <p>Release history and update notes for SOTA Planner</p>
     </div>
 
-    <!-- v1.4.5 -->
+    <!-- v1.5.0 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.5.0</span>
+            <span class="version-date">June 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Bulk summit nomination, per-user units, and richer summit detail — including who last activated a summit and when.</p>
+        <ul>
+            <li>Nominate multiple summits at once by pasting a comma-separated list of SOTA references</li>
+            <li>Units preference (metric or imperial) is now per-user and auto-detected from your callsign — non-US/Canada users default to metric</li>
+            <li>Summit detail now shows who last activated the summit globally (with callsign and date) and separately tracks the last activation by your planning group</li>
+            <li>GPX elevation profile now correctly detects when a track has no elevation data and shows a clear message instead of a blank chart</li>
+        </ul>
+    </div>
+
+    <!-- v1.4.5 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.4.5</span>
             <span class="version-date">June 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">The home page now shows a live count of summits ready to plan — community route and trailhead already loaded.</p>
         <ul>

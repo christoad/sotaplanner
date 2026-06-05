@@ -34,18 +34,22 @@ Infrastructure is **fully built and deployed to production**. As of 2026-06-03: 
 1. Complete the initial import — **recommended approach: add the cron to `/home/chrisr069` crontab (via `crontab -e` over SSH) running hourly at `--limit=2000 --delay=1000`**. At 48,000/day this finishes in ~4 days with no browser tab required. Also add trailhead cron at the same frequency (offset 30 min). Once Remaining hits 0, swap both to the lighter steady-state schedule.
 2. When Remaining = 0: run `admin_trailhead_osm.php` once to catch any stragglers, then replace hourly cron entries with steady-state daily/weekly jobs.
 
-**Crontab lines for the initial catch-up phase (hourly, aggressive):**
+**Crontab lines for the initial catch-up phase (hourly, aggressive) — CURRENTLY ACTIVE:**
 ```
-0 * * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=new --limit=2000 --delay=1000 >> /home/chrisr069/logs/gpx_cron.log 2>&1
-30 * * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/trailhead_osm_cron.php >> /home/chrisr069/logs/gpx_cron.log 2>&1
+0 * * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=new --limit=1500 --delay=1000 >> /home/chrisr069/sota_logs/gpx_cron.log 2>&1
+30 * * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/trailhead_osm_cron.php >> /home/chrisr069/sota_logs/gpx_cron.log 2>&1
 ```
 
-**Crontab lines for steady-state (after initial import complete):**
+**Timing note:** Each run takes ~40 minutes (1500 summits × ~1600ms effective per call — 1000ms delay + ~600ms API response time). Leaves a ~20 minute buffer before the next hourly run. Throughput: ~36,000 summits/day → ~5 days to complete from 2026-06-04.
+
+**Crontab lines for steady-state (after initial import complete — swap to these when Remaining = 0):**
 ```
-5 0 * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=new --limit=500 >> /home/chrisr069/logs/gpx_cron.log 2>&1
-30 0 * * 6 /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=retry --limit=500 >> /home/chrisr069/logs/gpx_cron.log 2>&1
-0 1 * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/trailhead_osm_cron.php >> /home/chrisr069/logs/gpx_cron.log 2>&1
+5 0 * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=new --limit=500 >> /home/chrisr069/sota_logs/gpx_cron.log 2>&1
+30 0 * * 6 /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=retry --limit=500 >> /home/chrisr069/sota_logs/gpx_cron.log 2>&1
+0 1 * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/trailhead_osm_cron.php >> /home/chrisr069/sota_logs/gpx_cron.log 2>&1
 ```
+
+**Log file location:** `/home/chrisr069/sota_logs/gpx_cron.log` — visible in God Mode → Data Tools → Cron Activity Log. The `/home/chrisr069/logs/` directory is root-owned and not writable; always use `sota_logs/` instead.
 
 **Important lessons learned the hard way:**
 - Staging (christopherreddick.com/sotaplanner) shares the production database. The importer blocks itself if run on staging (`HTTP_HOST` check). Always run batch tools on production only.
@@ -358,15 +362,15 @@ At 48,000 summits/day this completes in ~4 days. Monitor progress in **God Mode 
 
 ### Cron Jobs (steady-state, after initial import)
 
-**Not yet active.** Add to crontab via `ssh dreamhost-sota "crontab -e"` after Remaining = 0.
+**Not yet active** — swap to these once Remaining = 0. Edit via `ssh dreamhost-sota "crontab -e"`, replacing the hourly catch-up lines.
 
 ```
-5 0 * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=new --limit=500 >> /home/chrisr069/logs/gpx_cron.log 2>&1
-30 0 * * 6 /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=retry --limit=500 >> /home/chrisr069/logs/gpx_cron.log 2>&1
-0 1 * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/trailhead_osm_cron.php >> /home/chrisr069/logs/gpx_cron.log 2>&1
+5 0 * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=new --limit=500 >> /home/chrisr069/sota_logs/gpx_cron.log 2>&1
+30 0 * * 6 /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=retry --limit=500 >> /home/chrisr069/sota_logs/gpx_cron.log 2>&1
+0 1 * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/trailhead_osm_cron.php >> /home/chrisr069/sota_logs/gpx_cron.log 2>&1
 ```
 
-All three log to `/home/chrisr069/logs/gpx_cron.log`. In steady state the daily new-summits job has near-zero work — SOTA adds only ~100–200 summits per year globally.
+All log to `/home/chrisr069/sota_logs/gpx_cron.log`. In steady state the daily new-summits job has near-zero work — SOTA adds only ~100–200 summits per year globally.
 
 ### Cron Log Viewer
 
