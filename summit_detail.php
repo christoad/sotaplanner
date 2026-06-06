@@ -1157,7 +1157,7 @@ if ($tl_show) {
 
     /* GPX drop */
     .gpx-drop { border: 2px dashed var(--border-2); border-radius: var(--r-lg); padding: 1.5rem; text-align: center; background: var(--bg-2); cursor: pointer; transition: border-color 0.15s, background 0.15s; display: block; }
-    .gpx-drop:hover { border-color: var(--accent); background: var(--accent-bg); }
+    .gpx-drop:hover, .gpx-drop.drag-over { border-color: var(--accent); background: var(--accent-bg); }
 
     /* Info rows */
     .info-row { display: flex; justify-content: space-between; align-items: baseline; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
@@ -2644,5 +2644,41 @@ if (flash) setTimeout(() => { flash.style.transition = 'opacity 0.5s'; flash.sty
     Back to Top
   </button>
 </div>
+<script>
+(function() {
+  var drop = document.querySelector('.gpx-drop');
+  var input = document.getElementById('gpx-file-input');
+  if (!drop || !input) return;
+
+  drop.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    drop.classList.add('drag-over');
+  });
+
+  drop.addEventListener('dragenter', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    drop.classList.add('drag-over');
+  });
+
+  drop.addEventListener('dragleave', function(e) {
+    e.stopPropagation();
+    drop.classList.remove('drag-over');
+  });
+
+  drop.addEventListener('drop', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    drop.classList.remove('drag-over');
+    var files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+    var dt = new DataTransfer();
+    dt.items.add(files[0]);
+    input.files = dt.files;
+    input.form.submit();
+  });
+})();
+</script>
 </body>
 </html>
