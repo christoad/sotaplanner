@@ -114,9 +114,11 @@ while (!feof($fh)) {
             $norm   = normalize_for_search($name);
             $points = (int)($s['points'] ?? 0);
             $alt_ft = (int)($s['altFt']  ?? 0);
+            $lat    = round((float)($s['latitude']  ?? $s['lat'] ?? 0), 6);
+            $lon    = round((float)($s['longitude'] ?? $s['lng'] ?? $s['long'] ?? 0), 6);
 
-            // Pipe-delimited: code|original_name|normalized_name|points|alt_ft
-            gzwrite($gz, "$code|$name|$norm|$points|$alt_ft\n");
+            // Pipe-delimited: code|original_name|normalized_name|points|alt_ft|lat|lon
+            gzwrite($gz, "$code|$name|$norm|$points|$alt_ft|$lat|$lon\n");
             $written++;
         }
     }

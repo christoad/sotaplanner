@@ -17,9 +17,12 @@ The activation history section was built on `summit_detail.php` and deployed, bu
 
 Context: VK3ARR (SOTA team) granted an SSO client for identity login. Chris sent a follow-up explaining read-only intent. Track 1 (SSO login) was completed first. Track 2 (activation history + SOTAWatch alerts) was built but needs debugging.
 
+**Radius-based bulk nomination (completed 2026-06-06):**
+`nominate.php` has two tabs: "Name / Reference" (existing search) and "Search by Area" (new). The area tab geocodes any location Google Maps recognizes, draws a red circle on a map, and lists every SOTA summit within the radius as a checklist. Selecting summits and clicking "Nominate" runs through the existing bulk nomination flow and redirects to the dashboard. The SOTA cache (`sota_cache.csv.gz`) was rebuilt to include lat/lon in every entry (format: `code|name|norm|points|alt_ft|lat|lon`). The `search_sota_cache_by_radius()` function in `sota_cache_helper.php` uses a bounding-box pre-filter + Haversine formula. The Maps JS API is lazy-loaded only when the area tab is first clicked. Units (miles/km) follow the user's group preference.
+
 **Track 4 — Batch data pre-population (Global GPX Library):**
 
-Infrastructure is **fully built and deployed to production**. As of 2026-06-03: **1,816 of 181,126 summits checked** (1,137 with routes, 679 no route found, 873 with trailhead). ~179,310 remain. The three DreamHost cron jobs are **not yet in the crontab** — they need to be added once the initial import strategy is decided (see below).
+Infrastructure is **fully built and deployed to production**. As of 2026-06-06: **~97,302 of 181,126 summits checked** (~54%), 11,145 with GPX routes, 7,118 with trailhead. Cron jobs are running hourly. Associations with 100% coverage (all summits have GPX): W6 (370), W4C (200), W4G (100), W1 (64), W0C (63), W3 (36), W2 (27).
 
 **What's built:**
 - `global_gpx_tracks` table — one row per imported summit, keyed globally
@@ -31,7 +34,7 @@ Infrastructure is **fully built and deployed to production**. As of 2026-06-03: 
 - **Login page badge** on `login.php` — shows count of summits in `global_gpx_tracks` with `trailhead_lat IS NOT NULL AND trailhead_lon IS NOT NULL` as a live stat in the hero.
 
 **What remains:**
-1. Complete the initial import — **recommended approach: add the cron to `/home/chrisr069` crontab (via `crontab -e` over SSH) running hourly at `--limit=2000 --delay=1000`**. At 48,000/day this finishes in ~4 days with no browser tab required. Also add trailhead cron at the same frequency (offset 30 min). Once Remaining hits 0, swap both to the lighter steady-state schedule.
+1. Initial import still running via hourly cron (~54% complete as of 2026-06-06, finishes ~2026-06-08).
 2. When Remaining = 0: run `admin_trailhead_osm.php` once to catch any stragglers, then replace hourly cron entries with steady-state daily/weekly jobs.
 
 **Crontab lines for the initial catch-up phase (hourly, aggressive) — CURRENTLY ACTIVE:**

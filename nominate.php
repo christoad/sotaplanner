@@ -101,6 +101,63 @@ if (isset($_GET['action']) && $_GET['action'] === 'search') {
     exit;
 }
 
+// ── AJAX radius search endpoint ───────────────────────────────────────────────
+if (isset($_GET['action']) && $_GET['action'] === 'radius_search') {
+    header('Content-Type: application/json');
+    $db            = getDbConnection();
+    $current_group = getCurrentPlanningGroup($db);
+
+    $location  = trim($_GET['location'] ?? '');
+    $radius_mi = max(1, min(300, (float)($_GET['radius_mi'] ?? 25)));
+    $min_pts   = max(1, min(10, (int)($_GET['min_pts'] ?? 1)));
+
+    if (strlen($location) < 2) {
+        echo json_encode(['error' => 'Enter a location to search.']); exit;
+    }
+    if (!defined('GOOGLE_MAPS_API_KEY')) {
+        echo json_encode(['error' => 'Geocoding not configured.']); exit;
+    }
+
+    // Geocode the location text using the server-side Maps key
+    $geo_url  = 'https://maps.googleapis.com/maps/api/geocode/json?address=' . urlencode($location) . '&key=' . GOOGLE_MAPS_API_KEY;
+    $geo_resp = @file_get_contents($geo_url);
+    if (!$geo_resp) { echo json_encode(['error' => 'Geocoding service unavailable.']); exit; }
+    $geo = json_decode($geo_resp, true);
+    if (!$geo || ($geo['status'] ?? '') !== 'OK' || empty($geo['results'])) {
+        echo json_encode(['error' => 'Location not found. Try a more specific address, city, or zip code.']); exit;
+    }
+
+    $clat  = (float)$geo['results'][0]['geometry']['location']['lat'];
+    $clon  = (float)$geo['results'][0]['geometry']['location']['lng'];
+    $label = $geo['results'][0]['formatted_address'];
+
+    // Search cache for summits within radius
+    $summits = search_sota_cache_by_radius($clat, $clon, $radius_mi, $min_pts);
+
+    if (isset($summits['_no_cache']))   { echo json_encode(['error' => 'Summit cache not built. Contact admin.']); exit; }
+    if (isset($summits['_no_latlon'])) { echo json_encode(['error' => 'Area search requires a cache rebuild — please contact the site admin.']); exit; }
+
+    // Flag summits already in this group
+    if ($summits && $current_group) {
+        $refs = array_column($summits, 'ref');
+        $pl   = implode(',', array_fill(0, count($refs), '?'));
+        $st   = $db->prepare("SELECT sota_ref FROM summits WHERE sota_ref IN ($pl) AND planning_group_id = ?");
+        $st->execute(array_merge($refs, [$current_group['id']]));
+        $nominated = array_flip(array_column($st->fetchAll(PDO::FETCH_ASSOC), 'sota_ref'));
+        foreach ($summits as &$s) $s['nominated'] = isset($nominated[$s['ref']]);
+        unset($s);
+    }
+
+    echo json_encode([
+        'lat'     => $clat,
+        'lon'     => $clon,
+        'label'   => $label,
+        'radius'  => $radius_mi,
+        'summits' => $summits,
+    ]);
+    exit;
+}
+
 $db = getDbConnection();
 
 $message = '';
@@ -589,36 +646,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
     .batch-item-status { font-size: 0.775rem; color: var(--red); font-weight: 500; }
     .batch-item-pts  { font-size: 0.775rem; font-weight: 700; color: var(--green); white-space: nowrap; flex-shrink: 0; }
 
-    /* Ways panel */
-    .ways-panel {
-      display: flex; align-items: stretch;
-      margin-bottom: 1.25rem;
+    /* Tabs */
+    .nom-tabs { display: flex; background: var(--bg-2); border-bottom: 1px solid var(--border); }
+    .nom-tab {
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.4rem;
+      padding: 0.9rem 1rem; position: relative;
+      font-size: 0.875rem; font-weight: 500; color: var(--ink-3);
+      border: none; background: transparent; cursor: pointer;
+      font-family: var(--font-sans); transition: background 0.15s, color 0.15s;
+      white-space: nowrap;
     }
-    .way-card {
-      flex: 1; background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--r-lg); padding: 1rem;
+    .nom-tab + .nom-tab { border-left: 1px solid var(--border); }
+    .nom-tab:hover:not(.active) { background: var(--bg-3); color: var(--ink-2); }
+    .nom-tab.active {
+      background: var(--surface); color: var(--ink); font-weight: 600;
     }
-    .way-or {
-      display: flex; align-items: center; justify-content: center;
-      padding: 0 0.5rem; flex-shrink: 0;
-      font-size: 0.68rem; font-weight: 600; color: var(--ink-4);
-      text-transform: uppercase; letter-spacing: 0.08em;
+    .nom-tab.active::after {
+      content: ''; position: absolute; bottom: 0; left: 0; right: 0;
+      height: 2px; background: var(--accent);
     }
-    .way-icon {
-      width: 28px; height: 28px; border-radius: var(--r-sm);
-      background: var(--accent-bg); display: flex; align-items: center; justify-content: center;
-      margin-bottom: 0.5rem; color: var(--accent);
+    .nom-panel { padding: 1.5rem; display: none; }
+    .nom-panel.active { display: block; }
+    .search-hint-strip {
+      font-size: 0.775rem; color: var(--ink-3); margin-bottom: 1rem; line-height: 1.6;
     }
-    .way-title { font-size: 0.8rem; font-weight: 600; color: var(--ink); margin-bottom: 0.25rem; }
-    .way-desc  { font-size: 0.75rem; color: var(--ink-3); line-height: 1.4; }
-    .way-example { font-family: var(--font-mono); font-size: 0.72rem; color: var(--accent-2); background: var(--accent-bg); border-radius: var(--r-sm); padding: 0.15rem 0.4rem; display: inline-block; margin-top: 0.3rem; }
+    .search-hint-strip code {
+      font-family: var(--font-mono); font-size: 0.72rem; color: var(--accent-2);
+      background: var(--accent-bg); border-radius: var(--r-sm);
+      padding: 0.1rem 0.35rem; margin: 0 0.1rem;
+    }
 
     @media (max-width: 640px) {
       .topbar { padding: 0 1rem; }
       .topbar-nav { display: none; }
       .page { padding: 1rem; }
-      .ways-panel { flex-direction: column; }
-      .way-or { padding: 0.25rem 0; }
     }
   </style>
 </head>
@@ -670,71 +731,97 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
     Nominating for: <strong><?= htmlspecialchars($current_group['name']) ?></strong>
   </div>
 
-  <!-- Ways to nominate -->
-  <div class="ways-panel">
-    <div class="way-card">
-      <div class="way-icon">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 9.5l3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-      </div>
-      <div class="way-title">Search by Name</div>
-      <div class="way-desc">Type a summit name and pick from the list.</div>
-      <span class="way-example">Mount Adams</span>
-    </div>
-    <div class="way-or">or</div>
-    <div class="way-card">
-      <div class="way-icon">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="2.5" width="11" height="9" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M4 6h6M4 8.5h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-      </div>
-      <div class="way-title">Paste a Reference</div>
-      <div class="way-desc">Paste a SOTA designator directly into the field.</div>
-      <span class="way-example">W7O/NC-001</span>
-    </div>
-    <div class="way-or">or</div>
-    <div class="way-card">
-      <div class="way-icon">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 4h10M2 7h10M2 10h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-      </div>
-      <div class="way-title">Multiple at Once</div>
-      <div class="way-desc">Paste several references separated by commas.</div>
-      <span class="way-example">W7O/NC-001, W7O/NC-002</span>
-    </div>
-  </div>
+  <!-- Tabbed nominate card -->
+  <div class="card" style="padding:0; overflow:hidden;">
 
-  <div class="card">
-    <div style="font-size: 0.8rem; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 1rem;">Find a Summit</div>
+    <div class="nom-tabs">
+      <button class="nom-tab active" id="tab-search" onclick="switchTab('search')">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="5.5" cy="5.5" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M9 9l2.5 2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        Name / Reference
+      </button>
+      <button class="nom-tab" id="tab-area" onclick="switchTab('area')">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="5.5" r="3" stroke="currentColor" stroke-width="1.4"/><path d="M6.5 12C6.5 12 2 7.5 2 5.5a4.5 4.5 0 019 0C11 7.5 6.5 12 6.5 12z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        Search by Area
+      </button>
+    </div>
+
     <form method="POST" id="nominate-form">
-      <input type="hidden" id="sota_ref"    name="sota_ref"    value="">
-      <input type="hidden" id="sota_refs"   name="sota_refs"   value="">
-      <input type="hidden" id="form_mode"   name="form_mode"   value="single">
+      <input type="hidden" name="nominate"   value="1">
+      <input type="hidden" id="sota_ref"     name="sota_ref"   value="">
+      <input type="hidden" id="sota_refs"    name="sota_refs"  value="">
+      <input type="hidden" id="form_mode"    name="form_mode"  value="single">
 
-      <div style="margin-bottom: 1rem;">
-        <label class="form-label" for="summit_search">Summit Name or Reference</label>
-        <input
-          type="text"
-          class="form-input"
-          id="summit_search"
-          placeholder="Search by name, or paste one or more SOTA references"
-          autocomplete="off"
-          autofocus
-        >
-        <div class="form-hint" id="search-hint">Type a name to search, or paste a SOTA reference. Separate multiple references with commas.</div>
-      </div>
+      <!-- ── Tab 1: Name / Reference / Multi ───────────────────────── -->
+      <div class="nom-panel active" id="panel-search">
+        <div class="search-hint-strip">Search by name · paste a reference like <code>W7O/NC-001</code> · or paste multiple refs separated by commas</div>
 
-      <div id="search-results" style="display:none; margin-bottom:1rem;"></div>
-
-      <!-- Single mode: selected summit box -->
-      <div class="selected-box" id="selected-summit">
-        <div class="selected-label">Selected Summit</div>
-        <div class="selected-row">
-          <div>
-            <span class="selected-name" id="selected-name"></span>
-            <span class="selected-ref"  id="selected-ref"></span>
-          </div>
-          <button type="button" class="clear-btn" onclick="clearSelection()">✕</button>
+        <div style="margin-bottom: 1rem;">
+          <label class="form-label" for="summit_search">Summit Name or Reference</label>
+          <input
+            type="text"
+            class="form-input"
+            id="summit_search"
+            placeholder="Mount Adams — or W7O/NC-001 — or W7O/NC-001, W7O/NC-002"
+            autocomplete="off"
+            autofocus
+          >
+          <div class="form-hint" id="search-hint">Type a name to search, or paste a SOTA reference. Separate multiple references with commas.</div>
         </div>
+
+        <div id="search-results" style="display:none; margin-bottom:1rem;"></div>
+
+        <div class="selected-box" id="selected-summit">
+          <div class="selected-label">Selected Summit</div>
+          <div class="selected-row">
+            <div>
+              <span class="selected-name" id="selected-name"></span>
+              <span class="selected-ref"  id="selected-ref"></span>
+            </div>
+            <button type="button" class="clear-btn" onclick="clearSelection()">✕</button>
+          </div>
+        </div>
+
+        <button type="submit" id="nominate-btn" class="btn btn-primary" disabled>Nominate Summit</button>
       </div>
 
-      <button type="submit" name="nominate" id="nominate-btn" class="btn btn-primary" disabled>Nominate Summit</button>
+      <!-- ── Tab 2: Area Search ─────────────────────────────────────── -->
+      <div class="nom-panel" id="panel-area">
+        <div style="display:flex; gap:0.75rem; margin-bottom:0.875rem; align-items:flex-end; flex-wrap:wrap;">
+          <div style="flex:1; min-width:180px;">
+            <label class="form-label" for="area_location">Location</label>
+            <input type="text" class="form-input" id="area_location" placeholder="Bend, OR — or 97401 — or Crater Lake" autocomplete="off">
+          </div>
+          <div>
+            <label class="form-label">Radius</label>
+            <div style="display:flex; align-items:center; gap:0.4rem;">
+              <input type="number" class="form-input" id="area_radius" value="25" min="1" max="300" style="width:72px;">
+              <span style="font-size:0.875rem; color:var(--ink-3); white-space:nowrap;"><?= ($current_group['units'] ?? 'imperial') === 'metric' ? 'km' : 'miles' ?></span>
+            </div>
+          </div>
+          <div>
+            <label class="form-label" for="area_min_pts">Min. pts</label>
+            <select class="form-input" id="area_min_pts" style="width:auto;">
+              <option value="1">Any</option>
+              <option value="2">2+</option>
+              <option value="4">4+</option>
+              <option value="6">6+</option>
+              <option value="8">8+</option>
+              <option value="10">10</option>
+            </select>
+          </div>
+          <div>
+            <button type="button" class="btn btn-primary" id="area_search_btn" style="width:auto;" onclick="doAreaSearch()">Search</button>
+          </div>
+        </div>
+        <div class="form-hint" style="margin-bottom:1rem;">Any location Google Maps recognizes — city, zip code, address, or landmark.</div>
+
+        <!-- Map (shown after search) -->
+        <div id="area_map" style="width:100%; height:240px; border-radius:var(--r-md); border:1px solid var(--border); margin-bottom:1rem; background:var(--bg-2); display:none;"></div>
+
+        <!-- Results -->
+        <div id="area_results"></div>
+      </div>
+
     </form>
   </div>
 
@@ -752,6 +839,95 @@ document.addEventListener('click', function(e) {
   var chip = document.getElementById('userChip');
   if (chip && !chip.contains(e.target)) chip.classList.remove('open');
 });
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+let mapsApiLoaded = false;
+let areaMap = null, areaCircle = null, areaMarkers = [];
+
+function switchTab(tab) {
+    document.querySelectorAll('.nom-tab').forEach(function(t) {
+        t.classList.toggle('active', t.id === 'tab-' + tab);
+    });
+    document.querySelectorAll('.nom-panel').forEach(function(p) {
+        p.classList.toggle('active', p.id === 'panel-' + tab);
+    });
+    if (tab === 'area' && !mapsApiLoaded) {
+        mapsApiLoaded = true;
+        const s = document.createElement('script');
+        s.src = 'https://maps.googleapis.com/maps/api/js?key=<?= defined("GOOGLE_MAPS_BROWSER_KEY") ? GOOGLE_MAPS_BROWSER_KEY : "" ?>&callback=initAreaMap';
+        s.async = true;
+        document.head.appendChild(s);
+    }
+}
+
+window.initAreaMap = function() {
+    areaMap = new google.maps.Map(document.getElementById('area_map'), {
+        center: { lat: 39.5, lng: -98.5 },
+        zoom: 4,
+        mapTypeId: 'terrain',
+        disableDefaultUI: true,
+        zoomControl: true,
+        gestureHandling: 'cooperative',
+    });
+    document.getElementById('area_map').style.display = 'block';
+};
+
+function updateAreaMap(data) {
+    if (!areaMap) return;
+    const mapDiv = document.getElementById('area_map');
+    mapDiv.style.display = 'block';
+    google.maps.event.trigger(areaMap, 'resize');
+
+    areaMarkers.forEach(function(m) { m.setMap(null); });
+    areaMarkers = [];
+    if (areaCircle) areaCircle.setMap(null);
+
+    const center = { lat: data.lat, lng: data.lon };
+
+    areaCircle = new google.maps.Circle({
+        map: areaMap,
+        center: center,
+        radius: data.radius * 1609.34,
+        strokeColor: '#CC2222',
+        strokeOpacity: 0.85,
+        strokeWeight: 2,
+        fillColor: '#CC2222',
+        fillOpacity: 0.07,
+    });
+
+    areaMarkers.push(new google.maps.Marker({
+        map: areaMap,
+        position: center,
+        title: data.label,
+        icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 7,
+            fillColor: '#1C1B19',
+            fillOpacity: 1,
+            strokeColor: '#fff',
+            strokeWeight: 2,
+        }
+    }));
+
+    (data.summits || []).forEach(function(s) {
+        if (!s.lat || !s.lon) return;
+        areaMarkers.push(new google.maps.Marker({
+            map: areaMap,
+            position: { lat: s.lat, lng: s.lon },
+            title: s.name + ' (' + s.ref + ', ' + s.points + 'pt)',
+            icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 5,
+                fillColor: s.nominated ? '#B8B5B0' : '#D4A574',
+                fillOpacity: 0.9,
+                strokeColor: '#fff',
+                strokeWeight: 1.5,
+            }
+        }));
+    });
+
+    areaMap.fitBounds(areaCircle.getBounds());
+}
 
 // ── Elements ─────────────────────────────────────────────────────────────────
 const searchInput  = document.getElementById('summit_search');
@@ -1006,7 +1182,11 @@ document.getElementById('nominate-form').addEventListener('submit', function(e) 
         if (!refsInput.value.trim()) {
             e.preventDefault();
             alert('No valid summits to nominate.');
+            return;
         }
+        const count = refsInput.value.split(',').filter(function(r) { return r.trim(); }).length;
+        nominateBtn.textContent = 'Adding ' + count + ' summit' + (count !== 1 ? 's' : '') + '… please wait';
+        nominateBtn.disabled = true;
     } else {
         if (!refInput.value.trim()) {
             e.preventDefault();
@@ -1014,6 +1194,127 @@ document.getElementById('nominate-form').addEventListener('submit', function(e) 
         }
     }
 });
+
+// ── Area search ───────────────────────────────────────────────────────────────
+const useMetric = <?= json_encode(($current_group['units'] ?? 'imperial') === 'metric') ?>;
+
+document.getElementById('area_location').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); doAreaSearch(); }
+});
+document.getElementById('area_radius').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); doAreaSearch(); }
+});
+
+function doAreaSearch() {
+    const location   = document.getElementById('area_location').value.trim();
+    const radiusInput = parseFloat(document.getElementById('area_radius').value) || 25;
+    const minPts      = parseInt(document.getElementById('area_min_pts').value) || 1;
+    const radius_mi   = useMetric ? radiusInput * 0.621371 : radiusInput;
+
+    if (!location) { document.getElementById('area_location').focus(); return; }
+
+    const resultsDiv = document.getElementById('area_results');
+    const btn        = document.getElementById('area_search_btn');
+    resultsDiv.innerHTML = '<div class="search-status">Searching…</div>';
+    btn.disabled = true;
+
+    fetch('nominate.php?action=radius_search&location=' + encodeURIComponent(location) + '&radius_mi=' + radius_mi.toFixed(2) + '&min_pts=' + minPts)
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            if (data.error) {
+                resultsDiv.innerHTML = '<div class="msg msg-error">' + escHtml(data.error) + '</div>';
+                return;
+            }
+            renderAreaResults(data);
+        })
+        .catch(() => {
+            btn.disabled = false;
+            resultsDiv.innerHTML = '<div class="msg msg-error">Search failed. Please try again.</div>';
+        });
+}
+
+function renderAreaResults(data) {
+    const summits    = data.summits || [];
+    const resultsDiv = document.getElementById('area_results');
+    const unitsLabel = useMetric ? 'km' : 'mi';
+
+    // Always update the map when we have a geocoded location
+    updateAreaMap(data);
+
+    if (summits.length === 0) {
+        const r = useMetric ? (data.radius * 1.60934).toFixed(0) : data.radius.toFixed(0);
+        resultsDiv.innerHTML = '<div class="search-status">No summits found within ' + r + ' ' + unitsLabel + ' of <strong>' + escHtml(data.label) + '</strong>. Try a larger radius or fewer point filters.</div>';
+        return;
+    }
+
+    const newCount = summits.filter(s => !s.nominated).length;
+
+    let html = '<div style="font-size:0.8rem; color:var(--ink-3); margin-bottom:0.6rem; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">';
+    html += '<div><strong style="color:var(--ink);">' + summits.length + '</strong> summit' + (summits.length !== 1 ? 's' : '') + ' near <strong style="color:var(--ink);">' + escHtml(data.label) + '</strong>';
+    if (newCount < summits.length) html += ' &nbsp;·&nbsp; <span style="color:var(--green);">' + newCount + ' new to your group</span>';
+    html += '</div>';
+    html += '<div style="display:flex; gap:0.75rem;">';
+    html += '<button type="button" onclick="areaSelectAll(true)" style="background:none; border:none; font-size:0.75rem; color:var(--accent); cursor:pointer; font-family:var(--font-sans); padding:0;">Select all</button>';
+    html += '<button type="button" onclick="areaSelectAll(false)" style="background:none; border:none; font-size:0.75rem; color:var(--ink-3); cursor:pointer; font-family:var(--font-sans); padding:0;">None</button>';
+    html += '</div></div>';
+
+    html += '<div id="area_list" style="max-height:400px; overflow-y:auto; border:1px solid var(--border); border-radius:var(--r-md); margin-bottom:0.875rem;">';
+
+    summits.forEach(function(s) {
+        const checked  = !s.nominated;
+        const dist     = useMetric ? (s.dist_mi * 1.60934).toFixed(1) : s.dist_mi.toFixed(1);
+        const alt      = s.altFt ? (useMetric ? Math.round(s.altFt * 0.3048).toLocaleString() + ' m' : s.altFt.toLocaleString() + ' ft') : '';
+        const inGroup  = s.nominated ? ' <span style="font-size:0.65rem; background:var(--bg-2); border:1px solid var(--border-2); border-radius:3px; padding:1px 5px; color:var(--ink-3); font-weight:600; vertical-align:middle;">In group</span>' : '';
+
+        html += '<label style="display:flex; align-items:center; gap:0.75rem; padding:0.55rem 0.875rem; cursor:' + (s.nominated ? 'default' : 'pointer') + '; border-bottom:1px solid var(--border); background:' + (s.nominated ? 'var(--bg)' : 'var(--surface)') + ';">';
+        html += '<input type="checkbox" class="area-chk" data-ref="' + escAttr(s.ref) + '" ' + (checked ? 'checked' : '') + ' ' + (s.nominated ? 'disabled' : '') + ' onchange="updateAreaBtn()" style="width:15px; height:15px; flex-shrink:0; cursor:' + (s.nominated ? 'default' : 'pointer') + ';">';
+        html += '<div style="flex:1; min-width:0;">';
+        html += '<div style="font-size:0.8375rem; font-weight:600; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escHtml(s.name) + inGroup + '</div>';
+        html += '<div style="font-family:var(--font-mono); font-size:0.72rem; color:var(--ink-3);">' + escHtml(s.ref) + '</div>';
+        html += '</div>';
+        html += '<div style="text-align:right; flex-shrink:0; font-size:0.775rem; line-height:1.4;">';
+        html += '<div style="font-weight:700; color:var(--accent);">' + s.points + ' pt' + (s.points !== 1 ? 's' : '') + '</div>';
+        html += '<div style="color:var(--ink-3);">' + dist + ' ' + unitsLabel + '</div>';
+        if (alt) html += '<div style="color:var(--ink-4);">' + alt + '</div>';
+        html += '</div>';
+        html += '</label>';
+    });
+
+    html += '</div>';
+    html += '<button type="button" class="btn btn-primary" id="area_nominate_btn" onclick="submitAreaSelection()" style="height:40px;" disabled>Nominate 0 Summits</button>';
+
+    resultsDiv.innerHTML = html;
+    updateAreaBtn();
+}
+
+function areaSelectAll(on) {
+    document.querySelectorAll('.area-chk:not(:disabled)').forEach(function(cb) { cb.checked = on; });
+    updateAreaBtn();
+}
+
+function updateAreaBtn() {
+    const checked = Array.from(document.querySelectorAll('.area-chk:checked')).map(cb => cb.dataset.ref);
+    const btn = document.getElementById('area_nominate_btn');
+    if (!btn) return;
+    btn.disabled = checked.length === 0;
+    btn.textContent = checked.length === 0
+        ? 'Nominate 0 Summits'
+        : 'Nominate ' + checked.length + ' Summit' + (checked.length !== 1 ? 's' : '');
+}
+
+function submitAreaSelection() {
+    const checked = Array.from(document.querySelectorAll('.area-chk:checked')).map(function(cb) { return cb.dataset.ref; });
+    if (checked.length === 0) return;
+    refsInput.value = checked.join(',');
+    formMode.value  = 'bulk';
+    const btn = document.getElementById('area_nominate_btn');
+    if (btn) {
+        btn.textContent = 'Adding ' + checked.length + ' summit' + (checked.length !== 1 ? 's' : '') + '… please wait';
+        btn.disabled = true;
+    }
+    document.getElementById('nominate-form').submit();
+}
 </script>
 </body>
 </html>

@@ -69,6 +69,70 @@ function search_sota_cache($query, $limit = 20) {
     ], array_slice($results, 0, $limit));
 }
 
+function haversine_miles($lat1, $lon1, $lat2, $lon2) {
+    $dLat = deg2rad($lat2 - $lat1);
+    $dLon = deg2rad($lon2 - $lon1);
+    $a = sin($dLat/2)**2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLon/2)**2;
+    return 3958.8 * 2 * atan2(sqrt($a), sqrt(1 - $a));
+}
+
+// Search the cache for summits within $radius_miles of ($center_lat, $center_lon).
+// Returns an array of summit rows with an added 'dist_mi' key, sorted by distance.
+// Returns ['_no_cache' => true] if the cache file is missing.
+// Returns ['_no_latlon' => true] if the cache is old (no coordinates stored).
+function search_sota_cache_by_radius($center_lat, $center_lon, $radius_miles, $min_points = 1) {
+    if (!file_exists(SOTA_CACHE_FILE)) return ['_no_cache' => true];
+
+    // Bounding box pre-filter to avoid running Haversine on every row
+    $lat_delta = $radius_miles / 69.0;
+    $lon_delta = $radius_miles / max(1.0, 69.0 * cos(deg2rad($center_lat)));
+    $min_lat = $center_lat - $lat_delta;
+    $max_lat = $center_lat + $lat_delta;
+    $min_lon = $center_lon - $lon_delta;
+    $max_lon = $center_lon + $lon_delta;
+
+    $results   = [];
+    $has_coords = false;
+    $gz = @gzopen(SOTA_CACHE_FILE, 'rb');
+    if (!$gz) return [];
+
+    while (!gzeof($gz)) {
+        $line = gzgets($gz, 512);
+        if (!$line) continue;
+        $s = explode('|', rtrim($line, "\r\n"));
+        if (count($s) < 7) continue;
+        $has_coords = true;
+
+        $points = (int)$s[3];
+        if ($points < $min_points) continue;
+
+        $lat = (float)$s[5];
+        $lon = (float)$s[6];
+        if (!$lat && !$lon) continue;
+
+        if ($lat < $min_lat || $lat > $max_lat || $lon < $min_lon || $lon > $max_lon) continue;
+
+        $dist = haversine_miles($center_lat, $center_lon, $lat, $lon);
+        if ($dist > $radius_miles) continue;
+
+        $results[] = [
+            'ref'     => $s[0],
+            'name'    => $s[1],
+            'points'  => $points,
+            'altFt'   => (int)$s[4],
+            'lat'     => $lat,
+            'lon'     => $lon,
+            'dist_mi' => round($dist, 1),
+        ];
+    }
+    gzclose($gz);
+
+    if (!$has_coords) return ['_no_latlon' => true];
+
+    usort($results, fn($a, $b) => $a['dist_mi'] <=> $b['dist_mi']);
+    return $results;
+}
+
 function get_sota_cache_info() {
     if (!file_exists(SOTA_CACHE_FILE)) return null;
     // Count lines by streaming through the gz
