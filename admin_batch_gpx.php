@@ -702,6 +702,16 @@ function finish() {
   log(`Done. Imported: ${counts.imported}  No tracks: ${counts.none}  Skipped: ${counts.skip}  Errors: ${counts.err}`, 'ok');
   setProgress(queue.length, queue.length);
   playDone();
+
+  // Update the stat boxes to reflect what was just imported
+  if (counts.imported > 0) {
+    const prevHave = parseInt(document.getElementById('stat-have').textContent) || 0;
+    const prevNeed = parseInt(document.getElementById('stat-need').textContent) || 0;
+    document.getElementById('stat-have').textContent = prevHave + counts.imported;
+    document.getElementById('stat-need').textContent = Math.max(0, prevNeed - counts.imported);
+    document.getElementById('queue-status').textContent = `✓ Import complete — ${counts.imported} new track(s) added to the library.`;
+  }
+
   const assoc = getAssoc();
   if (assoc) {
     fetch(`admin_batch_gpx.php?action=record_run&association=${encodeURIComponent(assoc)}&imported=${counts.imported}`)
