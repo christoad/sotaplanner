@@ -20,9 +20,9 @@ Context: VK3ARR (SOTA team) granted an SSO client for identity login. Chris sent
 **Radius-based bulk nomination (completed 2026-06-06):**
 `nominate.php` has two tabs: "Name / Reference" (existing search) and "Search by Area" (new). The area tab geocodes any location Google Maps recognizes, draws a red circle on a map, and lists every SOTA summit within the radius as a checklist. Selecting summits and clicking "Nominate" runs through the existing bulk nomination flow and redirects to the dashboard. The SOTA cache (`sota_cache.csv.gz`) was rebuilt to include lat/lon in every entry (format: `code|name|norm|points|alt_ft|lat|lon`). The `search_sota_cache_by_radius()` function in `sota_cache_helper.php` uses a bounding-box pre-filter + Haversine formula. The Maps JS API is lazy-loaded only when the area tab is first clicked. Units (miles/km) follow the user's group preference.
 
-**Track 4 — Batch data pre-population (Global GPX Library):**
+**Track 4 — Batch data pre-population (Global GPX Library): COMPLETE as of 2026-06-09**
 
-Infrastructure is **fully built and deployed to production**. As of 2026-06-06: **~97,302 of 181,126 summits checked** (~54%), 11,145 with GPX routes, 7,118 with trailhead. Cron jobs are running hourly. Associations with 100% coverage (all summits have GPX): W6 (370), W4C (200), W4G (100), W1 (64), W0C (63), W3 (36), W2 (27).
+All 181,126 summits have been checked against SOTAmaps. Steady-state cron jobs are active. No further manual action needed.
 
 **What's built:**
 - `global_gpx_tracks` table — one row per imported summit, keyed globally
@@ -30,26 +30,14 @@ Infrastructure is **fully built and deployed to production**. As of 2026-06-06: 
 - `gpx_import_lib.php` — shared library with the canonical `import_sotamaps_track()` function used by both the browser importer and the cron
 - `batch_gpx_cron.php` — CLI cron for new-summit discovery and no-track retries
 - `trailhead_osm_cron.php` — CLI cron for OSM trailhead lookup on newly imported tracks
-- **Progress panel** in God Mode → Data Tools tab — shows Checked / With Route / No Route / With Trailhead / Remaining with a progress bar. Total count is cached in `app_settings` key `sota_cache_summit_count` (refreshed once/day from the gz file).
+- **Progress panel** in God Mode → Data Tools tab — shows Checked / With Route / No Route / With Trailhead / Remaining with a progress bar. Total count is cached in `app_settings` key `sota_cache_summit_count` (refreshed once/day from the gz file using a 512-byte buffer — must match the cron's buffer size or counts will diverge).
 - **Login page badge** on `login.php` — shows count of summits in `global_gpx_tracks` with `trailhead_lat IS NOT NULL AND trailhead_lon IS NOT NULL` as a live stat in the hero.
 
-**What remains:**
-1. Initial import still running via hourly cron (~54% complete as of 2026-06-06, finishes ~2026-06-08).
-2. When Remaining = 0: run `admin_trailhead_osm.php` once to catch any stragglers, then replace hourly cron entries with steady-state daily/weekly jobs.
-
-**Crontab lines for the initial catch-up phase (hourly, aggressive) — CURRENTLY ACTIVE:**
+**Active cron schedule (steady-state):**
 ```
-0 * * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=new --limit=1500 --delay=1000 >> /home/chrisr069/sota_logs/gpx_cron.log 2>&1
-30 * * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/trailhead_osm_cron.php >> /home/chrisr069/sota_logs/gpx_cron.log 2>&1
-```
-
-**Timing note:** Each run takes ~40 minutes (1500 summits × ~1600ms effective per call — 1000ms delay + ~600ms API response time). Leaves a ~20 minute buffer before the next hourly run. Throughput: ~36,000 summits/day → ~5 days to complete from 2026-06-04.
-
-**Crontab lines for steady-state (after initial import complete — swap to these when Remaining = 0):**
-```
-5 0 * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=new --limit=500 >> /home/chrisr069/sota_logs/gpx_cron.log 2>&1
-30 0 * * 6 /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=retry --limit=500 >> /home/chrisr069/sota_logs/gpx_cron.log 2>&1
-0 1 * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/trailhead_osm_cron.php >> /home/chrisr069/sota_logs/gpx_cron.log 2>&1
+5 0 * * *   batch_gpx_cron.php --mode=new --limit=500       # nightly: check any new SOTA summits
+30 0 * * 6  batch_gpx_cron.php --mode=retry --limit=5000    # weekly (Sat): retry no-track summits (~2hrs)
+0 1 * * *   trailhead_osm_cron.php                          # nightly: fill trailheads for new tracks
 ```
 
 **Log file location:** `/home/chrisr069/sota_logs/gpx_cron.log` — visible in God Mode → Data Tools → Cron Activity Log. The `/home/chrisr069/logs/` directory is root-owned and not writable; always use `sota_logs/` instead.
@@ -57,9 +45,10 @@ Infrastructure is **fully built and deployed to production**. As of 2026-06-06: 
 **Important lessons learned the hard way:**
 - Staging (christopherreddick.com/sotaplanner) shares the production database. The importer blocks itself if run on staging (`HTTP_HOST` check). Always run batch tools on production only.
 - GPX files for global tracks live in `gpx_files/global/` on the server. When `from_global_library=1`, never delete the physical file on track removal.
+- The `sota_cache_summit_count` cache in `app_settings` must be counted with a 512-byte gz buffer (matching the cron). A 64-byte buffer causes double-counting of long lines and inflates the total.
 
 **OSM Trailhead Lookup:**
-- **Browser tool** (`admin_trailhead_osm.php`): interactive start/pause/stop UI. Queries Overpass within 400m of the GPX low-elevation endpoint. Falls back to the GPX endpoint itself. Default 1.5s delay. Run manually after the initial GPX import.
+- **Browser tool** (`admin_trailhead_osm.php`): interactive start/pause/stop UI. Queries Overpass within 400m of the GPX low-elevation endpoint. Falls back to the GPX endpoint itself. Default 1.5s delay.
 - **Cron script** (`trailhead_osm_cron.php`): CLI-only, processes `global_gpx_tracks` rows missing a trailhead (newest-first so recently cron-imported tracks get filled promptly). 100/run at 2s delay.
 
 **Remaining data pre-population idea:**

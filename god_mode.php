@@ -199,7 +199,12 @@ if ($cached_total_row && strtotime($cached_total_row['updated_at']) > time() - 8
         $gz = @gzopen(SOTA_CACHE_FILE, 'rb');
         if ($gz) {
             $n = 0;
-            while (!gzeof($gz)) { $l = gzgets($gz, 64); if ($l && strpos($l, '/') !== false) $n++; }
+            while (!gzeof($gz)) {
+                $l = gzgets($gz, 512);
+                if (!$l) continue;
+                $parts = explode('|', rtrim($l, "\r\n"), 2);
+                if (isset($parts[0]) && strpos($parts[0], '/') !== false) $n++;
+            }
             gzclose($gz);
             $gpx_total_cache = $n;
             $db->prepare("INSERT INTO app_settings (setting_key, setting_value, updated_at) VALUES ('sota_cache_summit_count', ?, NOW()) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()")->execute([$n]);
