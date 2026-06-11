@@ -528,6 +528,53 @@ if ($current_group) {
     $stmt->execute([$summit_id, $current_group['id']]);
     $gpx_data = $stmt->fetch();
 
+    // Auto-link from global library if the summit has no GPX but the library has one now
+    // (covers summits nominated before the cron caught up with their association)
+    if (!$gpx_data && !empty($summit['sota_ref'])) {
+        $gl = $db->prepare("SELECT * FROM global_gpx_tracks WHERE sota_ref = ?");
+        $gl->execute([$summit['sota_ref']]);
+        $global = $gl->fetch();
+        if ($global && file_exists($global['file_path'])) {
+            $db->prepare("
+                INSERT IGNORE INTO gpx_tracks (
+                    summit_id, planning_group_id, filename, file_path,
+                    total_time, hiking_time, activation_time, rest_break_time,
+                    total_distance, hiking_distance, max_elevation, min_elevation,
+                    elevation_gain, elevation_loss, avg_speed, hiking_speed,
+                    num_points, summit_lat, summit_lon, using_api,
+                    activation_zone_polygon, activation_zone_method,
+                    use_for_hike_time, use_for_elevation, from_global_library
+                ) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, 0, NULL, 'none', 1, 1, 1)
+            ")->execute([
+                $summit_id, $current_group['id'], $global['filename'], $global['file_path'],
+                $global['total_distance'], $global['total_distance'],
+                $global['max_elevation'], $global['min_elevation'],
+                $global['elevation_gain'], $global['elevation_loss'],
+                $global['num_points'], $global['summit_lat'], $global['summit_lon'],
+            ]);
+            // Auto-fill hike stats and trailhead only if not already set
+            $su = []; $sp = [];
+            if (!empty($global['elevation_gain']) && $global['elevation_gain'] > 0) {
+                $su[] = "hike_elevation_gain_ft = COALESCE(hike_elevation_gain_ft, ?)";
+                $sp[] = round($global['elevation_gain'] * 3.28084);
+            }
+            if (!empty($global['total_distance']) && $global['total_distance'] > 0) {
+                $su[] = "hike_distance_mi = COALESCE(hike_distance_mi, ?)";
+                $sp[] = round($global['total_distance'] * 2 * 0.621371, 2);
+            }
+            if (!empty($global['trailhead_lat']) && $global['trailhead_lat'] != 0) {
+                $su[] = "trailhead_lat = COALESCE(NULLIF(trailhead_lat, 0), ?)";
+                $sp[] = $global['trailhead_lat'];
+                $su[] = "trailhead_lng = COALESCE(NULLIF(trailhead_lng, 0), ?)";
+                $sp[] = $global['trailhead_lon'];
+            }
+            if ($su) { $sp[] = $summit_id; $db->prepare("UPDATE summits SET " . implode(', ', $su) . " WHERE id = ?")->execute($sp); }
+            $stmt2 = $db->prepare("SELECT * FROM gpx_tracks WHERE summit_id = ? AND planning_group_id = ?");
+            $stmt2->execute([$summit_id, $current_group['id']]);
+            $gpx_data = $stmt2->fetch();
+        }
+    }
+
     // If linked from global library, load the SOTAmaps track count for the swap UI
     if (!empty($gpx_data['from_global_library']) && !empty($summit['sota_ref'])) {
         $st = $db->prepare("SELECT sotamaps_track_count, source_callsign, source_track_title FROM global_gpx_tracks WHERE sota_ref = ?");

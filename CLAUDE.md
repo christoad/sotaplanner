@@ -36,7 +36,7 @@ All 181,126 summits have been checked against SOTAmaps. Steady-state cron jobs a
 **Active cron schedule (steady-state):**
 ```
 5 0 * * *   batch_gpx_cron.php --mode=new --limit=500       # nightly: check any new SOTA summits
-30 0 * * 6  batch_gpx_cron.php --mode=retry --limit=5000    # weekly (Sat): retry no-track summits (~2hrs)
+30 0 * * 6  batch_gpx_cron.php --mode=retry --limit=10000   # weekly (Sat): retry no-track summits (~4hrs)
 0 1 * * *   trailhead_osm_cron.php                          # nightly: fill trailheads for new tracks
 ```
 

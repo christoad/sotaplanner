@@ -223,6 +223,13 @@ $gpx_progress['remaining']  = max(0, $gpx_progress['total'] - $gpx_progress['che
 $gpx_progress['pct']        = $gpx_progress['total'] > 0 ? round($gpx_progress['checked'] / $gpx_progress['total'] * 100, 1) : 0;
 $gpx_progress['trail_pct']  = $gpx_progress['has_track'] > 0 ? round($gpx_progress['has_trail'] / $gpx_progress['has_track'] * 100, 1) : 0;
 
+// Recheck cycle stats (weekly retry job progress)
+$recheck_fresh = (int)$db->query("SELECT COUNT(*) FROM global_gpx_checked WHERE tracks_found = 0 AND last_checked >= DATE_SUB(NOW(), INTERVAL 30 DAY)")->fetchColumn();
+$recheck_stale = max(0, $gpx_progress['no_track'] - $recheck_fresh);
+$recheck_pct   = $gpx_progress['no_track'] > 0 ? round($recheck_fresh / $gpx_progress['no_track'] * 100, 1) : 0;
+$last_retry_raw = $db->query("SELECT setting_value FROM app_settings WHERE setting_key = 'last_retry_run'")->fetchColumn();
+$last_retry = $last_retry_raw ? json_decode($last_retry_raw, true) : null;
+
 $banner_raw     = $db->query("SELECT setting_value FROM app_settings WHERE setting_key = 'sitewide_banner'")->fetchColumn();
 $current_banner = $banner_raw ? json_decode($banner_raw, true) : null;
 
@@ -848,6 +855,70 @@ select.form-input { cursor: pointer; }
                 Use the <strong>Batch GPX Import</strong> tool below to continue. When Remaining reaches 0, run <strong>Trailhead Lookup</strong> once, then enable the three DreamHost cron jobs.
             </div>
             <?php endif; ?>
+        </div>
+
+        <!-- Weekly Recheck Progress -->
+        <?php
+        $no_track_total = $gpx_progress['no_track'];
+        $with_route     = $gpx_progress['has_track'];
+        $checked_total  = $gpx_progress['checked'];
+        $route_pct_seg  = $checked_total > 0 ? round($with_route / $checked_total * 100, 1) : 0;
+        $fresh_pct_seg  = $checked_total > 0 ? round($recheck_fresh / $checked_total * 100, 1) : 0;
+        $stale_pct_seg  = $checked_total > 0 ? round($recheck_stale / $checked_total * 100, 1) : 0;
+        ?>
+        <div class="card" style="margin-bottom:var(--sp-4);">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:var(--sp-4); margin-bottom:var(--sp-4);">
+                <div>
+                    <div style="font-weight:600; font-size:1rem;">Weekly Recheck Progress</div>
+                    <div style="font-size:0.78rem; color:var(--ink-3); margin-top:0.2rem;">Saturday cron re-checks no-route summits for newly uploaded community tracks</div>
+                </div>
+                <?php if ($last_retry): ?>
+                <div style="text-align:right; font-size:0.75rem; color:var(--ink-3); flex-shrink:0;">
+                    <div style="font-weight:600; color:var(--ink-2);">Last run <?= date('M j', $last_retry['ts']) ?></div>
+                    <div><?= number_format($last_retry['processed']) ?> checked &middot; <?= number_format($last_retry['found']) ?> new routes</div>
+                </div>
+                <?php else: ?>
+                <div style="font-size:0.75rem; color:var(--ink-4); flex-shrink:0;">No retry run yet</div>
+                <?php endif; ?>
+            </div>
+
+            <!-- Segmented bar: with route (green) | rechecked-no-route (gray) | stale (light) -->
+            <div style="background:var(--bg-3); border-radius:100px; height:12px; margin-bottom:var(--sp-4); overflow:hidden; display:flex;">
+                <div style="background:var(--green); width:<?= $route_pct_seg ?>%; height:100%;" title="With route: <?= number_format($with_route) ?>"></div>
+                <div style="background:var(--ink-4); width:<?= $fresh_pct_seg ?>%; height:100%;" title="Rechecked, no route: <?= number_format($recheck_fresh) ?>"></div>
+                <div style="background:var(--bg-3); width:<?= $stale_pct_seg ?>%; height:100%;" title="Not yet rechecked: <?= number_format($recheck_stale) ?>"></div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:var(--sp-3); margin-bottom:var(--sp-3);">
+                <div style="background:var(--green-bg); border:1px solid oklch(85% 0.07 155); border-radius:var(--r-md); padding:0.75rem 1rem;">
+                    <div style="font-size:1.3rem; font-weight:700; color:var(--green); line-height:1.1;"><?= number_format($with_route) ?></div>
+                    <div style="font-size:0.72rem; color:var(--ink-3); font-weight:600; text-transform:uppercase; letter-spacing:0.05em; margin-top:0.25rem;">With Route</div>
+                    <div style="font-size:0.75rem; color:var(--ink-3); margin-top:0.1rem;">community GPX found</div>
+                </div>
+                <div style="background:var(--bg); border:1px solid var(--border); border-radius:var(--r-md); padding:0.75rem 1rem;">
+                    <div style="font-size:1.3rem; font-weight:700; color:var(--ink-2); line-height:1.1;"><?= number_format($recheck_fresh) ?></div>
+                    <div style="font-size:0.72rem; color:var(--ink-3); font-weight:600; text-transform:uppercase; letter-spacing:0.05em; margin-top:0.25rem;">Rechecked</div>
+                    <div style="font-size:0.75rem; color:var(--ink-3); margin-top:0.1rem;"><?= $recheck_pct ?>% of no-route summits</div>
+                </div>
+                <div style="background:var(--bg); border:1px solid var(--border); border-radius:var(--r-md); padding:0.75rem 1rem;">
+                    <div style="font-size:1.3rem; font-weight:700; color:var(--ink-4); line-height:1.1;"><?= number_format($recheck_stale) ?></div>
+                    <div style="font-size:0.72rem; color:var(--ink-3); font-weight:600; text-transform:uppercase; letter-spacing:0.05em; margin-top:0.25rem;">Awaiting Recheck</div>
+                    <div style="font-size:0.75rem; color:var(--ink-3); margin-top:0.1rem;">~<?= ceil($recheck_stale / 10000) ?> Saturdays at 10k/run</div>
+                </div>
+            </div>
+
+            <!-- Legend -->
+            <div style="display:flex; gap:var(--sp-4); flex-wrap:wrap;">
+                <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; color:var(--ink-3);">
+                    <div style="width:10px; height:10px; border-radius:2px; background:var(--green); flex-shrink:0;"></div> With route
+                </div>
+                <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; color:var(--ink-3);">
+                    <div style="width:10px; height:10px; border-radius:2px; background:var(--ink-4); flex-shrink:0;"></div> Rechecked, no route found (last 30 days)
+                </div>
+                <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; color:var(--ink-3);">
+                    <div style="width:10px; height:10px; border-radius:2px; background:var(--border); flex-shrink:0;"></div> Not yet rechecked (>30 days old)
+                </div>
+            </div>
         </div>
 
         <div class="card" style="margin-bottom:var(--sp-4);">

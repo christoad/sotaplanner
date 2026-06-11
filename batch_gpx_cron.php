@@ -127,6 +127,12 @@ foreach ($queue as $i => $sota_ref) {
 }
 
 _clog("Done — imported:{$counts['imported']}  none:{$counts['none']}  skip:{$counts['skip']}  err:{$counts['err']}");
+
+if ($mode === 'retry') {
+    $summary = json_encode(['ts' => time(), 'processed' => $total, 'found' => $counts['imported']]);
+    $db->prepare("INSERT INTO app_settings (setting_key, setting_value, updated_at) VALUES ('last_retry_run', ?, NOW()) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()")->execute([$summary]);
+}
+
 _clog(str_repeat('-', 60));
 exit(0);
 
