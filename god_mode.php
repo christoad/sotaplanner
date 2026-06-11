@@ -310,12 +310,12 @@ if (file_exists($cron_log_path) && is_readable($cron_log_path)) {
     if ($fsize > $read && count($raw_lines) > 1) array_shift($raw_lines); // drop partial first line
     $cron_log_lines = array_slice(array_values(array_filter($raw_lines, fn($l) => $l !== '')), -180);
     foreach (array_reverse($cron_log_lines) as $line) {
-        if (preg_match('/\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] ((?:Done|GPX cron|Trailhead cron).+)/', $line, $m)) {
+        if (preg_match('/\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] ((?:Done|Nothing to process|GPX cron|Trailhead cron).+)/', $line, $m)) {
             if (!$cron_last_run) { $cron_last_run = $m[1]; $cron_last_stats = $m[2]; }
         }
-        if (preg_match('/\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] Done/', $line, $m)) {
+        if (preg_match('/\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] (?:Done|Nothing to process)/', $line, $m)) {
             $cron_last_run   = $m[1];
-            $cron_last_stats = trim(substr($line, strpos($line, 'Done')));
+            $cron_last_stats = trim(substr($line, strpos($line, '] ') + 2));
             break;
         }
     }
@@ -966,9 +966,27 @@ select.form-input { cursor: pointer; }
         <div class="section-head" style="margin-top:var(--sp-8);">
             <div>
                 <h2>Cron Activity Log</h2>
-                <p>Output from the automated GPX and trailhead cron jobs. Updates daily at midnight and weekly on Saturdays.</p>
+                <p>Output from the automated GPX and trailhead cron jobs.</p>
             </div>
             <a href="god_mode.php?tab=data" class="btn btn-ghost btn-sm">Refresh</a>
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:var(--sp-3); margin-bottom:var(--sp-4);">
+            <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md); padding:0.75rem 1rem;">
+                <div style="font-size:0.72rem; font-weight:700; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.35rem;">Nightly · 12:05am</div>
+                <div style="font-size:0.82rem; font-weight:600; color:var(--ink); margin-bottom:0.2rem;">New Summit Check</div>
+                <div style="font-size:0.77rem; color:var(--ink-3); line-height:1.4;">Checks up to 500 summits added to SOTA since last run. Near-zero work in steady state.</div>
+            </div>
+            <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md); padding:0.75rem 1rem;">
+                <div style="font-size:0.72rem; font-weight:700; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.35rem;">Nightly · 1:00am</div>
+                <div style="font-size:0.82rem; font-weight:600; color:var(--ink); margin-bottom:0.2rem;">Trailhead Lookup</div>
+                <div style="font-size:0.77rem; color:var(--ink-3); line-height:1.4;">Queries OpenStreetMap for trailhead/parking coordinates for any new routes without one.</div>
+            </div>
+            <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md); padding:0.75rem 1rem;">
+                <div style="font-size:0.72rem; font-weight:700; color:var(--green); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.35rem;">Saturday · 12:30am</div>
+                <div style="font-size:0.82rem; font-weight:600; color:var(--ink); margin-bottom:0.2rem;">Weekly Recheck</div>
+                <div style="font-size:0.77rem; color:var(--ink-3); line-height:1.4;">Re-checks 10,000 no-route summits against SOTAmaps in case community tracks have been uploaded. ~4hr run.</div>
+            </div>
         </div>
 
         <?php if (empty($cron_log_lines)): ?>
