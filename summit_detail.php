@@ -575,8 +575,8 @@ if ($current_group) {
         }
     }
 
-    // If linked from global library, load the SOTAmaps track count for the swap UI
-    if (!empty($gpx_data['from_global_library']) && !empty($summit['sota_ref'])) {
+    // Load the SOTAmaps track count for the swap UI whenever a SOTA ref is present
+    if (!empty($summit['sota_ref'])) {
         $st = $db->prepare("SELECT sotamaps_track_count, source_callsign, source_track_title FROM global_gpx_tracks WHERE sota_ref = ?");
         $st->execute([$summit['sota_ref']]);
         $row = $st->fetch();
@@ -1749,9 +1749,17 @@ if ($tl_show) {
           </div>
           <div id="sotamaps-result" style="margin-top:0.5rem; display:none;"></div>
           <?php else: ?>
-          <div style="font-size:0.78rem; color:var(--green); font-weight:500; margin-bottom:0.75rem;">
-            Track loaded: <?= htmlspecialchars($gpx_data['filename']) ?>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:0.75rem; margin-bottom:0.5rem; flex-wrap:wrap;">
+            <div style="font-size:0.78rem; color:var(--green); font-weight:500;">
+              Track loaded: <?= htmlspecialchars($gpx_data['filename']) ?>
+            </div>
+            <?php if ($sotamaps_track_count > 1): ?>
+              <button class="btn btn-ghost btn-sm" id="sotamaps-fetch-btn"
+                      onclick="fetchSotaMaps(this)"
+                      style="font-size:0.72rem;"><?= $sotamaps_track_count - 1 ?> other route<?= $sotamaps_track_count > 2 ? 's' : '' ?> available — swap?</button>
+            <?php endif; ?>
           </div>
+          <div id="sotamaps-result" style="margin-top:0.5rem; display:none;"></div>
           <?php endif; ?>
           <?php if ($has_timestamps): ?>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-bottom:0.75rem;">

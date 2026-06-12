@@ -797,6 +797,7 @@ select.form-input { cursor: pointer; }
                 <h2>Data Pre-population Tools</h2>
                 <p>Import community data from external sources into the global library. Run on production only.</p>
             </div>
+            <a href="admin_gpx_map.php" class="btn btn-ghost btn-sm">&#x1F5FA; GPX Coverage Map</a>
         </div>
 
         <!-- GPX Import Progress -->
