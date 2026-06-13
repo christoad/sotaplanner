@@ -239,6 +239,8 @@ if ($action === 'import') {
             $use_for_hike, $use_for_hike
         ]);
 
+        $db->prepare("UPDATE summits SET gpx_opted_out = 0 WHERE id = ?")->execute([$summit_id]);
+
         // Compute stats for response (no auto-update of summit — user must enable GPS data manually)
         $elevation_gain_ft = round($gpx_stats['elevation_gain'] * 3.28084);
         $distance_mi = round($gpx_stats['total_distance'] * 0.621371, 2);

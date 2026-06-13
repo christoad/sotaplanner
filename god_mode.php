@@ -212,12 +212,13 @@ if ($cached_total_row && strtotime($cached_total_row['updated_at']) > time() - 8
     }
 }
 
+$drive_up_count = (int)$db->query("SELECT COUNT(DISTINCT sota_ref) FROM summits WHERE difficulty = 'drive-up' AND sota_ref IS NOT NULL AND sota_ref != '' AND sota_ref NOT IN (SELECT sota_ref FROM global_gpx_tracks)")->fetchColumn();
 $gpx_progress = [
     'total'       => $gpx_total_cache,
     'checked'     => (int)$db->query("SELECT COUNT(DISTINCT sota_ref) FROM (SELECT sota_ref FROM global_gpx_checked UNION SELECT sota_ref FROM global_gpx_tracks) AS combined")->fetchColumn(),
-    'has_track'   => (int)$db->query("SELECT COUNT(*) FROM global_gpx_tracks")->fetchColumn(),
+    'has_track'   => (int)$db->query("SELECT COUNT(*) FROM global_gpx_tracks")->fetchColumn() + $drive_up_count,
     'no_track'    => (int)$db->query("SELECT COUNT(*) FROM global_gpx_checked WHERE tracks_found = 0")->fetchColumn(),
-    'has_trail'   => (int)$db->query("SELECT COUNT(*) FROM global_gpx_tracks WHERE trailhead_lat IS NOT NULL AND trailhead_lon IS NOT NULL")->fetchColumn(),
+    'has_trail'   => (int)$db->query("SELECT COUNT(*) FROM global_gpx_tracks WHERE trailhead_lat IS NOT NULL AND trailhead_lon IS NOT NULL")->fetchColumn() + $drive_up_count,
 ];
 $gpx_progress['remaining']  = max(0, $gpx_progress['total'] - $gpx_progress['checked']);
 $gpx_progress['pct']        = $gpx_progress['total'] > 0 ? round($gpx_progress['checked'] / $gpx_progress['total'] * 100, 1) : 0;

@@ -12,6 +12,9 @@ $db = getDbConnection();
 try {
     $db->exec("ALTER TABLE gpx_tracks ADD COLUMN track_type VARCHAR(20) NOT NULL DEFAULT 'round-trip'");
 } catch (PDOException $e) { /* already exists */ }
+try {
+    $db->exec("ALTER TABLE summits ADD COLUMN gpx_opted_out TINYINT NOT NULL DEFAULT 0");
+} catch (PDOException $e) { /* already exists */ }
 
 // Handle group parameter from URL (for shareable links)
 if (isset($_GET['group'])) {
@@ -171,6 +174,7 @@ if (isset($_FILES['gpx_file']) && $_FILES['gpx_file']['error'] === UPLOAD_ERR_OK
                                 $message = "✓ GPX uploaded (route/track only — no timestamps). Map and elevation data saved; hike time not enabled.";
                             }
                             
+                            $db->prepare("UPDATE summits SET gpx_opted_out = 0 WHERE id = ?")->execute([$summit_id]);
                             logActivity($db, 'GPX uploaded', $log_summit_name, $log_sota_ref, $log_group_name);
                             header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&gpx=1");
                             exit;
@@ -216,6 +220,7 @@ if (isset($_POST['remove_gpx_track'])) {
                 unlink($track['file_path']);
             }
             $db->prepare("DELETE FROM gpx_tracks WHERE summit_id = ? AND planning_group_id = ?")->execute([$summit_id, $current_group['id']]);
+            $db->prepare("UPDATE summits SET gpx_opted_out = 1 WHERE id = ?")->execute([$summit_id]);
         }
         header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
         exit;
@@ -530,7 +535,8 @@ if ($current_group) {
 
     // Auto-link from global library if the summit has no GPX but the library has one now
     // (covers summits nominated before the cron caught up with their association)
-    if (!$gpx_data && !empty($summit['sota_ref'])) {
+    // Skip if the user explicitly removed the track (gpx_opted_out = 1)
+    if (!$gpx_data && empty($summit['gpx_opted_out']) && !empty($summit['sota_ref'])) {
         $gl = $db->prepare("SELECT * FROM global_gpx_tracks WHERE sota_ref = ?");
         $gl->execute([$summit['sota_ref']]);
         $global = $gl->fetch();

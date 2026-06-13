@@ -1259,6 +1259,8 @@ function renderAreaResults(data) {
     html += '<button type="button" onclick="areaSelectAll(false)" style="background:none; border:none; font-size:0.75rem; color:var(--ink-3); cursor:pointer; font-family:var(--font-sans); padding:0;">None</button>';
     html += '</div></div>';
 
+    html += '<button type="button" class="btn btn-primary" id="area_nominate_btn" onclick="submitAreaSelection()" style="height:40px; width:100%; margin-bottom:0.75rem;" disabled>Nominate 0 Summits</button>';
+
     html += '<div id="area_list" style="max-height:400px; overflow-y:auto; border:1px solid var(--border); border-radius:var(--r-md); margin-bottom:0.875rem;">';
 
     summits.forEach(function(s) {
@@ -1282,7 +1284,6 @@ function renderAreaResults(data) {
     });
 
     html += '</div>';
-    html += '<button type="button" class="btn btn-primary" id="area_nominate_btn" onclick="submitAreaSelection()" style="height:40px;" disabled>Nominate 0 Summits</button>';
 
     resultsDiv.innerHTML = html;
     updateAreaBtn();

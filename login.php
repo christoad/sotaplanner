@@ -68,12 +68,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
 
-// Count summits with both a GPX track and a trailhead coordinate
+// Count summits with a GPX track + trailhead, plus drive-up summits (no route needed)
 $ready_count = 0;
 try {
     $db_stat = getDbConnection();
     $stat_stmt = $db_stat->query("SELECT COUNT(*) FROM global_gpx_tracks WHERE trailhead_lat IS NOT NULL AND trailhead_lon IS NOT NULL");
     $ready_count = (int)$stat_stmt->fetchColumn();
+    $drive_up_stmt = $db_stat->query("SELECT COUNT(DISTINCT sota_ref) FROM summits WHERE difficulty = 'drive-up' AND sota_ref IS NOT NULL AND sota_ref != '' AND sota_ref NOT IN (SELECT sota_ref FROM global_gpx_tracks WHERE trailhead_lat IS NOT NULL)");
+    $ready_count += (int)$drive_up_stmt->fetchColumn();
 } catch (PDOException $e) {
     $ready_count = 0;
 }

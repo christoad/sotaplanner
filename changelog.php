@@ -230,12 +230,24 @@ session_start();
         <p>Release history and update notes for SOTA Planner</p>
     </div>
 
-    <!-- v1.5.0 -->
+    <!-- v1.5.1 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.5.1</span>
+            <span class="version-date">June 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Small improvements to the area-search nomination flow.</p>
+        <ul>
+            <li>In the "Search by Area" nominator, the Nominate button now appears above the summit list so it's always visible without scrolling when a large radius returns many results</li>
+        </ul>
+    </div>
+
+    <!-- v1.5.0 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.5.0</span>
             <span class="version-date">June 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Bulk summit nomination, per-user units, and richer summit detail — including who last activated a summit and when.</p>
         <ul>
