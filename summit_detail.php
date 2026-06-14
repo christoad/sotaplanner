@@ -15,6 +15,12 @@ try {
 try {
     $db->exec("ALTER TABLE summits ADD COLUMN gpx_opted_out TINYINT NOT NULL DEFAULT 0");
 } catch (PDOException $e) { /* already exists */ }
+try {
+    $db->exec("ALTER TABLE summit_notes ADD COLUMN planning_group_id INT NULL DEFAULT NULL");
+} catch (PDOException $e) { /* already exists */ }
+try {
+    $db->exec("ALTER TABLE summit_notes ADD COLUMN is_public TINYINT NOT NULL DEFAULT 0");
+} catch (PDOException $e) { /* already exists */ }
 
 // Handle group parameter from URL (for shareable links)
 if (isset($_GET['group'])) {
@@ -415,17 +421,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // Add note
     if (isset($_POST['add_note'])) {
-        $stmt = $db->prepare("INSERT INTO summit_notes (summit_id, user_callsign, note) VALUES (?, ?, ?)");
-        $stmt->execute([$summit_id, $_SESSION['sota_callsign'], $_POST['note']]);
+        $is_public = isset($_POST['note_public']) ? 1 : 0;
+        $stmt = $db->prepare("INSERT INTO summit_notes (summit_id, user_callsign, note, planning_group_id, is_public) VALUES (?, ?, ?, ?, ?)");
+        $stmt->execute([$summit_id, $_SESSION['sota_callsign'], $_POST['note'], $current_group['id'], $is_public]);
         logActivity($db, 'Note added', $log_summit_name, $log_sota_ref, $log_group_name);
         header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
         exit;
     }
-    
+
     // Delete note
     if (isset($_POST['delete_note'])) {
-        $stmt = $db->prepare("DELETE FROM summit_notes WHERE id = ?");
-        $stmt->execute([$_POST['note_id']]);
+        $stmt = $db->prepare("DELETE FROM summit_notes WHERE id = ? AND (planning_group_id = ? OR user_callsign = ? OR planning_group_id IS NULL)");
+        $stmt->execute([$_POST['note_id'], $current_group['id'], $_SESSION['sota_callsign']]);
         header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
         exit;
     }
@@ -624,9 +631,16 @@ if ($current_group) {
     $planned_activations_list = $stmt->fetchAll();
 }
 
-// Fetch notes
-$stmt = $db->prepare("SELECT * FROM summit_notes WHERE summit_id = ? ORDER BY created_at DESC");
-$stmt->execute([$summit_id]);
+// Fetch notes: show public notes from all groups + this group's private notes + legacy notes
+$stmt = $db->prepare("
+    SELECT sn.*, pg.name AS group_name
+    FROM summit_notes sn
+    LEFT JOIN planning_groups pg ON pg.id = sn.planning_group_id
+    WHERE sn.summit_id = ?
+      AND (sn.is_public = 1 OR sn.planning_group_id = ? OR sn.planning_group_id IS NULL)
+    ORDER BY sn.created_at DESC
+");
+$stmt->execute([$summit_id, $current_group['id']]);
 $notes = $stmt->fetchAll();
 
 $trailhead_needs_validation = !empty($summit['trailhead_lat']) && empty($summit['trailhead_manual']);
@@ -1845,8 +1859,23 @@ if ($tl_show) {
         <div style="font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3); margin-bottom:0.875rem;">Notes</div>
         <?php if (!empty($notes)): ?>
           <div style="margin-bottom:0.875rem;">
-            <?php foreach ($notes as $note): ?>
-              <div class="note-item">
+            <?php foreach ($notes as $note):
+                $is_own_group = ($note['planning_group_id'] === null || $note['planning_group_id'] == $current_group['id']);
+                $can_delete   = $is_own_group || ($note['user_callsign'] === $_SESSION['sota_callsign']);
+                $from_other   = !$is_own_group && !empty($note['group_name']);
+            ?>
+              <div class="note-item" style="<?= $from_other ? 'background:var(--bg); border-radius:var(--r-sm); padding:0.5rem 0.625rem; margin-bottom:0.25rem;' : '' ?>">
+                <?php if (!empty($note['is_public'])): ?>
+                  <div style="margin-bottom:4px;">
+                    <span style="display:inline-flex; align-items:center; gap:3px; font-size:0.65rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--green); background:var(--green-bg); border-radius:var(--r-sm); padding:0.1rem 0.4rem;">
+                      <svg width="9" height="9" viewBox="0 0 12 12" fill="none"><path d="M10 4H9V3a3 3 0 0 0-6 0v1H2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1zM6 8.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2zM7.5 4h-3V3a1.5 1.5 0 0 1 3 0v1z" fill="currentColor"/></svg>
+                      Public
+                    </span>
+                    <?php if ($from_other): ?>
+                      <span style="font-size:0.7rem; color:var(--ink-3); margin-left:4px;">from <?= htmlspecialchars($note['group_name']) ?></span>
+                    <?php endif; ?>
+                  </div>
+                <?php endif; ?>
                 <div class="note-text"><?= htmlspecialchars($note['note']) ?></div>
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
                   <span class="note-meta">
@@ -1856,10 +1885,12 @@ if ($tl_show) {
                     <?php endif; ?>
                     <?= date('M j, Y g:ia', strtotime($note['created_at'])) ?>
                   </span>
+                  <?php if ($can_delete): ?>
                   <form method="POST" style="margin:0;" onsubmit="return confirm('Delete this note?');">
                     <input type="hidden" name="note_id" value="<?= $note['id'] ?>">
                     <button type="submit" name="delete_note" class="btn btn-danger btn-sm" style="height:24px; padding:0 8px; font-size:0.72rem;">Delete</button>
                   </form>
+                  <?php endif; ?>
                 </div>
               </div>
             <?php endforeach; ?>
@@ -1867,6 +1898,10 @@ if ($tl_show) {
         <?php endif; ?>
         <form method="POST">
           <textarea class="form-textarea" name="note" rows="3" placeholder="Add notes about access, parking, trail conditions..." style="font-size:0.875rem; resize:vertical;"></textarea>
+          <label style="display:flex; align-items:center; gap:0.4rem; margin-top:0.5rem; font-size:0.8rem; color:var(--ink-2); cursor:pointer;">
+            <input type="checkbox" name="note_public" value="1" style="accent-color:var(--green); width:14px; height:14px;">
+            Share publicly — visible to all planning groups on this summit
+          </label>
           <button type="submit" name="add_note" class="btn btn-secondary btn-sm btn-full" style="margin-top:0.5rem;">Add Note</button>
         </form>
       </div>
