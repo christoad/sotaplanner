@@ -68,7 +68,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $sota_oauth_enabled = defined('SOTA_CLIENT_ID') && SOTA_CLIENT_ID !== '';
 
-// Count summits with a GPX track + trailhead, plus drive-up summits (no route needed)
+// Count summits ready to activate:
+// 1. Global GPX library tracks that have a trailhead
+// 2. Drive-up summits not already in bucket 1
+// 3. Group-researched summits with manual trailhead + hike data, not already in buckets 1 or 2
 $ready_count = 0;
 try {
     $db_stat = getDbConnection();
@@ -76,6 +79,8 @@ try {
     $ready_count = (int)$stat_stmt->fetchColumn();
     $drive_up_stmt = $db_stat->query("SELECT COUNT(DISTINCT sota_ref) FROM summits WHERE difficulty = 'drive-up' AND sota_ref IS NOT NULL AND sota_ref != '' AND sota_ref NOT IN (SELECT sota_ref FROM global_gpx_tracks WHERE trailhead_lat IS NOT NULL)");
     $ready_count += (int)$drive_up_stmt->fetchColumn();
+    $manual_stmt = $db_stat->query("SELECT COUNT(DISTINCT sota_ref) FROM summits WHERE sota_ref IS NOT NULL AND sota_ref != '' AND trailhead_lat IS NOT NULL AND trailhead_lng IS NOT NULL AND (hike_distance_mi IS NOT NULL OR hike_time_up_min IS NOT NULL OR hike_elevation_gain_ft IS NOT NULL) AND difficulty != 'drive-up' AND sota_ref NOT IN (SELECT sota_ref FROM global_gpx_tracks WHERE trailhead_lat IS NOT NULL AND trailhead_lon IS NOT NULL)");
+    $ready_count += (int)$manual_stmt->fetchColumn();
 } catch (PDOException $e) {
     $ready_count = 0;
 }
