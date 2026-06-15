@@ -1539,10 +1539,16 @@ if ($tl_show) {
           <button type="button" id="btn-base-street"    class="btn btn-sm btn-map-active"  onclick="switchBase('street')">Street</button>
           <button type="button" id="btn-base-topo"      class="btn btn-sm btn-secondary"  onclick="switchBase('topo')">Topo</button>
           <button type="button" id="btn-base-satellite" class="btn btn-sm btn-secondary"  onclick="switchBase('satellite')">Satellite</button>
+          <?php
+            $assoc_code = explode('/', $summit['sota_ref'] ?? '')[0];
+            $is_usa_summit = (bool)preg_match('/^(W[0-9]|K[HL])/i', $assoc_code);
+          ?>
+          <?php if ($is_usa_summit): ?>
           <span class="map-divider"></span>
           <button type="button" id="btn-tmobile" class="carrier-btn" style="border-color:#E91E8C; color:#E91E8C; background:#fff;" onclick="toggleCarrier('tmobile')">T-Mo</button>
           <button type="button" id="btn-verizon" class="carrier-btn" style="border-color:#CD040B; color:#CD040B; background:#fff;" onclick="toggleCarrier('verizon')">VZW</button>
           <button type="button" id="btn-att"     class="carrier-btn" style="border-color:#00A8E0; color:#00A8E0; background:#fff;" onclick="toggleCarrier('att')">AT&amp;T</button>
+          <?php endif; ?>
           <?php if (!empty($summit['sota_ref'])): ?>
             <span class="map-divider"></span>
             <button type="button" id="btn-actzone" class="btn btn-sm btn-secondary" onclick="toggleActivationZone()" disabled style="opacity:0.4;">Activation Zone</button>
