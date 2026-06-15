@@ -334,409 +334,321 @@ $google_maps = "https://www.google.com/maps/search/" . urlencode($summit_name . 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Find Trail for <?= htmlspecialchars($summit_name) ?></title>
-    <link href="https://fonts.googleapis.com/css2?family=Overpass:wght@300;600;800&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --navy: #1E3A5F;
-            --teal: #9B6328;
-            --light-blue: #B8874A;
-            --gold: #E6B84A;
-            --tan: #D4A574;
-            --snow: #F5F5F0;
-            /* Aliases */
-            --peak-brown: #1E3A5F;
-            --trail-green: #9B6328;
-            --forest-dark: #1E3A5F;
-            --summit-gold: #E6B84A;
-            --earth-tan: #D4A574;
-            --snow-white: #F5F5F0;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Overpass', sans-serif;
-            background: linear-gradient(135deg, #F5F5F0 0%, #E8E4D8 100%);
-            color: var(--forest-dark);
-            min-height: 100vh;
-            padding: 2rem;
-        }
-
-        .container {
-            max-width: 1000px;
-            margin: 0 auto;
-        }
-
-        h1 {
-            font-size: 2.5rem;
-            font-weight: 800;
-            color: var(--peak-brown);
-            margin-bottom: 0.5rem;
-        }
-
-        .subtitle {
-            color: #666;
-            margin-bottom: 2rem;
-            font-size: 1.1rem;
-        }
-
-        .card {
-            background: white;
-            border-radius: 12px;
-            padding: 2rem;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-            margin-bottom: 2rem;
-        }
-
-        .info-box {
-            background: #E8F4F8;
-            border-left: 4px solid var(--trail-green);
-            padding: 1.5rem;
-            border-radius: 6px;
-            margin-bottom: 2rem;
-        }
-
-        .info-box h3 {
-            color: var(--forest-dark);
-            margin-bottom: 0.5rem;
-        }
-
-        .search-links {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-
-        .search-link {
-            display: block;
-            padding: 1.5rem;
-            background: var(--snow-white);
-            border: 2px solid var(--earth-tan);
-            border-radius: 8px;
-            text-decoration: none;
-            color: var(--forest-dark);
-            transition: all 0.3s;
-            text-align: center;
-        }
-
-        .search-link:hover {
-            border-color: var(--trail-green);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        }
-
-        .search-link-title {
-            font-size: 1.2rem;
-            font-weight: 700;
-            color: var(--peak-brown);
-            margin-bottom: 0.5rem;
-        }
-
-        .search-link-desc {
-            font-size: 0.9rem;
-            color: #666;
-        }
-
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-
-        label {
-            display: block;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            color: var(--forest-dark);
-            text-transform: uppercase;
-            font-size: 0.85rem;
-            letter-spacing: 0.05em;
-        }
-
-        input[type="text"],
-        input[type="number"] {
-            width: 100%;
-            padding: 0.75rem;
-            border: 2px solid var(--earth-tan);
-            border-radius: 6px;
-            font-family: 'Overpass', sans-serif;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-        }
-
-        input:focus {
-            outline: none;
-            border-color: var(--trail-green);
-            box-shadow: 0 0 0 3px rgba(74, 124, 89, 0.1);
-        }
-
-        .btn {
-            padding: 0.75rem 1.5rem;
-            background: linear-gradient(135deg, var(--trail-green) 0%, var(--forest-dark) 100%);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            font-size: 0.9rem;
-            transition: all 0.3s;
-            text-decoration: none;
-            display: inline-block;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
-        }
-
-        .btn-secondary {
-            background: linear-gradient(135deg, #999 0%, #666 100%);
-        }
-
-        .helper-text {
-            font-size: 0.85rem;
-            color: #666;
-            margin-top: 0.5rem;
-            font-style: italic;
-        }
-
-        .grid-2col {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-        }
-
-    /* ── User chip ── */
-    .user-chip-fixed {
-        position: fixed; top: 1rem; right: 1rem; z-index: 500;
-        display: flex; align-items: center; gap: 0.35rem;
-        cursor: pointer; padding: 0.3rem 0.7rem;
-        border-radius: 6px; font-size: 0.8rem; font-weight: 700;
-        color: var(--forest-dark); background: white;
-        border: 1px solid var(--earth-tan);
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        user-select: none; white-space: nowrap;
+    :root {
+      --bg: #F7F6F3; --bg-2: #EFEDE8; --bg-3: #E5E2DA;
+      --ink: #1C1B19; --ink-2: #4A4844; --ink-3: #8C8A86; --ink-4: #B8B5B0;
+      --accent: oklch(52% 0.13 50); --accent-2: oklch(44% 0.13 50);
+      --accent-bg: oklch(96% 0.04 65); --accent-border: oklch(84% 0.08 65);
+      --green: oklch(52% 0.13 155); --green-bg: oklch(95% 0.04 155);
+      --orange: oklch(62% 0.14 58); --orange-bg: oklch(96% 0.05 58);
+      --red: oklch(52% 0.16 22); --red-bg: oklch(96% 0.04 22);
+      --blue: oklch(52% 0.12 240); --blue-bg: oklch(95% 0.04 240);
+      --surface: #FFFFFF; --border: #E5E2DA; --border-2: #D4D0C8;
+      --font-sans: 'DM Sans', system-ui, sans-serif;
+      --font-mono: 'DM Mono', 'Courier New', monospace;
+      --r-sm: 4px; --r-md: 8px; --r-lg: 12px;
+      --shadow-sm: 0 1px 3px rgba(28,27,25,0.07), 0 1px 2px rgba(28,27,25,0.05);
+      --shadow-md: 0 4px 12px rgba(28,27,25,0.08), 0 2px 4px rgba(28,27,25,0.05);
     }
-    .user-chip-fixed:hover { background: #f5f5f0; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+    body { font-family: var(--font-sans); background: var(--bg); color: var(--ink); line-height: 1.5; min-height: 100vh; }
+
+    /* Topbar */
+    .topbar { background: var(--surface); border-bottom: 1px solid var(--border); height: 56px; display: flex; align-items: center; padding: 0 1.5rem; gap: 1rem; position: sticky; top: 0; z-index: 100; }
+    .topbar-logo { display: flex; align-items: center; gap: 0.75rem; text-decoration: none; color: var(--ink); font-weight: 600; font-size: 0.95rem; letter-spacing: -0.01em; flex-shrink: 0; }
+    .topbar-logo:hover { color: var(--ink); }
+    .topbar-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+    .topbar-nav { display: flex; align-items: center; gap: 0.25rem; }
+    .topbar-nav a { color: var(--ink-3); font-size: 0.875rem; font-weight: 500; padding: 0.5rem 0.75rem; border-radius: var(--r-sm); transition: color 0.15s, background 0.15s; text-decoration: none; white-space: nowrap; }
+    .topbar-nav a:hover { color: var(--ink); background: var(--bg-2); }
+    .topbar-right { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; flex-shrink: 0; }
+    .user-chip { position: relative; display: flex; align-items: center; gap: 0.35rem; cursor: pointer; padding: 0.25rem 0.6rem; border-radius: var(--r-sm); font-size: 0.8rem; font-weight: 600; color: var(--ink-2); border: 1px solid var(--border); background: var(--bg); user-select: none; white-space: nowrap; }
+    .user-chip:hover { background: var(--bg-2); }
     .user-chip-chevron { transition: transform 0.15s; }
-    .user-chip-fixed.open .user-chip-chevron { transform: rotate(180deg); }
-    .user-dropdown {
-        display: none; position: absolute; top: calc(100% + 6px); right: 0;
-        background: white; border: 1px solid var(--earth-tan);
-        border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-        min-width: 130px; overflow: hidden;
-    }
-    .user-chip-fixed.open .user-dropdown { display: block; }
-    .user-dropdown a {
-        display: block; padding: 0.6rem 1rem;
-        font-size: 0.82rem; font-weight: 500; color: var(--forest-dark); text-decoration: none;
-    }
-    .user-dropdown a:hover { background: #f5f5f0; }
+    .user-chip.open .user-chip-chevron { transform: rotate(180deg); }
+    .user-dropdown { display: none; position: absolute; top: calc(100% + 6px); right: 0; background: #fff; border: 1px solid var(--border); border-radius: var(--r-sm); box-shadow: 0 4px 16px rgba(0,0,0,0.10); min-width: 130px; overflow: hidden; z-index: 200; }
+    .user-chip.open .user-dropdown { display: block; }
+    .user-dropdown a { display: block; padding: 0.6rem 1rem; font-size: 0.82rem; font-weight: 500; color: var(--ink-2); text-decoration: none; }
+    .user-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
 
-    @media (max-width: 640px) {
-        body { padding: 1rem; }
-        h1 { font-size: 1.6rem; }
-        .subtitle { font-size: 0.9rem; margin-bottom: 1.25rem; }
-        .search-links { grid-template-columns: 1fr; }
-        .card { padding: 1.25rem; }
-        .info-box { padding: 1rem; }
+    /* Page */
+    .page { padding: 1.5rem; max-width: 760px; margin: 0 auto; }
+    .page-header { margin-bottom: 1.5rem; }
+    .page-header h1 { font-size: 1.35rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 0.15rem; }
+    .page-header .sub { font-size: 0.82rem; color: var(--ink-3); font-family: var(--font-mono); }
+
+    /* Cards */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 1.25rem; box-shadow: var(--shadow-sm); margin-bottom: 1rem; }
+    .card-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); margin-bottom: 0.85rem; }
+
+    /* Info box */
+    .info-box { background: var(--accent-bg); border: 1px solid var(--accent-border); border-radius: var(--r-md); padding: 1rem; margin-bottom: 1rem; }
+    .info-box-title { font-size: 0.8rem; font-weight: 700; color: var(--accent-2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.5rem; }
+    .info-box ol { margin-left: 1.25rem; }
+    .info-box li { font-size: 0.85rem; color: var(--ink-2); line-height: 1.7; }
+
+    /* Search links */
+    .search-links { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.6rem; margin-bottom: 0; }
+    .search-link { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.85rem 1rem; background: var(--bg); border: 1px solid var(--border-2); border-radius: var(--r-md); text-decoration: none; color: var(--ink); transition: border-color 0.15s, background 0.15s; }
+    .search-link:hover { border-color: var(--accent-border); background: var(--accent-bg); }
+    .search-link-title { font-size: 0.875rem; font-weight: 600; color: var(--ink); }
+    .search-link-desc { font-size: 0.75rem; color: var(--ink-3); }
+
+    /* Forms */
+    .form-group { margin-bottom: 1rem; }
+    .form-label { display: block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); margin-bottom: 0.35rem; }
+    .form-input { width: 100%; padding: 0.6rem 0.75rem; border: 1px solid var(--border); border-radius: var(--r-md); font-family: var(--font-sans); font-size: 0.875rem; color: var(--ink); background: var(--surface); transition: border-color 0.15s; outline: none; }
+    .form-input:focus { border-color: var(--accent); }
+    select.form-input { cursor: pointer; }
+    .form-hint { font-size: 0.76rem; color: var(--ink-3); margin-top: 0.3rem; line-height: 1.4; }
+    .grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+
+    /* Buttons */
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0 1rem; height: 36px; border-radius: var(--r-md); font-family: var(--font-sans); font-size: 0.875rem; font-weight: 500; cursor: pointer; border: none; transition: background 0.15s; text-decoration: none; white-space: nowrap; line-height: 1; }
+    .btn-primary { background: var(--ink); color: #fff; }
+    .btn-primary:hover { background: var(--ink-2); color: #fff; }
+    .btn-ghost { background: transparent; color: var(--ink-2); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: var(--bg-2); color: var(--ink); }
+    .btn-row { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-top: 1rem; }
+
+    /* Alert messages */
+    .msg { padding: 0.75rem 1rem; border-radius: var(--r-md); font-size: 0.85rem; margin-bottom: 1rem; }
+    .msg-warn { background: oklch(97% 0.04 80); border: 1px solid oklch(88% 0.09 80); color: oklch(42% 0.12 60); }
+    .msg-ok { background: var(--green-bg); border: 1px solid oklch(85% 0.07 155); color: var(--green); }
+
+    /* Auto-filled badge */
+    .auto-badge { display: inline-block; font-size: 0.65rem; font-weight: 700; background: var(--green-bg); color: var(--green); border-radius: var(--r-sm); padding: 0.1rem 0.4rem; margin-left: 0.4rem; vertical-align: middle; }
+
+    /* Tips */
+    .tips-card { background: var(--accent-bg); border: 1px solid var(--accent-border); border-radius: var(--r-lg); padding: 1.25rem; margin-bottom: 1rem; }
+    .tips-card ul { margin-left: 1.1rem; }
+    .tips-card li { font-size: 0.85rem; color: var(--ink-2); line-height: 1.7; }
+
+    /* URL lookup row */
+    .url-row { display: flex; gap: 0.5rem; align-items: flex-start; }
+    .url-row .form-input { flex: 1; min-width: 0; }
+
+    @media (max-width: 600px) {
+      .search-links { grid-template-columns: 1fr 1fr; }
+      .grid-2col { grid-template-columns: 1fr; }
+      .url-row { flex-direction: column; }
+      .url-row .btn { width: 100%; }
     }
     </style>
 </head>
 <body>
-<div class="user-chip-fixed" id="userChip">
-    <?= htmlspecialchars($current_user) ?>
-    <svg class="user-chip-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="2,3.5 5,6.5 8,3.5"/></svg>
-    <div class="user-dropdown">
+
+<nav class="topbar">
+  <a href="index.php" class="topbar-logo">
+    <span style="width:32px;height:32px;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+      <img src="sota-planner-logo.svg" width="32" height="32" alt="">
+    </span>
+    <span>SOTAplanner</span>
+  </a>
+  <div class="topbar-divider"></div>
+  <div class="topbar-nav">
+    <a href="summit_detail.php?id=<?= $summit_id ?>&group=<?= $current_group['id'] ?>">← <?= htmlspecialchars($summit_name) ?></a>
+  </div>
+  <div class="topbar-right">
+    <div class="user-chip" onclick="this.classList.toggle('open')" id="userChip">
+      <span><?= htmlspecialchars($current_user) ?></span>
+      <svg class="user-chip-chevron" width="10" height="6" viewBox="0 0 10 6" fill="none">
+        <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="user-dropdown">
         <?php if (($current_user ?? '') === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
-            <a href="god_mode.php">God Mode</a>
+          <a href="god_mode.php">God Mode</a>
         <?php endif; ?>
         <a href="user_settings.php">Settings</a>
         <a href="logout.php">Sign Out</a>
+      </div>
     </div>
-</div>
-    <div class="container">
-        <h1>🔍 Find Trail for <?= htmlspecialchars($summit_name) ?></h1>
-        <p class="subtitle"><?= htmlspecialchars($summit_ref) ?> • <?= number_format($summit_lat, 6) ?>, <?= number_format($summit_lng, 6) ?></p>
-        
-        <div class="info-box">
-            <h3>📍 How to Find the Right Trail:</h3>
-            <ol style="margin-left: 1.5rem; line-height: 1.8;">
-                <li>Click on the search links below to find trails near this summit</li>
-                <li>Look for trails that lead TO or NEAR the summit coordinates</li>
-                <li>Check the trail's highest point matches the summit elevation (<?= number_format($summit['elevation_ft']) ?> ft)</li>
-                <li>Once you find the right trail, copy its details into the form below</li>
-            </ol>
-        </div>
+  </div>
+</nav>
 
-        <div class="card">
-            <h2 style="margin-bottom: 1.5rem; color: var(--peak-brown);">Search These Trail Resources:</h2>
-            
-            <div class="search-links">
-                <a href="<?= $alltrails_search ?>" target="_blank" class="search-link">
-                    <div class="search-link-title">🥾 AllTrails</div>
-                    <div class="search-link-desc">Search trails near summit coordinates</div>
-                </a>
-                
-                <a href="<?= $google_maps ?>" target="_blank" class="search-link">
-                    <div class="search-link-title">🗺️ Google Maps</div>
-                    <div class="search-link-desc">Find hiking trails in the area</div>
-                </a>
-                
-                <a href="<?= $gaia_gps_search ?>" target="_blank" class="search-link">
-                    <div class="search-link-title">🧭 GAIA GPS</div>
-                    <div class="search-link-desc">View summit on topographic map</div>
-                </a>
-                
-                <a href="<?= $summit['sotlas_link'] ?>" target="_blank" class="search-link">
-                    <div class="search-link-title">📡 SOTLas</div>
-                    <div class="search-link-desc">View on SOTA mapping tool</div>
-                </a>
+    <div class="page">
+
+      <!-- Page header -->
+      <div class="page-header">
+        <h1>Find Trail for <?= htmlspecialchars($summit_name) ?></h1>
+        <div class="sub"><?= htmlspecialchars($summit_ref) ?> &middot; <?= number_format($summit_lat, 6) ?>, <?= number_format($summit_lng, 6) ?></div>
+      </div>
+
+      <!-- How-to info box -->
+      <div class="info-box">
+        <div class="info-box-title">How to find the right trail</div>
+        <ol>
+          <li>Search the links below for trails near the summit coordinates</li>
+          <li>Look for trails that lead TO or NEAR the summit (<?= number_format($summit['elevation_ft']) ?> ft elevation)</li>
+          <li>Once you find the right trail, copy its URL into the form below to auto-fill trail data</li>
+          <li>Review and save</li>
+        </ol>
+      </div>
+
+      <!-- Search links -->
+      <div class="card">
+        <div class="card-title">Search Trail Resources</div>
+        <div class="search-links">
+          <a href="<?= $alltrails_search ?>" target="_blank" class="search-link">
+            <div class="search-link-title">AllTrails</div>
+            <div class="search-link-desc">Trails near summit</div>
+          </a>
+          <a href="<?= $google_maps ?>" target="_blank" class="search-link">
+            <div class="search-link-title">Google Maps</div>
+            <div class="search-link-desc">Hiking trails in the area</div>
+          </a>
+          <a href="<?= $gaia_gps_search ?>" target="_blank" class="search-link">
+            <div class="search-link-title">GAIA GPS</div>
+            <div class="search-link-desc">Topographic map view</div>
+          </a>
+          <a href="<?= htmlspecialchars($summit['sotlas_link'] ?? '') ?>" target="_blank" class="search-link">
+            <div class="search-link-title">SOTLas</div>
+            <div class="search-link-desc">SOTA mapping tool</div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Trail data entry -->
+      <div class="card">
+        <div class="card-title">Enter Trail Information</div>
+        <p style="font-size:0.85rem; color:var(--ink-3); margin-bottom:1rem;">Paste a trail URL and click <strong>Look Up</strong> to auto-fill the fields, or enter stats manually.</p>
+
+        <?php if ($scraped): ?>
+          <?php if ($scraped['error']): ?>
+            <?php
+            $isBlocked = str_starts_with($scraped['error'], 'blocked:');
+            $blockedSite = $isBlocked ? ucfirst(explode(':', $scraped['error'])[1]) : '';
+            ?>
+            <div class="msg msg-warn">
+              <?php if ($isBlocked): ?>
+                <strong><?= htmlspecialchars($blockedSite) ?> blocks automated data fetching.</strong>
+                Enter the trail stats manually below — you can still save the link.
+              <?php else: ?>
+                <?= htmlspecialchars($scraped['error']) ?>
+              <?php endif; ?>
             </div>
-        </div>
+          <?php elseif (!empty($scraped['fields_found'])): ?>
+            <div class="msg msg-ok">
+              <strong>Found from <?= htmlspecialchars($scraped['source']) ?>:</strong>
+              <?php
+              $labels = ['distance_mi'=>'Distance', 'elevation_gain_ft'=>'Elevation Gain', 'difficulty'=>'Difficulty', 'trailhead'=>'Trailhead'];
+              foreach ($scraped['fields_found'] as $f) {
+                if (isset($labels[$f])) echo ' <span class="auto-badge">' . $labels[$f] . '</span>';
+              }
+              ?>
+              &nbsp;— Review the values below and save.
+            </div>
+          <?php endif; ?>
+        <?php endif; ?>
 
-        <div class="card">
-            <h2 style="margin-bottom: 0.5rem; color: var(--peak-brown);">Enter Trail Information:</h2>
-            <p style="color:#666; font-size:0.9rem; margin-bottom:1.5rem;">Paste an AllTrails (or other trail site) URL and click <strong>Look Up Trail Data</strong> to auto-fill the fields below.</p>
+        <!-- Step 1: URL lookup -->
+        <form method="POST" style="margin-bottom:1.25rem;">
+          <input type="hidden" name="summit_id" value="<?= $summit_id ?>">
+          <div class="form-group">
+            <label class="form-label" for="trail_link_lookup">Trail Link</label>
+            <div class="url-row">
+              <input type="text" id="trail_link_lookup" name="trail_link" class="form-input"
+                     value="<?= htmlspecialchars($scraped['url'] ?? '') ?>"
+                     placeholder="https://www.alltrails.com/trail/...">
+              <button type="submit" name="scrape_trail" class="btn btn-primary">Look Up</button>
+            </div>
+            <div class="form-hint">Auto-fill works with Hiking Project, TrailLink, and most structured trail sites. AllTrails and GaiaGPS block automated access — paste the link and enter stats manually.</div>
+          </div>
+        </form>
 
-            <?php if ($scraped): ?>
-                <?php if ($scraped['error']): ?>
-                    <?php
-                    $isBlocked = str_starts_with($scraped['error'], 'blocked:');
-                    $blockedSite = $isBlocked ? ucfirst(explode(':', $scraped['error'])[1]) : '';
-                    ?>
-                    <div style="background:#FFF8E1; border-left:4px solid #F9A825; padding:1rem; border-radius:6px; margin-bottom:1.25rem; font-size:0.9rem; color:#5D4037;">
-                        <?php if ($isBlocked): ?>
-                            🔒 <strong><?= htmlspecialchars($blockedSite) ?> blocks automated data fetching</strong> (Cloudflare protection).
-                            Enter the trail stats manually below — you can still save the link.
-                        <?php else: ?>
-                            ⚠️ <?= htmlspecialchars($scraped['error']) ?>
-                        <?php endif; ?>
-                    </div>
-                <?php elseif (!empty($scraped['fields_found'])): ?>
-                    <div style="background:#E6F4EA; border-left:4px solid #2E7D32; padding:1rem; border-radius:6px; margin-bottom:1.25rem; font-size:0.9rem; color:#1B5E20;">
-                        ✅ <strong>Found from <?= htmlspecialchars($scraped['source']) ?>:</strong>
-                        <?php
-                        $labels = ['distance_mi'=>'Distance', 'elevation_gain_ft'=>'Elevation Gain', 'difficulty'=>'Difficulty', 'trailhead'=>'Trailhead Coords'];
-                        foreach ($scraped['fields_found'] as $f) {
-                            if (isset($labels[$f])) echo ' <span style="background:#C8E6C9;padding:0.15rem 0.5rem;border-radius:4px;font-weight:700;">' . $labels[$f] . '</span>';
-                        }
-                        ?>
-                        &nbsp;— Review the values below and click <strong>Save Trail Data</strong>.
-                    </div>
+        <!-- Step 2: Manual entry + save -->
+        <form method="POST">
+          <input type="hidden" name="trail_link" id="save-trail-link" value="<?= htmlspecialchars($scraped['url'] ?? '') ?>">
+          <script>
+          document.getElementById('trail_link_lookup')?.addEventListener('input', function() {
+            document.getElementById('save-trail-link').value = this.value;
+          });
+          </script>
+          <input type="hidden" name="trailhead_lat" value="<?= htmlspecialchars($scraped['trailhead_lat'] ?? '') ?>">
+          <input type="hidden" name="trailhead_lng" value="<?= htmlspecialchars($scraped['trailhead_lng'] ?? '') ?>">
+
+          <div class="grid-2col">
+            <div class="form-group">
+              <label class="form-label" for="hike_distance_mi">
+                Round-Trip Distance (mi)
+                <?php if ($scraped && in_array('distance_mi', $scraped['fields_found'] ?? [])): ?>
+                  <span class="auto-badge">Auto-filled</span>
                 <?php endif; ?>
-            <?php endif; ?>
-
-            <!-- Step 1: URL + Lookup -->
-            <form method="POST" style="margin-bottom:1.25rem;">
-                <input type="hidden" name="summit_id" value="<?= $summit_id ?>">
-                <label for="trail_link_lookup">Trail Link (AllTrails, Hiking Project, etc.)</label>
-                <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
-                    <input type="text" id="trail_link_lookup" name="trail_link"
-                           value="<?= htmlspecialchars($scraped['url'] ?? '') ?>"
-                           placeholder="https://www.alltrails.com/trail/..." style="flex:1;">
-                    <button type="submit" name="scrape_trail" class="btn" style="white-space:nowrap; width:auto; padding:0.75rem 1.25rem;">
-                        🔍 Look Up Trail Data
-                    </button>
-                </div>
-                <p class="helper-text">Auto-fill works with: Hiking Project, TrailLink, and most sites with structured data. AllTrails and GaiaGPS block automated access — paste the link and enter stats manually.</p>
-            </form>
-
-            <!-- Step 2: Confirm / manual entry + Save -->
-            <form method="POST">
-                <input type="hidden" name="trail_link" id="save-trail-link" value="<?= htmlspecialchars($scraped['url'] ?? '') ?>">
-                <script>
-                // Keep save form's trail_link in sync with the lookup input
-                document.getElementById('trail_link_lookup')?.addEventListener('input', function() {
-                    document.getElementById('save-trail-link').value = this.value;
-                });
-                </script>
-                <input type="hidden" name="trailhead_lat" value="<?= htmlspecialchars($scraped['trailhead_lat'] ?? '') ?>">
-                <input type="hidden" name="trailhead_lng" value="<?= htmlspecialchars($scraped['trailhead_lng'] ?? '') ?>">
-
-                <div class="grid-2col">
-                    <div class="form-group">
-                        <label for="hike_distance_mi">
-                            Round-Trip Distance (miles)
-                            <?php if ($scraped && in_array('distance_mi', $scraped['fields_found'] ?? [])): ?>
-                                <span style="background:#C8E6C9;color:#1B5E20;padding:0.1rem 0.4rem;border-radius:4px;font-size:0.75rem;font-weight:700;">Auto-filled</span>
-                            <?php endif; ?>
-                        </label>
-                        <input type="number" id="hike_distance_mi" name="hike_distance_mi"
-                               step="0.01" placeholder="e.g., 1.4"
-                               value="<?= htmlspecialchars($scraped['distance_mi'] ?? '') ?>"
-                               required>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="hike_elevation_gain_ft">
-                            Elevation Gain (feet)
-                            <?php if ($scraped && in_array('elevation_gain_ft', $scraped['fields_found'] ?? [])): ?>
-                                <span style="background:#C8E6C9;color:#1B5E20;padding:0.1rem 0.4rem;border-radius:4px;font-size:0.75rem;font-weight:700;">Auto-filled</span>
-                            <?php endif; ?>
-                        </label>
-                        <input type="number" id="hike_elevation_gain_ft" name="hike_elevation_gain_ft"
-                               placeholder="e.g., 300"
-                               value="<?= htmlspecialchars($scraped['elevation_gain_ft'] ?? '') ?>"
-                               required>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="difficulty">
-                        Difficulty
-                        <?php if ($scraped && in_array('difficulty', $scraped['fields_found'] ?? [])): ?>
-                            <span style="background:#C8E6C9;color:#1B5E20;padding:0.1rem 0.4rem;border-radius:4px;font-size:0.75rem;font-weight:700;">Auto-filled</span>
-                        <?php endif; ?>
-                    </label>
-                    <select id="difficulty" name="difficulty"
-                            style="width:100%;padding:0.75rem;border:2px solid var(--earth-tan);border-radius:6px;font-family:'Overpass',sans-serif;font-size:1rem;">
-                        <option value="">— select —</option>
-                        <?php foreach (['drive-up'=>'Drive-Up','easy'=>'Easy','moderate'=>'Moderate','hard'=>'Hard / Strenuous'] as $val=>$lbl): ?>
-                            <option value="<?= $val ?>" <?= ($scraped['difficulty'] ?? '') === $val ? 'selected' : '' ?>><?= $lbl ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-
-                <?php if ($scraped && in_array('trailhead', $scraped['fields_found'] ?? [])): ?>
-                <p style="font-size:0.82rem; color:#2E7D32; margin-bottom:1rem;">
-                    📍 Trailhead coordinates also captured: <?= $scraped['trailhead_lat'] ?>, <?= $scraped['trailhead_lng'] ?>
-                </p>
+              </label>
+              <input type="number" id="hike_distance_mi" name="hike_distance_mi" class="form-input"
+                     step="0.01" placeholder="e.g. 1.4"
+                     value="<?= htmlspecialchars($scraped['distance_mi'] ?? '') ?>" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="hike_elevation_gain_ft">
+                Elevation Gain (ft)
+                <?php if ($scraped && in_array('elevation_gain_ft', $scraped['fields_found'] ?? [])): ?>
+                  <span class="auto-badge">Auto-filled</span>
                 <?php endif; ?>
+              </label>
+              <input type="number" id="hike_elevation_gain_ft" name="hike_elevation_gain_ft" class="form-input"
+                     placeholder="e.g. 300"
+                     value="<?= htmlspecialchars($scraped['elevation_gain_ft'] ?? '') ?>" required>
+            </div>
+          </div>
 
-                <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
-                    <button type="submit" name="save_trail_data" class="btn">Save Trail Data</button>
-                    <a href="summit_detail.php?id=<?= $summit_id ?>&group=<?= $current_group['id'] ?>" class="btn btn-secondary">Skip for Now</a>
-                </div>
-            </form>
-        </div>
+          <div class="form-group">
+            <label class="form-label" for="difficulty">
+              Difficulty
+              <?php if ($scraped && in_array('difficulty', $scraped['fields_found'] ?? [])): ?>
+                <span class="auto-badge">Auto-filled</span>
+              <?php endif; ?>
+            </label>
+            <select id="difficulty" name="difficulty" class="form-input">
+              <option value="">— select —</option>
+              <?php foreach (['drive-up'=>'Drive-Up','easy'=>'Easy','moderate'=>'Moderate','hard'=>'Hard / Strenuous'] as $val=>$lbl): ?>
+                <option value="<?= $val ?>" <?= ($scraped['difficulty'] ?? '') === $val ? 'selected' : '' ?>><?= $lbl ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
 
-        <div class="card" style="background: #FFF4E6; border-left: 4px solid var(--summit-gold);">
-            <h3 style="color: var(--peak-brown); margin-bottom: 1rem;">💡 Tips for Finding the Right Trail</h3>
-            <ul style="margin-left: 1.5rem; line-height: 1.8; color: #666;">
-                <li><strong>AllTrails:</strong> Use the map view and zoom to the summit coordinates. Look for trails that go to or pass through the summit.</li>
-                <li><strong>Check Elevation:</strong> The trail's highest point should match the summit elevation (<?= number_format($summit['elevation_ft']) ?> ft).</li>
-                <li><strong>Read Reviews:</strong> Trail reviews often mention if the trail goes to the summit or a nearby peak.</li>
-                <li><strong>Multiple Routes:</strong> Some summits have several trails. Pick the most popular or one that matches your skill level.</li>
-                <li><strong>Trail Names:</strong> The trail might not be named after the summit. Look for trails in the same area.</li>
-            </ul>
-        </div>
+          <?php if ($scraped && in_array('trailhead', $scraped['fields_found'] ?? [])): ?>
+          <p style="font-size:0.82rem; color:var(--green); margin-bottom:1rem;">
+            Trailhead coordinates captured: <?= $scraped['trailhead_lat'] ?>, <?= $scraped['trailhead_lng'] ?>
+          </p>
+          <?php endif; ?>
+
+          <div class="btn-row">
+            <button type="submit" name="save_trail_data" class="btn btn-primary">Save Trail Data</button>
+            <a href="summit_detail.php?id=<?= $summit_id ?>&group=<?= $current_group['id'] ?>" class="btn btn-ghost">Skip for Now</a>
+          </div>
+        </form>
+      </div>
+
+      <!-- Tips -->
+      <div class="tips-card">
+        <div class="card-title">Tips for Finding the Right Trail</div>
+        <ul>
+          <li><strong>AllTrails:</strong> Use the map view and zoom to the summit coordinates. Look for trails that go to or through the summit.</li>
+          <li><strong>Check Elevation:</strong> The trail's highest point should match the summit elevation (<?= number_format($summit['elevation_ft']) ?> ft).</li>
+          <li><strong>Read Reviews:</strong> Trail reviews often mention if the trail reaches the summit.</li>
+          <li><strong>Multiple Routes:</strong> Some summits have several trails — pick the most direct or one that matches your skill level.</li>
+          <li><strong>Trail Names:</strong> The trail might not be named after the summit. Look for trails in the same area.</li>
+        </ul>
+      </div>
+
     </div>
-<footer style="text-align:center; padding:2rem 1rem 1.5rem; color:#aaa; font-size:0.78rem;">
-    SOTA Planner &nbsp;·&nbsp; <a href="changelog.php" style="color:#aaa; text-decoration:none;">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com" style="color:#aaa; text-decoration:none;">sotaplanner.com</a>
+
+<footer style="text-align:center; padding:1.5rem 1rem; color:var(--ink-4); font-size:0.78rem;">
+  SOTA Planner &nbsp;·&nbsp;
+  <a href="changelog.php" style="color:var(--ink-4); text-decoration:none;">v<?= APP_VERSION ?></a>
+  &nbsp;·&nbsp;
+  <a href="https://sotaplanner.com" style="color:var(--ink-4); text-decoration:none;">sotaplanner.com</a>
 </footer>
+
 <script>
-(function() {
-    var chip = document.getElementById('userChip');
-    if (!chip) return;
-    chip.addEventListener('click', function(e) { e.stopPropagation(); this.classList.toggle('open'); });
-    document.addEventListener('click', function() { chip.classList.remove('open'); });
-})();
+document.addEventListener('click', function(e) {
+  var chip = document.getElementById('userChip');
+  if (chip && !chip.contains(e.target)) chip.classList.remove('open');
+});
 </script>
 </body>
 </html>

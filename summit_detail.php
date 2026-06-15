@@ -1911,9 +1911,9 @@ if ($tl_show) {
   <!-- PLANNED ACTIVATIONS -->
   <div id="planned-activations" style="margin-top:1.5rem;">
     <div class="section-card">
-      <div class="section-title" style="display:flex; align-items:center; gap:0.5rem;">
+      <div class="section-title" style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
         Planned Activations
-        <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem;">This group</span>
+        <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem; white-space:nowrap;">This group</span>
       </div>
 
       <?php if (!empty($planned_activations_list)): ?>
@@ -1996,9 +1996,9 @@ if ($tl_show) {
   <?php if (!empty($summit['sota_ref'])): ?>
   <div style="margin-top:1rem; margin-bottom:1rem;">
     <div class="section-card">
-      <div class="section-title" style="display:flex; align-items:center; gap:0.5rem;">
+      <div class="section-title" style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
         SOTAwatch Alerts
-        <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem;">Community — not this group</span>
+        <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem; white-space:nowrap;">Community — not this group</span>
       </div>
       <?php if (!empty($sota_alerts)): ?>
         <div style="overflow-x:auto;">
@@ -2045,9 +2045,9 @@ if ($tl_show) {
   <?php if (!empty($summit['sota_ref']) && $current_group): ?>
   <div style="margin-bottom:1rem;">
     <div class="section-card">
-      <div class="section-title" style="display:flex; align-items:center; gap:0.5rem;">
+      <div class="section-title" style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
         Activation History
-        <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem;">Group members only</span>
+        <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem; white-space:nowrap;">Group members only</span>
       </div>
       <?php if (!empty($sota_member_activations)): ?>
         <div style="overflow-x:auto;">

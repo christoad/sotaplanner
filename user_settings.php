@@ -137,12 +137,13 @@ $default_activation  = (int)($settings['default_activation_time_min'] ?? 60);
     }
 
     /* Units toggle */
-    .units-toggle { display: flex; border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; width: fit-content; }
+    .units-toggle { display: flex; border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; width: 100%; }
     .units-toggle input[type="radio"] { display: none; }
     .units-toggle label {
-      padding: 0.5rem 1.25rem; font-size: 0.875rem; font-weight: 500;
+      flex: 1; text-align: center;
+      padding: 0.5rem 1rem; font-size: 0.875rem; font-weight: 500;
       color: var(--ink-3); cursor: pointer; transition: background 0.12s, color 0.12s;
-      border-right: 1px solid var(--border); white-space: nowrap;
+      border-right: 1px solid var(--border);
     }
     .units-toggle label:last-of-type { border-right: none; }
     .units-toggle input[type="radio"]:checked + label {
