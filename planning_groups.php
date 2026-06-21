@@ -24,6 +24,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $group_name = trim($_POST['group_name']);
         if (!empty($group_name)) {
             try {
+                $dupe = $db->prepare("SELECT id FROM planning_groups WHERE name = ? AND owner_callsign = ?");
+                $dupe->execute([$group_name, $current_callsign]);
+                if ($dupe->fetch()) {
+                    $error = "You already have a group named \"" . htmlspecialchars($group_name) . "\". Choose a different name.";
+                } else {
                 $stmt = $db->prepare("INSERT INTO planning_groups (name, units, owner_callsign) VALUES (?, ?, ?)");
                 $stmt->execute([$group_name, $user_units, $current_callsign]);
                 $new_group_id = $db->lastInsertId();
@@ -51,6 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $message = "Planning group created! Add a starting location so we can calculate drive times.";
                 $open_address_modal = true;
+                } // end else (no duplicate)
             } catch (PDOException $e) {
                 $error = "Error creating group: " . $e->getMessage();
             }

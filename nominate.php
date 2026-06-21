@@ -1454,31 +1454,25 @@ async function runBulkNominateFlow(refs) {
     const currentEl = document.getElementById('nom-current');
     const logEl     = document.getElementById('nom-log');
     const groupId   = <?= (int)($current_group['id'] ?? 0) ?>;
+    const BATCH     = 5;
 
     overlay.style.display = 'flex';
     logEl.style.display = refs.length > 1 ? 'block' : 'none';
 
     let done = 0, newIds = [], activatedThisYear = 0;
 
-    for (const ref of refs) {
-        currentEl.textContent = ref + '…';
-        counterEl.textContent = done + ' of ' + refs.length;
-        barEl.style.width = Math.round((done / refs.length) * 100) + '%';
-
-        let data = null;
+    async function nominateOne(ref) {
         try {
             const resp = await fetch('nominate.php?action=nominate_one&ref=' + encodeURIComponent(ref));
-            data = await resp.json();
+            return await resp.json();
         } catch (_) {
-            data = { error: 'Network error', ref: ref };
+            return { error: 'Network error', ref };
         }
+    }
 
-        done++;
-        barEl.style.width = Math.round((done / refs.length) * 100) + '%';
-
+    function addLogEntry(ref, data) {
         const entry = document.createElement('div');
         entry.className = 'nom-log-entry';
-
         if (data && data.success) {
             if (data.id) newIds.push(data.id);
             if (data.activated_this_year) {
@@ -1496,8 +1490,19 @@ async function runBulkNominateFlow(refs) {
             entry.className += ' nom-log-error';
             entry.textContent = '✗ ' + ref + (data && data.error ? ' — ' + data.error : '');
         }
-
         logEl.insertBefore(entry, logEl.firstChild);
+    }
+
+    for (let i = 0; i < refs.length; i += BATCH) {
+        const batch = refs.slice(i, i + BATCH);
+        const batchEnd = Math.min(i + BATCH, refs.length);
+        currentEl.textContent = 'Adding ' + (i + 1) + '–' + batchEnd + ' of ' + refs.length + '…';
+
+        const results = await Promise.all(batch.map(ref => nominateOne(ref)));
+
+        results.forEach((data, j) => addLogEntry(batch[j], data));
+        done += batch.length;
+        barEl.style.width = Math.round((done / refs.length) * 100) + '%';
         counterEl.textContent = done + ' of ' + refs.length;
     }
 
