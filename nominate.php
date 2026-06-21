@@ -158,6 +158,173 @@ if (isset($_GET['action']) && $_GET['action'] === 'radius_search') {
     exit;
 }
 
+// ── AJAX: nominate one summit + check activation history ─────────────────────
+if (isset($_GET['action']) && $_GET['action'] === 'nominate_one') {
+    header('Content-Type: application/json');
+    $db            = getDbConnection();
+    $current_group = getCurrentPlanningGroup($db);
+    if (!$current_group) { echo json_encode(['error' => 'No active group']); exit; }
+
+    $sota_ref = strtoupper(trim($_GET['ref'] ?? ''));
+    if (!preg_match('/^[A-Z0-9]{1,6}\/[A-Z0-9]{1,6}-\d{3,}$/', $sota_ref)) {
+        echo json_encode(['error' => 'Invalid reference format', 'ref' => $sota_ref]); exit;
+    }
+
+    $summit_id = null;
+    $name      = $sota_ref;
+    $skipped   = false;
+
+    // Already in this group?
+    $chk = $db->prepare("SELECT id, name FROM summits WHERE sota_ref = ? AND planning_group_id = ?");
+    $chk->execute([$sota_ref, $current_group['id']]);
+    $existing = $chk->fetch();
+
+    if ($existing) {
+        $summit_id = (int)$existing['id'];
+        $name      = $existing['name'];
+        $skipped   = true;
+    } else {
+        // Fetch basic summit data from SOTA API
+        $ch = curl_init("https://api2.sota.org.uk/api/summits/" . $sota_ref);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER    => ['Accept: application/json'],
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_TIMEOUT       => 10,
+        ]);
+        $response  = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($http_code !== 200 || !$response) {
+            echo json_encode(['error' => 'Summit not found', 'ref' => $sota_ref]); exit;
+        }
+        $sd = json_decode($response, true);
+        if (!$sd) { echo json_encode(['error' => 'Invalid API response', 'ref' => $sota_ref]); exit; }
+
+        $name         = $sd['name'] ?? $sd['summitName'] ?? 'Unknown';
+        $region       = $sd['regionName'] ?? $sd['region'] ?? '';
+        $points       = $sd['points'] ?? 1;
+        $elevation_m  = $sd['altM'] ?? $sd['altitude'] ?? 0;
+        $elevation_ft = $sd['altFt'] ?? round($elevation_m * 3.28084);
+        $latitude     = $sd['latitude'] ?? $sd['lat'] ?? 0;
+        $longitude    = $sd['longitude'] ?? $sd['lng'] ?? $sd['long'] ?? 0;
+        $sotlas_link  = "https://sotl.as/summits/" . $sota_ref;
+
+        // Inherit shared data from another group if available
+        $chk2 = $db->prepare("SELECT * FROM summits WHERE sota_ref = ? AND planning_group_id != ? AND (trail_link IS NOT NULL OR hike_distance_mi IS NOT NULL) LIMIT 1");
+        $chk2->execute([$sota_ref, $current_group['id']]);
+        $source = $chk2->fetch();
+
+        $ins = $db->prepare("
+            INSERT INTO summits
+            (planning_group_id, source_group_id, uses_shared_data, sota_ref, name, region, points,
+             elevation_m, elevation_ft, latitude, longitude, nominated_date, sotlas_link, status,
+             trail_link, hike_distance_mi, hike_elevation_gain_ft, difficulty, trailhead_lat, trailhead_lng)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), ?, 'nominated', ?, ?, ?, ?, ?, ?)
+        ");
+        try {
+            $ins->execute([
+                $current_group['id'],
+                $source ? $source['planning_group_id'] : null,
+                $source ? true : false,
+                $sota_ref, $name, $region, $points, $elevation_m, $elevation_ft, $latitude, $longitude, $sotlas_link,
+                $source ? $source['trail_link'] : null,
+                $source ? $source['hike_distance_mi'] : null,
+                $source ? $source['hike_elevation_gain_ft'] : null,
+                $source ? $source['difficulty'] : null,
+                $source ? $source['trailhead_lat'] : null,
+                $source ? $source['trailhead_lng'] : null,
+            ]);
+        } catch (PDOException $e) {
+            echo json_encode(['error' => 'DB error', 'ref' => $sota_ref]); exit;
+        }
+
+        $summit_id = (int)$db->lastInsertId();
+        _link_global_gpx($db, $summit_id, $current_group['id'], $sota_ref);
+        _maybe_set_researched($db, $summit_id);
+    }
+
+    // ── Activation history check for group members ────────────────────────────
+    $last_activated_date = null;
+    $last_activated_by   = null;
+    $activated_this_year = false;
+
+    $ms = $db->prepare("
+        SELECT callsign FROM planning_group_members WHERE planning_group_id = ?
+        UNION
+        SELECT owner_callsign FROM planning_groups WHERE id = ?
+    ");
+    $ms->execute([$current_group['id'], $current_group['id']]);
+    $group_callsigns = array_map('strtoupper', array_column($ms->fetchAll(), 'callsign'));
+
+    $cache_key = 'sota_activations_' . preg_replace('/[^a-zA-Z0-9_]/', '_', $sota_ref);
+    $cstmt = $db->prepare("SELECT setting_value, updated_at FROM app_settings WHERE setting_key = ?");
+    $cstmt->execute([$cache_key]);
+    $crow  = $cstmt->fetch();
+    $all_acts = null;
+
+    if ($crow && (time() - strtotime($crow['updated_at'])) < 86400) {
+        $all_acts = json_decode($crow['setting_value'], true);
+    } else {
+        $ref_parts = explode('/', $sota_ref, 2);
+        if (count($ref_parts) === 2) {
+            $acts_url = 'https://api2.sota.org.uk/api/activations/' . urlencode($ref_parts[0]) . '/' . urlencode($ref_parts[1]);
+            $ctx = stream_context_create(['http' => [
+                'timeout'       => 6,
+                'ignore_errors' => true,
+                'header'        => "Accept: application/json\r\nUser-Agent: SOTAplanner/1.0\r\n",
+            ]]);
+            $raw = @file_get_contents($acts_url, false, $ctx);
+            if ($raw !== false) {
+                $fetched = json_decode($raw, true);
+                if (is_array($fetched)) {
+                    $all_acts = $fetched;
+                    $db->prepare("INSERT INTO app_settings (setting_key, setting_value, updated_at)
+                                  VALUES (?, ?, NOW())
+                                  ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=NOW()")
+                       ->execute([$cache_key, json_encode($all_acts)]);
+                }
+            }
+        }
+    }
+
+    if (is_array($all_acts)) {
+        $member_acts = [];
+        foreach ($all_acts as $act) {
+            $cs2 = strtoupper(trim($act['ownCallsign'] ?? ''));
+            if (in_array($cs2, $group_callsigns)) {
+                $member_acts[] = ['date' => $act['activationDate'] ?? '', 'callsign' => $cs2];
+            }
+        }
+        usort($member_acts, fn($a, $b) => strcmp($b['date'], $a['date']));
+
+        if (!empty($member_acts)) {
+            $newest   = $member_acts[0];
+            $new_date = date('Y-m-d', strtotime($newest['date']));
+            $db->prepare("UPDATE summits SET last_activated_date = ?, activated_by = ?, status = 'activated'
+                          WHERE id = ? AND (last_activated_date IS NULL OR last_activated_date < ?)")
+               ->execute([$new_date, $newest['callsign'], $summit_id, $new_date]);
+            $last_activated_date = $new_date;
+            $last_activated_by   = $newest['callsign'];
+            $activated_this_year = (substr($new_date, 0, 4) === gmdate('Y'));
+        }
+    }
+
+    echo json_encode([
+        'success'             => true,
+        'skipped'             => $skipped,
+        'ref'                 => $sota_ref,
+        'id'                  => $summit_id,
+        'name'                => $name,
+        'last_activated_date' => $last_activated_date,
+        'last_activated_by'   => $last_activated_by,
+        'activated_this_year' => $activated_this_year,
+    ]);
+    exit;
+}
+
 $db = getDbConnection();
 
 $message = '';
@@ -681,6 +848,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
       .topbar-nav { display: none; }
       .page { padding: 1rem; }
     }
+
+    /* Bulk nomination progress overlay */
+    #nom-progress-overlay {
+      position: fixed; inset: 0; z-index: 9000;
+      background: rgba(20,19,18,0.55);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .nom-progress-card {
+      background: #fff; border-radius: 20px;
+      padding: 2.5rem 2.5rem 2rem;
+      max-width: 480px; width: 92%;
+      box-shadow: 0 16px 56px rgba(0,0,0,0.28);
+      display: flex; flex-direction: column; align-items: center;
+      gap: 1.25rem; text-align: center;
+    }
+    .nom-loading-svg { width: 100px; height: 100px; overflow: visible; }
+    .nom-logo-path {
+      stroke-dasharray: 116; stroke-dashoffset: 116;
+      animation: nom-path-draw 3s ease-in-out infinite;
+    }
+    @keyframes nom-path-draw {
+      0%   { stroke-dashoffset: 116; opacity: 0; }
+      7%   { stroke-dashoffset: 116; opacity: 1; }
+      62%  { stroke-dashoffset: 0;   opacity: 1; }
+      80%  { stroke-dashoffset: 0;   opacity: 1; }
+      94%  { stroke-dashoffset: 0;   opacity: 0; }
+      100% { stroke-dashoffset: 116; opacity: 0; }
+    }
+    .nom-logo-dot {
+      fill: var(--red);
+      transform-box: fill-box; transform-origin: center;
+      animation: nom-dot-pop 3s ease-in-out 1.2s infinite; opacity: 0;
+    }
+    @keyframes nom-dot-pop {
+      0%   { transform: scale(0);   opacity: 0; }
+      15%  { transform: scale(1.4); opacity: 1; }
+      30%  { transform: scale(1);   opacity: 1; }
+      72%  { transform: scale(1);   opacity: 1; }
+      90%  { transform: scale(0.4); opacity: 0; }
+      100% { transform: scale(0);   opacity: 0; }
+    }
+    .nom-logo-ring {
+      transform-box: fill-box; transform-origin: center; opacity: 0;
+    }
+    .nom-logo-ring1 { animation: nom-ring-pulse 3s ease-out 1.2s infinite; }
+    .nom-logo-ring2 { animation: nom-ring-pulse 3s ease-out 1.5s infinite; }
+    @keyframes nom-ring-pulse {
+      0%   { transform: scale(0.5); opacity: 0; }
+      10%  { opacity: 0.5; }
+      68%  { transform: scale(2.4); opacity: 0; }
+      100% { transform: scale(2.4); opacity: 0; }
+    }
+    .nom-progress-bar-track {
+      width: 100%; background: var(--bg-2);
+      border-radius: 100px; height: 8px; overflow: hidden;
+    }
+    .nom-progress-bar-fill {
+      height: 100%; background: var(--green);
+      border-radius: 100px; width: 0%;
+      transition: width 0.25s ease;
+    }
+    .nom-log-entry { padding: 0.25rem 0; border-bottom: 1px solid var(--border); font-size: 0.775rem; line-height: 1.4; }
+    .nom-log-entry:last-child { border-bottom: none; }
+    .nom-log-activated-year { color: var(--green); font-weight: 600; }
+    .nom-log-activated      { color: var(--ink-2); }
+    .nom-log-none           { color: var(--ink-3); }
+    .nom-log-error          { color: var(--red); }
   </style>
 </head>
 <body>
@@ -825,6 +1059,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
     </form>
   </div>
 
+</div>
+
+<!-- Bulk nomination progress overlay (hidden until bulk submit) -->
+<div id="nom-progress-overlay" style="display:none;">
+  <div class="nom-progress-card">
+    <svg class="nom-loading-svg" viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="55" cy="55" r="50" fill="none" stroke="#1c1b19" stroke-width="1.5" opacity="0.2"/>
+      <path class="nom-logo-path" d="M26,79.5l17-30,7,8,12-20,22,42"
+            fill="none" stroke="#1c1b19" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle class="nom-logo-ring nom-logo-ring2" cx="62" cy="35.5" r="15" fill="none" stroke="var(--red)" stroke-width="0.8"/>
+      <circle class="nom-logo-ring nom-logo-ring1" cx="62" cy="35.5" r="9"  fill="none" stroke="var(--red)" stroke-width="1.2"/>
+      <circle class="nom-logo-dot" cx="62" cy="35.5" r="3.5"/>
+    </svg>
+    <div style="font-size:1.1rem; font-weight:600; color:var(--ink);">Adding summits to your group</div>
+    <div id="nom-current" style="font-size:0.875rem; color:var(--ink-2); min-height:1.25em;">Preparing…</div>
+    <div class="nom-progress-bar-track">
+      <div class="nom-progress-bar-fill" id="nom-bar"></div>
+    </div>
+    <div id="nom-counter" style="font-size:0.8rem; font-weight:600; color:var(--ink-3);">Starting…</div>
+    <div id="nom-log" style="width:100%; max-height:164px; overflow-y:auto; text-align:left; border:1px solid var(--border); border-radius:var(--r-md); padding:0.4rem 0.625rem; display:none;"></div>
+  </div>
 </div>
 
 <footer style="text-align:center; padding:2rem 1rem 1.5rem; color:var(--ink-4); font-size:0.78rem;">
@@ -1179,14 +1434,10 @@ function escAttr(s)  { return String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;
 // ── Form submit validation ────────────────────────────────────────────────────
 document.getElementById('nominate-form').addEventListener('submit', function(e) {
     if (formMode.value === 'bulk') {
-        if (!refsInput.value.trim()) {
-            e.preventDefault();
-            alert('No valid summits to nominate.');
-            return;
-        }
-        const count = refsInput.value.split(',').filter(function(r) { return r.trim(); }).length;
-        nominateBtn.textContent = 'Adding ' + count + ' summit' + (count !== 1 ? 's' : '') + '… please wait';
-        nominateBtn.disabled = true;
+        e.preventDefault();
+        const refs = refsInput.value.split(',').map(r => r.trim()).filter(r => r);
+        if (refs.length === 0) { alert('No valid summits to nominate.'); return; }
+        runBulkNominateFlow(refs);
     } else {
         if (!refInput.value.trim()) {
             e.preventDefault();
@@ -1194,6 +1445,73 @@ document.getElementById('nominate-form').addEventListener('submit', function(e) 
         }
     }
 });
+
+// ── Bulk AJAX nomination flow ─────────────────────────────────────────────────
+async function runBulkNominateFlow(refs) {
+    const overlay   = document.getElementById('nom-progress-overlay');
+    const barEl     = document.getElementById('nom-bar');
+    const counterEl = document.getElementById('nom-counter');
+    const currentEl = document.getElementById('nom-current');
+    const logEl     = document.getElementById('nom-log');
+    const groupId   = <?= (int)($current_group['id'] ?? 0) ?>;
+
+    overlay.style.display = 'flex';
+    logEl.style.display = refs.length > 1 ? 'block' : 'none';
+
+    let done = 0, newIds = [], activatedThisYear = 0;
+
+    for (const ref of refs) {
+        currentEl.textContent = ref + '…';
+        counterEl.textContent = done + ' of ' + refs.length;
+        barEl.style.width = Math.round((done / refs.length) * 100) + '%';
+
+        let data = null;
+        try {
+            const resp = await fetch('nominate.php?action=nominate_one&ref=' + encodeURIComponent(ref));
+            data = await resp.json();
+        } catch (_) {
+            data = { error: 'Network error', ref: ref };
+        }
+
+        done++;
+        barEl.style.width = Math.round((done / refs.length) * 100) + '%';
+
+        const entry = document.createElement('div');
+        entry.className = 'nom-log-entry';
+
+        if (data && data.success) {
+            if (data.id) newIds.push(data.id);
+            if (data.activated_this_year) {
+                activatedThisYear++;
+                entry.className += ' nom-log-activated-year';
+                entry.textContent = '★ ' + (data.name || ref) + ' — activated ' + data.last_activated_date + ' by ' + data.last_activated_by;
+            } else if (data.last_activated_date) {
+                entry.className += ' nom-log-activated';
+                entry.textContent = '✓ ' + (data.name || ref) + ' — last activated ' + data.last_activated_date;
+            } else {
+                entry.className += ' nom-log-none';
+                entry.textContent = '✓ ' + (data.name || ref);
+            }
+        } else {
+            entry.className += ' nom-log-error';
+            entry.textContent = '✗ ' + ref + (data && data.error ? ' — ' + data.error : '');
+        }
+
+        logEl.insertBefore(entry, logEl.firstChild);
+        counterEl.textContent = done + ' of ' + refs.length;
+    }
+
+    let doneMsg = done + ' summit' + (done !== 1 ? 's' : '') + ' added';
+    if (activatedThisYear > 0) doneMsg += ' • ' + activatedThisYear + ' activated by your group this year';
+    currentEl.textContent = '✓ Done! Loading dashboard…';
+    counterEl.textContent = doneMsg;
+    barEl.style.width = '100%';
+
+    const idsParam = newIds.length ? '&new_ids=' + newIds.join(',') : '';
+    setTimeout(function() {
+        window.location.href = 'index.php?group=' + groupId + '&bulk_nominated=' + done + idsParam;
+    }, 1000);
+}
 
 // ── Area search ───────────────────────────────────────────────────────────────
 const useMetric = <?= json_encode(($current_group['units'] ?? 'imperial') === 'metric') ?>;
@@ -1307,14 +1625,7 @@ function updateAreaBtn() {
 function submitAreaSelection() {
     const checked = Array.from(document.querySelectorAll('.area-chk:checked')).map(function(cb) { return cb.dataset.ref; });
     if (checked.length === 0) return;
-    refsInput.value = checked.join(',');
-    formMode.value  = 'bulk';
-    const btn = document.getElementById('area_nominate_btn');
-    if (btn) {
-        btn.textContent = 'Adding ' + checked.length + ' summit' + (checked.length !== 1 ? 's' : '') + '… please wait';
-        btn.disabled = true;
-    }
-    document.getElementById('nominate-form').submit();
+    runBulkNominateFlow(checked);
 }
 </script>
 </body>
