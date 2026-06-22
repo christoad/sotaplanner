@@ -10,8 +10,6 @@ Two separate API keys are used. Both are in the same paid Google Cloud project.
 
 **Why two keys:** HTTP referrer restrictions break server-side PHP calls (no Referer header). IP restrictions break browser calls. Two keys is the only way to properly secure both. The server key never appears in HTML; the browser key is referrer-locked so it can only be used from the three site domains.
 
-**History:** The original free-trial project (`oval-time-487620-k5`) was shut down May 20, 2026 when the trial ended. The current keys are in the paid project created at that time. DreamHost changed the server IP (from `::ea3:f5b2` to `::373:84d5`), which broke the old IP-restricted key — that's why everything stopped working suddenly.
-
 **Track 2 — SOTA API activation history: troubleshoot data not loading:**
 The activation history section was built on `summit_detail.php` and deployed, but it is not pulling in data correctly — a test activation Chris made did not appear. At the start of the next session, troubleshoot why activations aren't showing. Check: the SOTA API endpoint being called, whether the summit reference is being passed correctly, and whether the response is empty or contains an error. The section uses the public SOTA API (no OAuth needed).
 
@@ -338,31 +336,6 @@ This table is the key to efficient ongoing cron operation:
 - The `--mode=retry` cron finds rows where `tracks_found = 0` and `last_checked < 30 days ago` — retrying in case community tracks have since been uploaded.
 - Summits that have been imported never appear in either queue because they have a row in `global_gpx_checked` with `tracks_found > 0`.
 - The table was backfilled from `global_gpx_tracks` when first created, so previously imported summits won't be re-processed.
-
-### Initial Full Import Workflow (one-time, in progress as of 2026-06-03)
-
-**Status: 1,816 of 181,126 checked (~1%). Recommended approach going forward: enable hourly cron (not browser tool).**
-
-The browser tool (`admin_batch_gpx.php`) is fine for spot-checking but too slow for the remaining 179K summits. Instead, add these two lines to the server crontab via `ssh dreamhost-sota "crontab -e"`:
-
-```
-0 * * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=new --limit=2000 --delay=1000 >> /home/chrisr069/logs/gpx_cron.log 2>&1
-30 * * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/trailhead_osm_cron.php >> /home/chrisr069/logs/gpx_cron.log 2>&1
-```
-
-At 48,000 summits/day this completes in ~4 days. Monitor progress in **God Mode → Data Tools → Initial Import Progress** panel. When Remaining = 0, replace with the steady-state schedule below.
-
-### Cron Jobs (steady-state, after initial import)
-
-**Not yet active** — swap to these once Remaining = 0. Edit via `ssh dreamhost-sota "crontab -e"`, replacing the hourly catch-up lines.
-
-```
-5 0 * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=new --limit=500 >> /home/chrisr069/sota_logs/gpx_cron.log 2>&1
-30 0 * * 6 /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/batch_gpx_cron.php --mode=retry --limit=500 >> /home/chrisr069/sota_logs/gpx_cron.log 2>&1
-0 1 * * * /usr/local/php83/bin/php /home/chrisr069/sotaplannerdotcom/trailhead_osm_cron.php >> /home/chrisr069/sota_logs/gpx_cron.log 2>&1
-```
-
-All log to `/home/chrisr069/sota_logs/gpx_cron.log`. In steady state the daily new-summits job has near-zero work — SOTA adds only ~100–200 summits per year globally.
 
 ### Cron Log Viewer
 
