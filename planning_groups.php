@@ -205,6 +205,86 @@ if (isset($_POST['select_group'])) {
             $error = "Cannot remove yourself (owner) or you don't have permission.";
         }
     }
+
+    // Rename group
+    if (isset($_POST['rename_group']) && isset($_SESSION['manage_group_id'])) {
+        $group_id   = (int)$_SESSION['manage_group_id'];
+        $new_name   = trim($_POST['new_group_name'] ?? '');
+        $stmt = $db->prepare("SELECT owner_callsign FROM planning_groups WHERE id = ?");
+        $stmt->execute([$group_id]);
+        $grp = $stmt->fetch();
+        if (!$grp || $grp['owner_callsign'] !== $current_callsign) {
+            $error = "You don't have permission to rename this group.";
+        } elseif (empty($new_name)) {
+            $error = "Group name cannot be empty.";
+        } else {
+            $dupe = $db->prepare("SELECT id FROM planning_groups WHERE name = ? AND owner_callsign = ? AND id != ?");
+            $dupe->execute([$new_name, $current_callsign, $group_id]);
+            if ($dupe->fetch()) {
+                $error = "You already have a group named \"" . htmlspecialchars($new_name) . "\". Choose a different name.";
+            } else {
+                $db->prepare("UPDATE planning_groups SET name = ? WHERE id = ? AND owner_callsign = ?")
+                   ->execute([$new_name, $group_id, $current_callsign]);
+                $message = "Group renamed to \"" . htmlspecialchars($new_name) . "\".";
+            }
+        }
+    }
+
+    // Delete group
+    if (isset($_POST['delete_group']) && isset($_SESSION['manage_group_id'])) {
+        $group_id = (int)$_SESSION['manage_group_id'];
+        $stmt = $db->prepare("SELECT owner_callsign FROM planning_groups WHERE id = ?");
+        $stmt->execute([$group_id]);
+        $grp = $stmt->fetch();
+        if (!$grp || $grp['owner_callsign'] !== $current_callsign) {
+            $error = "You don't have permission to delete this group.";
+        } else {
+            try {
+                // Get all summit IDs for this group
+                $summit_ids = $db->prepare("SELECT id FROM summits WHERE planning_group_id = ?");
+                $summit_ids->execute([$group_id]);
+                $ids = array_column($summit_ids->fetchAll(), 'id');
+
+                if ($ids) {
+                    $ph = implode(',', array_fill(0, count($ids), '?'));
+                    // Delete GPX files from disk (non-library tracks only)
+                    $tracks = $db->prepare("SELECT file_path, from_global_library FROM gpx_tracks WHERE summit_id IN ($ph)");
+                    $tracks->execute($ids);
+                    foreach ($tracks->fetchAll() as $t) {
+                        if (!$t['from_global_library'] && $t['file_path'] && file_exists($t['file_path'])) {
+                            @unlink($t['file_path']);
+                        }
+                    }
+                    $db->prepare("DELETE FROM gpx_tracks WHERE summit_id IN ($ph)")->execute($ids);
+                    $db->prepare("DELETE FROM summit_notes WHERE summit_id IN ($ph)")->execute($ids);
+                    $db->prepare("DELETE FROM activations WHERE summit_id IN ($ph)")->execute($ids);
+                    // planned_activations may not exist on all installs — suppress errors
+                    try { $db->prepare("DELETE FROM planned_activations WHERE summit_id IN ($ph)")->execute($ids); } catch (PDOException $e) {}
+                    // Clear source_group_id references in other groups' shared summits
+                    $db->prepare("UPDATE summits SET source_group_id = NULL, uses_shared_data = 0 WHERE source_group_id = ?")->execute([$group_id]);
+                    $db->prepare("DELETE FROM summits WHERE planning_group_id = ?")->execute([$group_id]);
+                }
+
+                $db->prepare("DELETE FROM addresses WHERE planning_group_id = ?")->execute([$group_id]);
+                $db->prepare("DELETE FROM planning_group_members WHERE planning_group_id = ?")->execute([$group_id]);
+                $db->prepare("DELETE FROM app_settings WHERE setting_key = ?")->execute(["selected_address_group_$group_id"]);
+                $db->prepare("DELETE FROM planning_groups WHERE id = ? AND owner_callsign = ?")->execute([$group_id, $current_callsign]);
+
+                // Clear session if deleted group was active
+                if (($_SESSION['manage_group_id'] ?? 0) == $group_id) {
+                    unset($_SESSION['manage_group_id']);
+                }
+                if (($_SESSION['current_planning_group_id'] ?? 0) == $group_id) {
+                    unset($_SESSION['current_planning_group_id']);
+                }
+
+                header("Location: planning_groups.php?deleted=1");
+                exit;
+            } catch (PDOException $e) {
+                $error = "Error deleting group: " . $e->getMessage();
+            }
+        }
+    }
 }
 
 // Get all planning groups
@@ -671,6 +751,13 @@ a:hover { text-decoration: underline; }
         <button class="btn btn-primary" onclick="document.getElementById('createGroupModal').classList.add('open')">+ New Group</button>
     </div>
 
+    <?php if (isset($_GET['deleted'])): ?>
+        <div class="msg msg-success">
+            <span>Planning group deleted.</span>
+            <button class="msg-dismiss" onclick="this.parentElement.remove()">×</button>
+        </div>
+    <?php endif; ?>
+
     <?php if ($message): ?>
         <div class="msg msg-success">
             <span><?= htmlspecialchars($message) ?></span>
@@ -757,14 +844,19 @@ a:hover { text-decoration: underline; }
             <!-- Group info card -->
             <div class="card" style="margin-bottom: 1.25rem;">
                 <div class="section-head">
-                    <h2><?= htmlspecialchars($managing_group['name']) ?></h2>
+                    <div style="display:flex; align-items:center; gap:0.75rem; min-width:0; flex-wrap:wrap;">
+                        <h2 style="margin:0;"><?= htmlspecialchars($managing_group['name']) ?></h2>
+                        <?php if ($is_group_owner): ?>
+                            <button class="btn btn-ghost btn-sm" onclick="openRenameModal()" style="flex-shrink:0;">Rename</button>
+                        <?php endif; ?>
+                    </div>
                     <form method="POST" style="margin: 0;">
                         <input type="hidden" name="group_id" value="<?= $managing_group['id'] ?>">
                         <button type="submit" name="activate_group" class="btn btn-accent btn-sm">Open Dashboard →</button>
                     </form>
                 </div>
-                <div style="display: flex; gap: 2rem; flex-wrap: wrap; padding-top: 0.75rem; border-top: 1px solid var(--border);">
-                    <?php $counts = $group_counts[$managing_group['id']] ?? null; ?>
+                <?php $counts = $group_counts[$managing_group['id']] ?? null; ?>
+                <div style="display: flex; gap: 2rem; flex-wrap: wrap; padding-top: 0.75rem; border-top: 1px solid var(--border); align-items: flex-end;">
                     <div>
                         <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3); margin-bottom: 3px;">Summits</div>
                         <div style="font-size: 0.875rem; color: var(--ink);"><?= $counts ? (int)$counts['total'] : 0 ?></div>
@@ -773,6 +865,12 @@ a:hover { text-decoration: underline; }
                         <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3); margin-bottom: 3px;">Activated</div>
                         <div style="font-size: 0.875rem; color: var(--ink);"><?= $counts ? (int)$counts['activated_count'] : 0 ?></div>
                     </div>
+                    <?php if ($is_group_owner): ?>
+                    <div style="margin-left:auto;">
+                        <button class="btn btn-ghost btn-sm" onclick="openDeleteModal()"
+                                style="color:var(--red); border-color:oklch(85% 0.06 22);">Delete Group</button>
+                    </div>
+                    <?php endif; ?>
                 </div>
             </div>
 
@@ -993,6 +1091,45 @@ a:hover { text-decoration: underline; }
 </script>
 <?php endif; ?>
 
+<!-- Rename Group Modal -->
+<div id="renameGroupModal" class="modal-overlay" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box">
+        <button class="modal-close" onclick="document.getElementById('renameGroupModal').classList.remove('open')">×</button>
+        <div class="modal-title">Rename Group</div>
+        <form method="POST">
+            <div class="form-group">
+                <label class="form-label">New Name</label>
+                <input type="text" name="new_group_name" id="renameInput" class="form-input"
+                       value="<?= htmlspecialchars($managing_group['name'] ?? '') ?>" required>
+            </div>
+            <div style="display:flex; gap:0.75rem;">
+                <button type="submit" name="rename_group" class="btn btn-primary" style="flex:1;">Save Name</button>
+                <button type="button" class="btn btn-ghost" onclick="document.getElementById('renameGroupModal').classList.remove('open')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Delete Group Modal -->
+<div id="deleteGroupModal" class="modal-overlay" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box">
+        <button class="modal-close" onclick="document.getElementById('deleteGroupModal').classList.remove('open')">×</button>
+        <div class="modal-title" style="color:var(--red);">Delete Group</div>
+        <p style="font-size:0.875rem; color:var(--ink-2); margin-bottom:1rem; line-height:1.5;">
+            This will permanently delete <strong><?= htmlspecialchars($managing_group['name'] ?? '') ?></strong>
+            and all of its data — <?= ($counts ? (int)$counts['total'] : 0) ?> summit<?= ($counts && (int)$counts['total'] !== 1 ? 's' : '') ?>,
+            all addresses, and all members. This cannot be undone.
+        </p>
+        <form method="POST">
+            <input type="hidden" name="delete_group" value="1">
+            <div style="display:flex; gap:0.75rem;">
+                <button type="submit" class="btn btn-sm" style="flex:1; background:var(--red); color:#fff; height:36px;">Yes, delete this group</button>
+                <button type="button" class="btn btn-ghost" onclick="document.getElementById('deleteGroupModal').classList.remove('open')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 (function() {
     var chip = document.getElementById('userChip');
@@ -1000,6 +1137,16 @@ a:hover { text-decoration: underline; }
     chip.addEventListener('click', function(e) { e.stopPropagation(); this.classList.toggle('open'); });
     document.addEventListener('click', function() { chip.classList.remove('open'); });
 })();
+
+function openRenameModal() {
+    var input = document.getElementById('renameInput');
+    document.getElementById('renameGroupModal').classList.add('open');
+    if (input) { input.focus(); input.select(); }
+}
+
+function openDeleteModal() {
+    document.getElementById('deleteGroupModal').classList.add('open');
+}
 </script>
 </body>
 </html>
