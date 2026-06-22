@@ -230,6 +230,23 @@ if (isset($_POST['select_group'])) {
         }
     }
 
+    // Save pace multiplier
+    if (isset($_POST['save_pace']) && isset($_SESSION['manage_group_id'])) {
+        $group_id = (int)$_SESSION['manage_group_id'];
+        $stmt = $db->prepare("SELECT owner_callsign FROM planning_groups WHERE id = ?");
+        $stmt->execute([$group_id]);
+        $grp = $stmt->fetch();
+        if ($grp && $grp['owner_callsign'] === $current_callsign) {
+            $pace = max(50, min(200, (int)($_POST['pace_pct'] ?? 100)));
+            $multiplier = round($pace / 100, 2);
+            $db->prepare("UPDATE planning_groups SET pace_multiplier = ? WHERE id = ?")
+               ->execute([$multiplier, $group_id]);
+            $message = "Pace adjustment saved.";
+        } else {
+            $error = "You don't have permission to change this group's settings.";
+        }
+    }
+
     // Delete group
     if (isset($_POST['delete_group']) && isset($_SESSION['manage_group_id'])) {
         $group_id = (int)$_SESSION['manage_group_id'];
@@ -874,6 +891,43 @@ a:hover { text-decoration: underline; }
                 </div>
             </div>
 
+            <!-- Pace multiplier card -->
+            <?php if ($is_group_owner): ?>
+            <div class="card" style="margin-bottom: 1.25rem;">
+                <div class="section-head">
+                    <div>
+                        <h2>Hike Pace</h2>
+                        <p style="font-size: 0.8rem; color: var(--ink-3); margin-top: 3px;">Scales Naismith estimated hike times up or down for this group's fitness level.</p>
+                    </div>
+                </div>
+                <?php
+                    $pace_pct = (int)round(($managing_group['pace_multiplier'] ?? 1.0) * 100);
+                    $pace_label = $pace_pct <= 80 ? 'Fast' : ($pace_pct <= 110 ? 'Standard' : ($pace_pct <= 135 ? 'Relaxed' : 'Slow'));
+                ?>
+                <form method="POST" style="margin-top: 0.75rem; border-top: 1px solid var(--border); padding-top: 0.75rem;">
+                    <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.4rem;">
+                                <span id="pace-display" style="font-size: 1.25rem; font-weight: 600; color: var(--ink);"><?= $pace_pct ?>%</span>
+                                <span id="pace-label" style="font-size: 0.8rem; color: var(--ink-3);"><?= $pace_label ?></span>
+                            </div>
+                            <input type="range" name="pace_pct" id="pace-slider"
+                                   min="50" max="200" step="5" value="<?= $pace_pct ?>"
+                                   style="width: 100%; accent-color: var(--accent);"
+                                   oninput="updatePaceDisplay(this.value)">
+                            <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--ink-4); margin-top: 0.25rem;">
+                                <span>50% Fast</span>
+                                <span>100% Standard</span>
+                                <span>200% Slow</span>
+                            </div>
+                        </div>
+                        <button type="submit" name="save_pace" class="btn btn-ghost btn-sm" style="flex-shrink:0;">Save</button>
+                    </div>
+                    <p class="form-hint" style="margin-top: 0.5rem;">100% = standard Naismith (2.5 mph + 1 hr per 1500 ft gain). Increase if your group hikes slowly; decrease if you're fast. Adjust in small increments (5–10% at a time) after each activation and compare estimates to actual times until dialed in.</p>
+                </form>
+            </div>
+            <?php endif; ?>
+
             <!-- Addresses card -->
             <div class="card" id="addresses">
                 <div class="section-head">
@@ -1146,6 +1200,13 @@ function openRenameModal() {
 
 function openDeleteModal() {
     document.getElementById('deleteGroupModal').classList.add('open');
+}
+
+function updatePaceDisplay(val) {
+    val = parseInt(val, 10);
+    document.getElementById('pace-display').textContent = val + '%';
+    var label = val <= 80 ? 'Fast' : (val <= 110 ? 'Standard' : (val <= 135 ? 'Relaxed' : 'Slow'));
+    document.getElementById('pace-label').textContent = label;
 }
 </script>
 </body>

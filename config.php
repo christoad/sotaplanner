@@ -47,12 +47,14 @@ function getDbConnection() {
     }
 }
 
-// Improved hike time calculation for SOTA activations with radio gear
-function calculateHikeTime($distance_mi, $elevation_gain_ft) {
+// Improved hike time calculation for SOTA activations with radio gear.
+// $pace_multiplier: group pace scaling (1.0 = standard, 1.25 = relaxed, 0.8 = fast).
+function calculateHikeTime($distance_mi, $elevation_gain_ft, $pace_multiplier = 1.0) {
     $time_for_distance = ($distance_mi / 2.5) * 60;
     $time_for_elevation = ($elevation_gain_ft / 1500) * 60;
     $total_time = $time_for_distance + $time_for_elevation;
     $total_time *= 1.10;
+    $total_time *= max(0.5, min(2.0, (float)$pace_multiplier));
     return round($total_time);
 }
 

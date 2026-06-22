@@ -294,8 +294,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_trail_data'])) {
         $distance = (float)$_POST['hike_distance_mi'];
         $elevation = (int)$_POST['hike_elevation_gain_ft'];
         
-        $time_up = calculateHikeTime($distance / 2, $elevation);
-        $time_down = calculateHikeTime($distance / 2, 0);
+        $pace = $current_group['pace_multiplier'] ?? 1.0;
+        $time_up = calculateHikeTime($distance / 2, $elevation, $pace);
+        $time_down = calculateHikeTime($distance / 2, 0, $pace);
         
         $stmt = $db->prepare("
             UPDATE summits SET

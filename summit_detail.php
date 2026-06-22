@@ -404,9 +404,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $distance = (float)$_POST['hike_distance_mi'];
                 $elevation = (int)$_POST['hike_elevation_gain_ft'];
                 
-                $time_up = calculateHikeTime($distance / 2, $elevation);
-                $time_down = calculateHikeTime($distance / 2, 0);
-                
+                $pace = $current_group['pace_multiplier'] ?? 1.0;
+                $time_up = calculateHikeTime($distance / 2, $elevation, $pace);
+                $time_down = calculateHikeTime($distance / 2, 0, $pace);
+
                 $stmt = $db->prepare("UPDATE summits SET hike_time_up_min = ?, hike_time_down_min = ? WHERE id = ?");
                 $stmt->execute([$time_up, $time_down, $summit_id]);
             }
@@ -826,7 +827,7 @@ if ($gpx_data && $gpx_data['use_for_hike_time'] && $has_timestamps) {
 } else {
     // Naismith's formula from whichever distance/elevation is active (GPS route or manual)
     $hike_time_total = ($distance_display_mi || $elevation_gain_display)
-        ? calculateHikeTime($distance_display_mi ?? 0, $elevation_gain_display ?? 0)
+        ? calculateHikeTime($distance_display_mi ?? 0, $elevation_gain_display ?? 0, $current_group['pace_multiplier'] ?? 1.0)
         : 0;
     $hike_time_source = ($gpx_data && $gpx_data['use_for_hike_time'] && !$has_timestamps)
         ? 'Estimated' : 'Calculated';

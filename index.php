@@ -1027,7 +1027,7 @@ $summits = $stmt->fetchAll();
                             $hike_time_total = round($secs / 60);
                         } else {
                             $hike_time_total = ($distance_display_mi || $elevation_for_display)
-                                ? calculateHikeTime($distance_display_mi ?? 0, $elevation_for_display ?? 0)
+                                ? calculateHikeTime($distance_display_mi ?? 0, $elevation_for_display ?? 0, $current_group['pace_multiplier'] ?? 1.0)
                                 : 0;
                         }
 
