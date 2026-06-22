@@ -315,6 +315,7 @@ $stmt = $db->prepare("
            g.elevation_gain as gpx_elevation_gain,
            g.elevation_loss as gpx_elevation_loss,
            g.total_distance as gpx_total_distance,
+           g.file_path as gpx_file_path,
            g.track_type,
            g.use_for_hike_time,
            g.use_for_elevation,
@@ -342,6 +343,68 @@ $stmt = $db->prepare("
 ");
 $stmt->execute([$current_group['id'], $current_group['id'], $current_group['id']]);
 $summits = $stmt->fetchAll();
+
+// Build map data
+function extractGpxPath($filepath, $maxPoints = 250) {
+    if (!$filepath || !file_exists($filepath)) return null;
+    $content = @file_get_contents($filepath);
+    if (!$content) return null;
+    preg_match_all('/lat="([\d.\-]+)"\s+lon="([\d.\-]+)"/i', $content, $m);
+    if (empty($m[1])) return null;
+    $total = count($m[1]);
+    $pts = [];
+    $step = max(1, (int)ceil($total / $maxPoints));
+    for ($i = 0; $i < $total; $i += $step) {
+        $pts[] = [(float)$m[1][$i], (float)$m[2][$i]];
+    }
+    if (($i - $step) < ($total - 1)) {
+        $pts[] = [(float)$m[1][$total-1], (float)$m[2][$total-1]];
+    }
+    return $pts;
+}
+
+$map_summits = [];
+foreach ($summits as $sm) {
+    if (!$sm['latitude'] || !$sm['longitude']) continue;
+    $tt = $sm['track_type'] ?? 'round-trip';
+    $ow = ($tt === 'ascent' || $tt === 'descent');
+    $has_ts = ($sm['gpx_hiking_time'] ?? 0) > 0;
+    if ($sm['use_for_elevation'] && $sm['gpx_elevation_gain']) {
+        $elev = ($tt === 'descent') ? ($sm['gpx_elevation_loss'] ?? 0) * 3.28084 : $sm['gpx_elevation_gain'] * 3.28084;
+    } else {
+        $elev = $sm['hike_elevation_gain_ft'];
+    }
+    if ($sm['use_for_hike_time'] && ($sm['gpx_total_distance'] ?? 0) > 0) {
+        $dist = $sm['gpx_total_distance'] * ($ow ? 2 : 1) * 0.621371;
+    } else {
+        $dist = $sm['hike_distance_mi'];
+    }
+    if ($sm['use_for_hike_time'] && $has_ts) {
+        $hike_min = round($sm['gpx_hiking_time'] * ($ow ? 2 : 1) / 60);
+    } else {
+        $hike_min = ($dist || $elev) ? calculateHikeTime($dist ?? 0, $elev ?? 0, $current_group['pace_multiplier'] ?? 1.0) : 0;
+    }
+    $drv = $sm['drive_time_min'] ?? 0;
+    $tot = $hike_min + $drv + $activation_time;
+    $has_data = ($hike_min > 0 || $drv > 0);
+    $act_yr = $sm['last_activated_date'] && (date('Y', strtotime($sm['last_activated_date'])) == gmdate('Y'));
+    if ($act_yr) $badge = 'gray';
+    elseif ($sm['status'] === 'ready' || ($sm['status'] === 'activated' && !$act_yr)) $badge = 'green';
+    elseif ($sm['status'] === 'researched') $badge = 'orange';
+    else $badge = 'blue';
+    $map_summits[] = [
+        'id'       => (int)$sm['id'],
+        'name'     => $sm['name'],
+        'ref'      => $sm['sota_ref'],
+        'lat'      => (float)$sm['latitude'],
+        'lng'      => (float)$sm['longitude'],
+        'label'    => $has_data ? formatTime($tot) : null,
+        'badge'    => $badge,
+        'url'      => "summit_detail.php?id={$sm['id']}&group={$current_group['id']}",
+        'path'     => extractGpxPath($sm['gpx_file_path'] ?? null),
+    ];
+}
+$map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -350,6 +413,7 @@ $summits = $stmt->fetchAll();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SOTAplanner</title>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
     /* === Alpine Precision Design System === */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -415,7 +479,7 @@ $summits = $stmt->fetchAll();
       gap: var(--sp-4);
       position: sticky;
       top: 0;
-      z-index: 100;
+      z-index: 1000;
     }
     .topbar-logo {
       display: flex;
@@ -777,6 +841,109 @@ $summits = $stmt->fetchAll();
       .td-hide-mobile { display: table-cell; }
       .td-stats { display: none; }
     }
+
+    /* ── View toggle ── */
+    .view-toggle-group {
+      display: flex; border: 1px solid var(--border-2); border-radius: var(--r-md); overflow: hidden;
+    }
+    .view-toggle-btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      height: 30px; padding: 0 var(--sp-3); font-family: var(--font-sans);
+      font-size: 0.8rem; font-weight: 500; cursor: pointer;
+      border: none; background: var(--surface); color: var(--ink-3);
+      transition: background 0.12s, color 0.12s; white-space: nowrap;
+    }
+    .view-toggle-btn:hover { background: var(--bg-2); color: var(--ink); }
+    .view-toggle-btn.active { background: var(--ink); color: #fff; }
+    .view-toggle-btn + .view-toggle-btn { border-left: 1px solid var(--border-2); }
+
+    /* ── Dashboard map ── */
+    #map-view {
+      margin-bottom: var(--sp-4); border: 1px solid var(--border);
+      border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shadow-sm);
+      position: relative; isolation: isolate;
+    }
+    #dash-map { height: 580px; width: 100%; }
+    .map-loading {
+      position: absolute; inset: 0; background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 9999; flex-direction: column; gap: 14px;
+    }
+    .map-loading-svg { width: 80px; height: 80px; overflow: visible; }
+    .map-logo-path {
+      stroke-dasharray: 116; stroke-dashoffset: 116;
+      animation: map-path-draw 3s ease-in-out infinite;
+    }
+    @keyframes map-path-draw {
+      0%   { stroke-dashoffset: 116; opacity: 0; }
+      7%   { stroke-dashoffset: 116; opacity: 1; }
+      62%  { stroke-dashoffset: 0;   opacity: 1; }
+      80%  { stroke-dashoffset: 0;   opacity: 1; }
+      94%  { stroke-dashoffset: 0;   opacity: 0; }
+      100% { stroke-dashoffset: 116; opacity: 0; }
+    }
+    .map-logo-dot {
+      fill: var(--red); transform-box: fill-box; transform-origin: center;
+      animation: map-dot-pop 3s ease-in-out 1.2s infinite; opacity: 0;
+    }
+    @keyframes map-dot-pop {
+      0%   { transform: scale(0);   opacity: 0; }
+      15%  { transform: scale(1.4); opacity: 1; }
+      30%  { transform: scale(1);   opacity: 1; }
+      72%  { transform: scale(1);   opacity: 1; }
+      90%  { transform: scale(0.4); opacity: 0; }
+      100% { transform: scale(0);   opacity: 0; }
+    }
+    .map-logo-ring { transform-box: fill-box; transform-origin: center; opacity: 0; }
+    .map-logo-ring1 { animation: map-ring-pulse 3s ease-out 1.2s infinite; }
+    .map-logo-ring2 { animation: map-ring-pulse 3s ease-out 1.5s infinite; }
+    @keyframes map-ring-pulse {
+      0%   { transform: scale(0.5); opacity: 0; }
+      10%  { opacity: 0.5; }
+      68%  { transform: scale(2.4); opacity: 0; }
+      100% { transform: scale(0.5); opacity: 0; }
+    }
+    .map-loading-text { font-size: 0.8rem; color: var(--ink-3); font-weight: 500; }
+
+    /* ── Leaflet marker badges ── */
+    .lmap-badge {
+      padding: 4px 9px; border-radius: 20px; font-size: 11px; font-weight: 700;
+      font-family: 'DM Sans', system-ui, sans-serif; white-space: nowrap;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25); cursor: pointer;
+      letter-spacing: 0.02em; border: 1.5px solid rgba(255,255,255,0.45);
+      line-height: 1; user-select: none; display: block; text-align: center;
+      transition: filter 0.1s, transform 0.1s;
+    }
+    .lmap-badge:hover { filter: brightness(1.12); transform: scale(1.06); }
+    .lmap-green  { background: oklch(48% 0.13 155); color: #fff; }
+    .lmap-orange { background: oklch(56% 0.14 50);  color: #fff; }
+    .lmap-blue   { background: oklch(48% 0.12 240); color: #fff; }
+    .lmap-gray   { background: oklch(50% 0.02 200); color: #fff; }
+    .lmap-warn   { background: #888; color: #fff; font-weight: 600; }
+
+    /* ── Find-summits control button ── */
+    .dash-find-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--surface); border: 1px solid var(--border-2);
+      border-radius: var(--r-md); padding: 0 12px; height: 32px;
+      font-family: 'DM Sans', system-ui, sans-serif; font-size: 0.8rem;
+      font-weight: 500; color: var(--ink-2); cursor: pointer;
+      box-shadow: 0 1px 4px rgba(28,27,25,0.12);
+      transition: background 0.12s, color 0.12s;
+    }
+    .dash-find-btn:hover { background: var(--accent-bg); color: var(--accent); border-color: var(--accent-border); }
+
+    /* ── Leaflet tooltip override ── */
+    .leaflet-tooltip.dash-tip {
+      background: var(--surface); border: 1px solid var(--border-2);
+      border-radius: var(--r-md); padding: 8px 12px;
+      box-shadow: 0 4px 16px rgba(28,27,25,0.12); pointer-events: none;
+      font-family: 'DM Sans', system-ui, sans-serif;
+    }
+    .leaflet-tooltip.dash-tip::before { display: none; }
+    .dash-tip-ref  { font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--ink-3); margin-bottom: 3px; }
+    .dash-tip-name { font-size: 0.875rem; font-weight: 600; color: var(--ink); margin-bottom: 5px; line-height: 1.25; }
+    .dash-tip-time { font-size: 0.8rem; font-weight: 700; color: var(--accent); }
     </style>
 </head>
 <body>
@@ -937,6 +1104,17 @@ $summits = $stmt->fetchAll();
                 </form>
             <?php endif; ?>
             <a href="nominate.php" class="btn btn-primary btn-sm">+ Nominate Summit</a>
+            <div class="toolbar-sep"></div>
+            <div class="view-toggle-group">
+                <button class="view-toggle-btn active" id="btn-list-view" onclick="setDashView('list')" title="List view">
+                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4.5" y1="3" x2="12" y2="3"/><line x1="4.5" y1="6.5" x2="12" y2="6.5"/><line x1="4.5" y1="10" x2="12" y2="10"/><circle cx="2" cy="3" r="0.9" fill="currentColor" stroke="none"/><circle cx="2" cy="6.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="2" cy="10" r="0.9" fill="currentColor" stroke="none"/></svg>
+                    List
+                </button>
+                <button class="view-toggle-btn" id="btn-map-view" onclick="setDashView('map')" title="Map view">
+                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="1,2.5 4.5,1 8.5,2.5 12,1 12,10.5 8.5,12 4.5,10.5 1,12"/><line x1="4.5" y1="1" x2="4.5" y2="10.5"/><line x1="8.5" y1="2.5" x2="8.5" y2="12"/></svg>
+                    Map
+                </button>
+            </div>
         </div>
     </div>
 
@@ -947,6 +1125,24 @@ $summits = $stmt->fetchAll();
         <?php endif; ?>
     </div>
 
+    <!-- Map view container (hidden by default, toggled via JS) -->
+    <div id="map-view" style="display:none">
+        <div class="map-loading" id="map-loading-overlay">
+            <svg class="map-loading-svg" viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="55" cy="55" r="50" fill="none" stroke="var(--border-2)" stroke-width="1.5"/>
+                <path class="map-logo-path" d="M26,79.5l17-30,7,8,12-20,22,42"
+                      fill="none" stroke="var(--ink)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle class="map-logo-ring map-logo-ring2" cx="62" cy="35.5" r="15" fill="none" stroke="var(--red)" stroke-width="0.8"/>
+                <circle class="map-logo-ring map-logo-ring1" cx="62" cy="35.5" r="9"  fill="none" stroke="var(--red)" stroke-width="1.2"/>
+                <circle class="map-logo-dot" cx="62" cy="35.5" r="3.5"/>
+            </svg>
+            <div class="map-loading-text">Loading map…</div>
+        </div>
+        <div id="dash-map"></div>
+    </div>
+
+    <!-- List view container -->
+    <div id="list-view">
     <?php if (empty($summits)): ?>
         <div class="empty">
             <div class="empty-icon">⛰</div>
@@ -1137,6 +1333,7 @@ $summits = $stmt->fetchAll();
             </table>
         </div>
     <?php endif; ?>
+    </div><!-- /#list-view -->
 
 </div><!-- /.page -->
 
@@ -1520,6 +1717,137 @@ window.addEventListener('load', function() { show(0); });
 </script>
 <?php endif; ?>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ── Dashboard map view ────────────────────────────────────────────────────
+const DASH_SUMMITS = <?= $map_json ?>;
+
+let dashMap = null;
+
+function initDashMap() {
+    const container = document.getElementById('dash-map');
+    if (!container) return;
+
+    dashMap = L.map('dash-map', { zoomControl: true });
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
+        maxZoom: 19,
+        subdomains: 'abcd'
+    }).addTo(dashMap);
+
+    const bounds = [];
+
+    DASH_SUMMITS.forEach(function(s) {
+        // GPX polyline (green)
+        if (s.path && s.path.length > 1) {
+            L.polyline(s.path, {
+                color: '#2d7a4f',
+                weight: 3,
+                opacity: 0.85,
+                lineJoin: 'round',
+                lineCap: 'round'
+            }).addTo(dashMap);
+            s.path.forEach(function(pt) { bounds.push(pt); });
+        } else {
+            bounds.push([s.lat, s.lng]);
+        }
+
+        // Badge label
+        const label = s.label || '+ Research';
+        const cls = s.label ? 'lmap-' + s.badge : 'lmap-warn';
+
+        const icon = L.divIcon({
+            className: '',
+            html: '<div class="lmap-badge ' + cls + '">' + label + '</div>',
+            iconSize: null,
+            iconAnchor: [0, 0]
+        });
+
+        const marker = L.marker([s.lat, s.lng], { icon: icon }).addTo(dashMap);
+
+        const tipTime = s.label
+            ? '<div class="dash-tip-time">' + s.label + ' total</div>'
+            : '<div class="dash-tip-time" style="color:var(--ink-3)">Add research for time estimate</div>';
+
+        marker.bindTooltip(
+            '<div class="dash-tip-ref">' + s.ref + '</div>' +
+            '<div class="dash-tip-name">' + s.name + '</div>' +
+            tipTime,
+            { direction: 'top', offset: [0, -6], className: 'dash-tip', sticky: false }
+        );
+
+        marker.on('click', function() {
+            window.location = s.url;
+        });
+    });
+
+    // Fit bounds
+    if (bounds.length > 0) {
+        dashMap.fitBounds(bounds, { padding: [32, 32] });
+        if (bounds.length === 1) dashMap.setZoom(12);
+    } else {
+        dashMap.setView([45, -110], 5);
+    }
+
+    // "Find summits near here" control button
+    const findControl = L.control({ position: 'bottomleft' });
+    findControl.onAdd = function() {
+        const btn = L.DomUtil.create('button', 'dash-find-btn');
+        btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="5.5" cy="5.5" r="4"/><line x1="9" y1="9" x2="12" y2="12"/></svg> Find new summits near here';
+        L.DomEvent.disableClickPropagation(btn);
+        L.DomEvent.on(btn, 'click', function() {
+            const c = dashMap.getCenter();
+            window.location.href = 'nominate.php?tab=area&lat=' + c.lat.toFixed(5) + '&lng=' + c.lng.toFixed(5);
+        });
+        return btn;
+    };
+    findControl.addTo(dashMap);
+
+    // Hide loading overlay once tiles start appearing
+    dashMap.once('load', removeDashLoading);
+    setTimeout(removeDashLoading, 1800); // fallback
+}
+
+function removeDashLoading() {
+    const overlay = document.getElementById('map-loading-overlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
+function setDashView(view) {
+    const listEl = document.getElementById('list-view');
+    const mapEl  = document.getElementById('map-view');
+    const btnL   = document.getElementById('btn-list-view');
+    const btnM   = document.getElementById('btn-map-view');
+
+    if (view === 'map') {
+        listEl.style.display = 'none';
+        mapEl.style.display  = 'block';
+        btnL.classList.remove('active');
+        btnM.classList.add('active');
+
+        if (!dashMap) {
+            initDashMap();
+        } else {
+            setTimeout(function() { dashMap.invalidateSize(); }, 50);
+        }
+        try { localStorage.setItem('sota_dash_view', 'map'); } catch(e) {}
+    } else {
+        mapEl.style.display  = 'none';
+        listEl.style.display = 'block';
+        btnL.classList.add('active');
+        btnM.classList.remove('active');
+        try { localStorage.setItem('sota_dash_view', 'list'); } catch(e) {}
+    }
+}
+
+// Restore last-used view
+try {
+    if (localStorage.getItem('sota_dash_view') === 'map') {
+        setDashView('map');
+    }
+} catch(e) {}
+</script>
 <script>
 // Silently refresh SOTA activation cache for all summits on the dashboard.
 // Fires after page paint, 3 at a time, so it never blocks the UI.
