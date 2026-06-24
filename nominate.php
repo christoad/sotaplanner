@@ -111,25 +111,35 @@ if (isset($_GET['action']) && $_GET['action'] === 'radius_search') {
     $radius_mi = max(1, min(300, (float)($_GET['radius_mi'] ?? 25)));
     $min_pts   = max(1, min(10, (int)($_GET['min_pts'] ?? 1)));
 
-    if (strlen($location) < 2) {
-        echo json_encode(['error' => 'Enter a location to search.']); exit;
-    }
-    if (!defined('GOOGLE_MAPS_API_KEY')) {
-        echo json_encode(['error' => 'Geocoding not configured.']); exit;
-    }
+    // Direct lat/lng from dashboard map (bypasses geocoding)
+    $direct_lat = isset($_GET['lat']) ? (float)$_GET['lat'] : null;
+    $direct_lng = isset($_GET['lng']) ? (float)$_GET['lng'] : null;
 
-    // Geocode the location text using the server-side Maps key
-    $geo_url  = 'https://maps.googleapis.com/maps/api/geocode/json?address=' . urlencode($location) . '&key=' . GOOGLE_MAPS_API_KEY;
-    $geo_resp = @file_get_contents($geo_url);
-    if (!$geo_resp) { echo json_encode(['error' => 'Geocoding service unavailable.']); exit; }
-    $geo = json_decode($geo_resp, true);
-    if (!$geo || ($geo['status'] ?? '') !== 'OK' || empty($geo['results'])) {
-        echo json_encode(['error' => 'Location not found. Try a more specific address, city, or zip code.']); exit;
-    }
+    if ($direct_lat !== null && $direct_lng !== null && $direct_lat != 0) {
+        $clat  = $direct_lat;
+        $clon  = $direct_lng;
+        $label = round($direct_lat, 4) . ', ' . round($direct_lng, 4);
+    } else {
+        if (strlen($location) < 2) {
+            echo json_encode(['error' => 'Enter a location to search.']); exit;
+        }
+        if (!defined('GOOGLE_MAPS_API_KEY')) {
+            echo json_encode(['error' => 'Geocoding not configured.']); exit;
+        }
 
-    $clat  = (float)$geo['results'][0]['geometry']['location']['lat'];
-    $clon  = (float)$geo['results'][0]['geometry']['location']['lng'];
-    $label = $geo['results'][0]['formatted_address'];
+        // Geocode the location text using the server-side Maps key
+        $geo_url  = 'https://maps.googleapis.com/maps/api/geocode/json?address=' . urlencode($location) . '&key=' . GOOGLE_MAPS_API_KEY;
+        $geo_resp = @file_get_contents($geo_url);
+        if (!$geo_resp) { echo json_encode(['error' => 'Geocoding service unavailable.']); exit; }
+        $geo = json_decode($geo_resp, true);
+        if (!$geo || ($geo['status'] ?? '') !== 'OK' || empty($geo['results'])) {
+            echo json_encode(['error' => 'Location not found. Try a more specific address, city, or zip code.']); exit;
+        }
+
+        $clat  = (float)$geo['results'][0]['geometry']['location']['lat'];
+        $clon  = (float)$geo['results'][0]['geometry']['location']['lng'];
+        $label = $geo['results'][0]['formatted_address'];
+    }
 
     // Search cache for summits within radius
     $summits = search_sota_cache_by_radius($clat, $clon, $radius_mi, $min_pts);
@@ -202,6 +212,10 @@ if (isset($_GET['action']) && $_GET['action'] === 'nominate_one') {
         }
         $sd = json_decode($response, true);
         if (!$sd) { echo json_encode(['error' => 'Invalid API response', 'ref' => $sota_ref]); exit; }
+
+        if (isset($sd['valid']) && $sd['valid'] === false) {
+            echo json_encode(['error' => 'Summit is no longer valid for SOTA activations', 'ref' => $sota_ref]); exit;
+        }
 
         $name         = $sd['name'] ?? $sd['summitName'] ?? 'Unknown';
         $region       = $sd['regionName'] ?? $sd['region'] ?? '';
@@ -713,7 +727,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
     .user-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
 
     /* Page layout */
-    .page { padding: 2rem; max-width: 620px; margin: 0 auto; }
+    .page { padding: 2rem; max-width: 1100px; margin: 0 auto; }
+    .nom-search-inner { max-width: 580px; margin: 0 auto; }
+
+    /* Area tab two-column layout */
+    #area_map {
+      width: 100%; height: 240px;
+      border-radius: var(--r-md); border: 1px solid var(--border);
+      background: var(--bg-2); display: none;
+    }
+    .area-body { display: flex; flex-direction: column; }
+    .area-map-col { order: 1; margin-bottom: 1rem; }
+    .area-results-col { order: 2; }
+    @media (min-width: 900px) {
+      .area-body { flex-direction: row; gap: 1.25rem; align-items: flex-start; }
+      .area-results-col { width: 380px; flex-shrink: 0; order: 1; }
+      .area-map-col { flex: 1; min-width: 0; order: 2; margin-bottom: 0; position: sticky; top: 72px; }
+      #area_map { height: 520px; }
+    }
 
     /* Card */
     .card {
@@ -987,39 +1018,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
 
       <!-- ── Tab 1: Name / Reference / Multi ───────────────────────── -->
       <div class="nom-panel active" id="panel-search">
-        <div class="search-hint-strip">Search by name · paste a reference like <code>W7O/NC-001</code> · or paste multiple refs separated by commas</div>
+        <div class="nom-search-inner">
+          <div class="search-hint-strip">Search by name · paste a reference like <code>W7O/NC-001</code> · or paste multiple refs separated by commas</div>
 
-        <div style="margin-bottom: 1rem;">
-          <label class="form-label" for="summit_search">Summit Name or Reference</label>
-          <input
-            type="text"
-            class="form-input"
-            id="summit_search"
-            placeholder="Mount Adams — or W7O/NC-001 — or W7O/NC-001, W7O/NC-002"
-            autocomplete="off"
-            autofocus
-          >
-          <div class="form-hint" id="search-hint">Type a name to search, or paste a SOTA reference. Separate multiple references with commas.</div>
-        </div>
-
-        <div id="search-results" style="display:none; margin-bottom:1rem;"></div>
-
-        <div class="selected-box" id="selected-summit">
-          <div class="selected-label">Selected Summit</div>
-          <div class="selected-row">
-            <div>
-              <span class="selected-name" id="selected-name"></span>
-              <span class="selected-ref"  id="selected-ref"></span>
-            </div>
-            <button type="button" class="clear-btn" onclick="clearSelection()">✕</button>
+          <div style="margin-bottom: 1rem;">
+            <label class="form-label" for="summit_search">Summit Name or Reference</label>
+            <input
+              type="text"
+              class="form-input"
+              id="summit_search"
+              placeholder="Mount Adams — or W7O/NC-001 — or W7O/NC-001, W7O/NC-002"
+              autocomplete="off"
+              autofocus
+            >
+            <div class="form-hint" id="search-hint">Type a name to search, or paste a SOTA reference. Separate multiple references with commas.</div>
           </div>
-        </div>
 
-        <button type="submit" id="nominate-btn" class="btn btn-primary" disabled>Nominate Summit</button>
+          <div id="search-results" style="display:none; margin-bottom:1rem;"></div>
+
+          <div class="selected-box" id="selected-summit">
+            <div class="selected-label">Selected Summit</div>
+            <div class="selected-row">
+              <div>
+                <span class="selected-name" id="selected-name"></span>
+                <span class="selected-ref"  id="selected-ref"></span>
+              </div>
+              <button type="button" class="clear-btn" onclick="clearSelection()">✕</button>
+            </div>
+          </div>
+
+          <button type="submit" id="nominate-btn" class="btn btn-primary" disabled>Nominate Summit</button>
+        </div>
       </div>
 
       <!-- ── Tab 2: Area Search ─────────────────────────────────────── -->
       <div class="nom-panel" id="panel-area">
+
+        <!-- Controls row — always above the two-column body -->
         <div style="display:flex; gap:0.75rem; margin-bottom:0.875rem; align-items:flex-end; flex-wrap:wrap;">
           <div style="flex:1; min-width:180px;">
             <label class="form-label" for="area_location">Location</label>
@@ -1049,11 +1084,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
         </div>
         <div class="form-hint" style="margin-bottom:1rem;">Any location Google Maps recognizes — city, zip code, address, or landmark.</div>
 
-        <!-- Map (shown after search) -->
-        <div id="area_map" style="width:100%; height:240px; border-radius:var(--r-md); border:1px solid var(--border); margin-bottom:1rem; background:var(--bg-2); display:none;"></div>
+        <!-- Two-column body: results list (left) + map (right) -->
+        <div class="area-body">
+          <div class="area-results-col">
+            <div id="area_results">
+              <div id="area_results_placeholder" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.75rem; padding:3rem 1.5rem; color:var(--ink-4); text-align:center; border:1px solid var(--border); border-radius:var(--r-md); background:var(--bg);">
+                <img src="sota-planner-logo.svg" width="48" height="48" alt="" style="opacity:0.25;">
+                <div style="font-size:0.9rem; font-weight:600; color:var(--ink-3);">Summit List</div>
+                <div style="font-size:0.8rem; color:var(--ink-4);">Search a location to see summits in the area</div>
+              </div>
+            </div>
+          </div>
+          <div class="area-map-col">
+            <div id="area_map"></div>
+          </div>
+        </div>
 
-        <!-- Results -->
-        <div id="area_results"></div>
       </div>
 
     </form>
@@ -1097,7 +1143,7 @@ document.addEventListener('click', function(e) {
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 let mapsApiLoaded = false;
-let areaMap = null, areaCircle = null, areaMarkers = [];
+let areaMap = null, areaCircle = null, areaMarkers = [], summitMarkerMap = {};
 
 function switchTab(tab) {
     document.querySelectorAll('.nom-tab').forEach(function(t) {
@@ -1116,25 +1162,57 @@ function switchTab(tab) {
 }
 
 window.initAreaMap = function() {
-    areaMap = new google.maps.Map(document.getElementById('area_map'), {
-        center: { lat: 39.5, lng: -98.5 },
-        zoom: 4,
+    const preload = window._dashPreload;
+    const mapDiv = document.getElementById('area_map');
+    mapDiv.style.display = 'block';
+    areaMap = new google.maps.Map(mapDiv, {
+        center: preload ? { lat: preload.lat, lng: preload.lng } : { lat: 39.5, lng: -98.5 },
+        zoom: preload ? 9 : 4,
         mapTypeId: 'terrain',
         disableDefaultUI: true,
         zoomControl: true,
         gestureHandling: 'cooperative',
     });
-    document.getElementById('area_map').style.display = 'block';
+    setTimeout(function() { google.maps.event.trigger(areaMap, 'resize'); }, 50);
+
+    if (preload) {
+        // Show coordinates in location field and auto-run the search
+        document.getElementById('area_location').value = preload.lat.toFixed(4) + ', ' + preload.lng.toFixed(4);
+        setTimeout(function() {
+            // Use the direct lat/lng endpoint to avoid a redundant geocode round-trip
+            const radiusInput = parseFloat(document.getElementById('area_radius').value) || 25;
+            const minPts = parseInt(document.getElementById('area_min_pts').value) || 1;
+            const radius_mi = useMetric ? radiusInput * 0.621371 : radiusInput;
+            const resultsDiv = document.getElementById('area_results');
+            const btn = document.getElementById('area_search_btn');
+            resultsDiv.innerHTML = '<div class="search-status">Searching…</div>';
+            btn.disabled = true;
+            fetch('nominate.php?action=radius_search&lat=' + preload.lat + '&lng=' + preload.lng + '&radius_mi=' + radius_mi.toFixed(2) + '&min_pts=' + minPts)
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    btn.disabled = false;
+                    if (data.error) {
+                        resultsDiv.innerHTML = '<div class="msg msg-error">' + escHtml(data.error) + '</div>';
+                        return;
+                    }
+                    renderAreaResults(data);
+                })
+                .catch(function() {
+                    btn.disabled = false;
+                    resultsDiv.innerHTML = '<div class="msg msg-error">Search failed. Please try again.</div>';
+                });
+        }, 200);
+    }
 };
 
 function updateAreaMap(data) {
     if (!areaMap) return;
     const mapDiv = document.getElementById('area_map');
     mapDiv.style.display = 'block';
-    google.maps.event.trigger(areaMap, 'resize');
 
     areaMarkers.forEach(function(m) { m.setMap(null); });
     areaMarkers = [];
+    summitMarkerMap = {};
     if (areaCircle) areaCircle.setMap(null);
 
     const center = { lat: data.lat, lng: data.lon };
@@ -1166,7 +1244,7 @@ function updateAreaMap(data) {
 
     (data.summits || []).forEach(function(s) {
         if (!s.lat || !s.lon) return;
-        areaMarkers.push(new google.maps.Marker({
+        const marker = new google.maps.Marker({
             map: areaMap,
             position: { lat: s.lat, lng: s.lon },
             title: s.name + ' (' + s.ref + ', ' + s.points + 'pt)',
@@ -1178,10 +1256,45 @@ function updateAreaMap(data) {
                 strokeColor: '#fff',
                 strokeWeight: 1.5,
             }
-        }));
+        });
+        areaMarkers.push(marker);
+        summitMarkerMap[s.ref] = { marker: marker, nominated: !!s.nominated };
     });
 
-    areaMap.fitBounds(areaCircle.getBounds());
+    // Defer resize+fitBounds so the browser reflows the container first,
+    // otherwise the Maps canvas stays at its old pixel dimensions.
+    setTimeout(function() {
+        google.maps.event.trigger(areaMap, 'resize');
+        areaMap.fitBounds(areaCircle.getBounds());
+    }, 50);
+}
+
+function highlightSummitMarker(ref) {
+    const entry = summitMarkerMap[ref];
+    if (!entry) return;
+    entry.marker.setIcon({
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 10,
+        fillColor: '#E6B84A',
+        fillOpacity: 1,
+        strokeColor: '#fff',
+        strokeWeight: 2.5,
+    });
+    entry.marker.setZIndex(999);
+}
+
+function unhighlightSummitMarker(ref) {
+    const entry = summitMarkerMap[ref];
+    if (!entry) return;
+    entry.marker.setIcon({
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 5,
+        fillColor: entry.nominated ? '#B8B5B0' : '#D4A574',
+        fillOpacity: 0.9,
+        strokeColor: '#fff',
+        strokeWeight: 1.5,
+    });
+    entry.marker.setZIndex(null);
 }
 
 // ── Elements ─────────────────────────────────────────────────────────────────
@@ -1521,6 +1634,20 @@ async function runBulkNominateFlow(refs) {
 // ── Area search ───────────────────────────────────────────────────────────────
 const useMetric = <?= json_encode(($current_group['units'] ?? 'imperial') === 'metric') ?>;
 
+// Preload from dashboard map link (?tab=area&lat=X&lng=Y)
+(function() {
+    const params = new URLSearchParams(window.location.search);
+    const preloadLat = parseFloat(params.get('lat'));
+    const preloadLng = parseFloat(params.get('lng'));
+    if (params.get('tab') === 'area') {
+        switchTab('area');
+        if (!isNaN(preloadLat) && !isNaN(preloadLng)) {
+            // Store coords for initAreaMap to pick up after Maps API loads
+            window._dashPreload = { lat: preloadLat, lng: preloadLng };
+        }
+    }
+})();
+
 document.getElementById('area_location').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') { e.preventDefault(); doAreaSearch(); }
 });
@@ -1592,7 +1719,7 @@ function renderAreaResults(data) {
         const alt      = s.altFt ? (useMetric ? Math.round(s.altFt * 0.3048).toLocaleString() + ' m' : s.altFt.toLocaleString() + ' ft') : '';
         const inGroup  = s.nominated ? ' <span style="font-size:0.65rem; background:var(--bg-2); border:1px solid var(--border-2); border-radius:3px; padding:1px 5px; color:var(--ink-3); font-weight:600; vertical-align:middle;">In group</span>' : '';
 
-        html += '<label style="display:flex; align-items:center; gap:0.75rem; padding:0.55rem 0.875rem; cursor:' + (s.nominated ? 'default' : 'pointer') + '; border-bottom:1px solid var(--border); background:' + (s.nominated ? 'var(--bg)' : 'var(--surface)') + ';">';
+        html += '<label style="display:flex; align-items:center; gap:0.75rem; padding:0.55rem 0.875rem; cursor:' + (s.nominated ? 'default' : 'pointer') + '; border-bottom:1px solid var(--border); background:' + (s.nominated ? 'var(--bg)' : 'var(--surface)') + ';" onmouseenter="highlightSummitMarker(\'' + escAttr(s.ref) + '\')" onmouseleave="unhighlightSummitMarker(\'' + escAttr(s.ref) + '\')">';
         html += '<input type="checkbox" class="area-chk" data-ref="' + escAttr(s.ref) + '" ' + (checked ? 'checked' : '') + ' ' + (s.nominated ? 'disabled' : '') + ' onchange="updateAreaBtn()" style="width:15px; height:15px; flex-shrink:0; cursor:' + (s.nominated ? 'default' : 'pointer') + ';">';
         html += '<div style="flex:1; min-width:0;">';
         html += '<div style="font-size:0.8375rem; font-weight:600; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escHtml(s.name) + inGroup + '</div>';

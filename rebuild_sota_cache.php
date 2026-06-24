@@ -111,6 +111,11 @@ while (!feof($fh)) {
             $name = trim($s['name'] ?? '');
             if (!$code || !$name) { $skipped++; continue; }
 
+            // Skip expired summits
+            if (isset($s['valid']) && $s['valid'] === false) { $skipped++; continue; }
+            $valid_to = $s['validTo'] ?? null;
+            if ($valid_to && strtotime($valid_to) < time()) { $skipped++; continue; }
+
             $norm   = normalize_for_search($name);
             $points = (int)($s['points'] ?? 0);
             $alt_ft = (int)($s['altFt']  ?? 0);

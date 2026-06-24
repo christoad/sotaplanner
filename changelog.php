@@ -230,12 +230,25 @@ session_start();
         <p>Release history and update notes for SOTA Planner</p>
     </div>
 
-    <!-- v1.5.2 -->
+    <!-- v1.5.3 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.5.3</span>
+            <span class="version-date">June 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Nominate page layout and summit validity improvements.</p>
+        <ul>
+            <li>The Nominate page now uses a wider two-column layout on desktop — the "Search by Area" tab shows the summit list alongside a large map, and hovering a summit name highlights its dot on the map</li>
+            <li>Expired summits are now filtered out of all search results and can no longer be nominated</li>
+        </ul>
+    </div>
+
+    <!-- v1.5.2 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.5.2</span>
             <span class="version-date">June 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Public summit notes and nomination flow improvements.</p>
         <ul>
