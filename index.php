@@ -196,8 +196,11 @@ if (count($all_addresses) > 0 && !$selected_address) {
     $selected_address = $all_addresses[0];
 }
 
-// Get activation time from request or use default
-$activation_time = $_GET['activation_time'] ?? 60;
+// Get activation time: URL param overrides, else user's saved preference, else 60
+$_us_stmt = $db->prepare("SELECT default_activation_time_min FROM user_settings WHERE user_callsign = ?");
+$_us_stmt->execute([$_SESSION['sota_callsign'] ?? '']);
+$_saved_activation = (int)(($_us_stmt->fetchColumn()) ?: 60);
+$activation_time = isset($_GET['activation_time']) ? (int)$_GET['activation_time'] : $_saved_activation;
 
 // Get sort parameters
 $sort_by = $_GET['sort'] ?? 'nominated_date';
@@ -1379,9 +1382,16 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
 
 <script>
     document.getElementById('activation_time').addEventListener('change', function() {
-        const url = new URL(window.location);
-        url.searchParams.set('activation_time', this.value);
-        window.location = url.toString();
+        const minutes = this.value;
+        fetch('save_activation_time.php', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'minutes=' + encodeURIComponent(minutes)
+        }).then(() => {
+            const url = new URL(window.location);
+            url.searchParams.set('activation_time', minutes);
+            window.location = url.toString();
+        });
     });
 
     function sortTable(column) {

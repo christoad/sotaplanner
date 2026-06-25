@@ -1461,10 +1461,21 @@ if ($tl_show) {
             <div class="stat-cell-sub">No data yet</div>
           <?php endif; ?>
         </div>
-        <div class="stat-cell">
-          <div class="stat-cell-label">Summit Time</div>
-          <div class="stat-cell-val"><?= $act_time ?>m</div>
-          <div class="stat-cell-sub">planned</div>
+        <div class="stat-cell" id="act-time-cell" title="Double-click to edit" ondblclick="startActTimeEdit()" style="cursor:default;">
+          <div class="stat-cell-label" style="display:flex;align-items:center;gap:0.3rem;">
+            Summit Time
+            <button onclick="startActTimeEdit()" title="Edit" style="background:none;border:none;padding:0;cursor:pointer;color:var(--ink-4);line-height:1;flex-shrink:0;opacity:0.5;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.5'">
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M8.5 1.5a1.207 1.207 0 0 1 1.707 1.707L3.5 9.914 1 10.5l.586-2.5L8.5 1.5z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+          <div class="stat-cell-val" id="act-time-display"><?= $act_time ?>m</div>
+          <div class="stat-cell-sub" id="act-time-sub">planned</div>
+          <div id="act-time-edit" style="display:none;margin-top:0.25rem;">
+            <input type="number" id="act-time-input" min="15" max="300" step="15" value="<?= $act_time ?>"
+                   style="width:70px;padding:0.2rem 0.35rem;border:1px solid var(--accent);border-radius:var(--r-sm);font-size:0.875rem;font-family:var(--font-sans);"
+                   onkeydown="if(event.key==='Enter')saveActTime();if(event.key==='Escape')cancelActTimeEdit();">
+            <button onclick="saveActTime()" style="margin-left:0.25rem;background:var(--ink);color:#fff;border:none;border-radius:var(--r-sm);padding:0.2rem 0.5rem;font-size:0.75rem;cursor:pointer;">OK</button>
+          </div>
         </div>
         <div class="stat-cell" style="background:#6B6865;">
           <div class="stat-cell-label" style="color:rgba(255,255,255,0.45);">Total (RT)</div>
@@ -2782,6 +2793,29 @@ if (flash) setTimeout(() => { flash.style.transition = 'opacity 0.5s'; flash.sty
     input.form.submit();
   });
 })();
+</script>
+<script>
+function startActTimeEdit() {
+    document.getElementById('act-time-display').style.display = 'none';
+    document.getElementById('act-time-sub').style.display = 'none';
+    document.getElementById('act-time-edit').style.display = 'block';
+    document.getElementById('act-time-input').focus();
+    document.getElementById('act-time-input').select();
+}
+function cancelActTimeEdit() {
+    document.getElementById('act-time-display').style.display = '';
+    document.getElementById('act-time-sub').style.display = '';
+    document.getElementById('act-time-edit').style.display = 'none';
+}
+function saveActTime() {
+    var minutes = parseInt(document.getElementById('act-time-input').value, 10);
+    if (isNaN(minutes) || minutes < 15 || minutes > 300) return;
+    fetch('save_activation_time.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'minutes=' + encodeURIComponent(minutes)
+    }).then(() => { window.location.reload(); });
+}
 </script>
 </body>
 </html>
