@@ -958,7 +958,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
   <div class="topbar-divider"></div>
   <div class="topbar-nav">
     <a href="index.php">Dashboard</a>
-    <a href="planning_groups.php">Groups</a>
+    <a href="planning_groups.php">Planning Groups</a>
   </div>
   <div class="topbar-right">
     <div class="user-chip" onclick="this.classList.toggle('open')" id="userChip">

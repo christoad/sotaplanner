@@ -183,7 +183,7 @@ $default_activation  = (int)($settings['default_activation_time_min'] ?? 60);
   <div class="topbar-divider"></div>
   <div class="topbar-nav">
     <a href="index.php">Dashboard</a>
-    <a href="planning_groups.php">Groups</a>
+    <a href="planning_groups.php">Planning Groups</a>
   </div>
   <div class="topbar-right">
     <div class="user-chip" onclick="this.classList.toggle('open')" id="userChip">
