@@ -113,12 +113,15 @@ if ($gpx && !empty($gpx['file_path']) && file_exists($gpx['file_path'])) {
                 }
             }
             // Decimate large tracks to keep inline JSON reasonable
-            foreach ([&$gpx_map_coords => 1000, &$gpx_map_elev => 500] as &$arr => $max) {
-                if (count($arr) > $max) {
-                    $step = (int)ceil(count($arr) / $max);
-                    $last = count($arr) - 1;
-                    $arr = array_values(array_filter($arr, fn($v, $i) => $i % $step === 0 || $i === $last, ARRAY_FILTER_USE_BOTH));
-                }
+            if (count($gpx_map_coords) > 1000) {
+                $step = (int)ceil(count($gpx_map_coords) / 1000);
+                $last = count($gpx_map_coords) - 1;
+                $gpx_map_coords = array_values(array_filter($gpx_map_coords, fn($v, $i) => $i % $step === 0 || $i === $last, ARRAY_FILTER_USE_BOTH));
+            }
+            if (count($gpx_map_elev) > 500) {
+                $step = (int)ceil(count($gpx_map_elev) / 500);
+                $last = count($gpx_map_elev) - 1;
+                $gpx_map_elev = array_values(array_filter($gpx_map_elev, fn($v, $i) => $i % $step === 0 || $i === $last, ARRAY_FILTER_USE_BOTH));
             }
         }
     }
