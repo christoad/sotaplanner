@@ -93,6 +93,37 @@ $gpx_download_name = preg_replace('/[^a-zA-Z0-9]+/', '-', $pa['summit_name'] ?? 
     . ($pa['sota_ref'] ? '-' . preg_replace('/[^a-zA-Z0-9]+/', '-', $pa['sota_ref']) : '')
     . '.gpx';
 
+// Parse GPX server-side so map and elevation work for unauthenticated guests
+// (load_gpx.php requires login, so the JS fetch fails for anyone not logged in)
+$gpx_map_coords = [];
+$gpx_map_elev   = [];
+if ($gpx && !empty($gpx['file_path']) && file_exists($gpx['file_path'])) {
+    $raw = @file_get_contents($gpx['file_path']);
+    if ($raw) {
+        $raw = preg_replace('/xmlns[^=]*="[^"]*"/i', '', $raw);
+        $xml = @simplexml_load_string($raw);
+        if ($xml) {
+            $pts = $xml->xpath('//trkpt') ?: ($xml->xpath('//rtept') ?: []);
+            foreach ($pts as $pt) {
+                $lat = (float)$pt['lat'];
+                $lon = (float)$pt['lon'];
+                $gpx_map_coords[] = [$lat, $lon];
+                if (isset($pt->ele)) {
+                    $gpx_map_elev[] = [$lat, $lon, (float)$pt->ele];
+                }
+            }
+            // Decimate large tracks to keep inline JSON reasonable
+            foreach ([&$gpx_map_coords => 1000, &$gpx_map_elev => 500] as &$arr => $max) {
+                if (count($arr) > $max) {
+                    $step = (int)ceil(count($arr) / $max);
+                    $last = count($arr) - 1;
+                    $arr = array_values(array_filter($arr, fn($v, $i) => $i % $step === 0 || $i === $last, ARRAY_FILTER_USE_BOTH));
+                }
+            }
+        }
+    }
+}
+
 // Timeline math
 $units         = $pa['owner_units'] ?? $pa['units'];
 $drive_one_way  = round(($pa['drive_time_min'] ?? 0) / 2);
@@ -729,6 +760,7 @@ $difficulty_labels = [
         <span class="hero-date-sep">·</span>
         <span>Hike starts <?= date('g:i A', strtotime($pa['hike_start_time'])) ?></span>
     </div>
+    <div style="font-size:0.7rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:rgba(255,255,255,.45); margin-bottom:0.5rem;">Hosting Amateur Radio Operator<?= count($callsign_list) > 1 ? 's' : '' ?></div>
     <div class="callsigns">
         <?php foreach ($callsign_list as $cs): ?>
             <span class="callsign-tag"><?= htmlspecialchars($cs) ?></span>
@@ -752,7 +784,7 @@ $difficulty_labels = [
                 Get Directions
             </a>
         <?php endif; ?>
-        <button class="hero-btn hero-btn-outline" onclick="document.getElementById('sota-modal').classList.add('open')">
+        <button class="hero-btn hero-btn-primary" onclick="document.getElementById('sota-modal').classList.add('open')">
             What is SOTA?
         </button>
     </div>
@@ -1037,7 +1069,7 @@ $difficulty_labels = [
         </span>
 
         <span class="map-sep">|</span>
-        <a href="load_gpx.php?id=<?= $gpx['id'] ?>" download="<?= htmlspecialchars($gpx_download_name) ?>"
+        <a href="load_gpx.php?id=<?= $gpx['id'] ?>&pa_id=<?= $pa_id ?>" download="<?= htmlspecialchars($gpx_download_name) ?>"
            class="btn btn-ghost" style="font-size:0.75rem; height:28px; padding:0 0.75rem;">
             Download GPX ↓
         </a>
@@ -1134,48 +1166,36 @@ $difficulty_labels = [
         }
     }
 
-    // ── GPX track ─────────────────────────────────────────────────────────────
-    fetch('load_gpx.php?id=<?= $gpx['id'] ?>')
-        .then(r => r.text())
-        .then(gpxText => {
-            const parser = new DOMParser();
-            const gpxDoc = parser.parseFromString(gpxText, 'text/xml');
-            const pts = gpxDoc.querySelectorAll('trkpt, rtept');
-            const coords = [];
-            const elevPts = [];
-            pts.forEach(pt => {
-                const lat = parseFloat(pt.getAttribute('lat'));
-                const lon = parseFloat(pt.getAttribute('lon'));
-                coords.push([lat, lon]);
-                const ele = pt.querySelector('ele');
-                if (ele) elevPts.push([lat, lon, parseFloat(ele.textContent)]);
-            });
+    // ── GPX track (coords inlined server-side — no auth needed for guests) ──────
+    (function() {
+        const coords  = <?= json_encode($gpx_map_coords) ?>;
+        const elevPts = <?= json_encode($gpx_map_elev) ?>;
 
-            if (coords.length === 0) return;
+        if (!coords || coords.length === 0) return;
 
-            gpxPolyline = L.polyline(coords, {color: '#9B6328', weight: 4, opacity: 0.85}).addTo(map);
+        gpxPolyline = L.polyline(coords, {color: '#9B6328', weight: 4, opacity: 0.85}).addTo(map);
 
-            // Trailhead marker
-            L.marker(coords[0], {
-                icon: L.divIcon({
-                    html: '<div style="background:var(--green,#2E7D32);color:white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:15px;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3)">P</div>',
-                    iconSize:[28,28], className:''
-                })
-            }).bindPopup('Trailhead').addTo(map);
+        // Trailhead marker
+        L.marker(coords[0], {
+            icon: L.divIcon({
+                html: '<div style="background:var(--green,#2E7D32);color:white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:15px;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3)">P</div>',
+                iconSize:[28,28], className:''
+            })
+        }).bindPopup('Trailhead').addTo(map);
 
-            // Summit marker
-            L.marker([<?= $gpx['summit_lat'] ?>, <?= $gpx['summit_lon'] ?>], {
-                icon: L.divIcon({
-                    html: '<div style="background:#1C1B19;color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:15px;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3)">▲</div>',
-                    iconSize:[32,32], className:''
-                })
-            }).bindPopup('<?= htmlspecialchars(addslashes($pa['summit_name'])) ?><br><?= htmlspecialchars($pa['sota_ref']) ?>').addTo(map);
+        // Summit marker
+        L.marker([<?= $gpx['summit_lat'] ?>, <?= $gpx['summit_lon'] ?>], {
+            icon: L.divIcon({
+                html: '<div style="background:#1C1B19;color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:15px;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3)">▲</div>',
+                iconSize:[32,32], className:''
+            })
+        }).bindPopup('<?= htmlspecialchars(addslashes($pa['summit_name'])) ?><br><?= htmlspecialchars($pa['sota_ref']) ?>').addTo(map);
 
-            map.fitBounds(L.polyline(coords).getBounds(), {padding:[40,40]});
+        map.fitBounds(L.polyline(coords).getBounds(), {padding:[40,40]});
 
-            const elevState = drawElevationProfile(elevPts);
-            if (elevState) setupElevMapHover(elevState, map);
-        });
+        const elevState = drawElevationProfile(elevPts);
+        if (elevState) setupElevMapHover(elevState, map);
+    })();
 
     function drawElevationProfile(elevPts) {
         const canvas = document.getElementById('elev-canvas');
