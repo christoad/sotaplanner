@@ -445,12 +445,12 @@ try {
     <div class="hero-logo-wrap">
         <img src="sota-planner-logo-font.svg" width="280" height="280" alt="SOTA Planner">
     </div>
-    <p class="tagline">Doorstep-to-doorstep planning for busy activators and collaborative teams — understand the full time commitment to getting that summit in your logbook.</p>
+    <p class="tagline">Thousands of hams have already hiked these trails and shared what they found. SOTA Planner puts that community knowledge to work — so you can plan any activation, anywhere, even if you've never been there before.</p>
     <?php if ($ready_count > 0): ?>
     <div>
         <span class="hero-stat-pill">
             <span class="hero-stat-dot"></span>
-            <span class="hero-stat-num"><?= number_format($ready_count) ?></span> summits ready to activate
+            <span class="hero-stat-num"><?= number_format($ready_count) ?></span> summits with community trail data
         </span>
     </div>
     <?php endif; ?>
@@ -459,24 +459,24 @@ try {
 <!-- Feature highlights -->
 <div class="features">
     <div class="feature">
-        <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="17" r="12"/><polyline points="16,10 16,17 21,17"/><path d="M16,5 L16,3"/><path d="M14,3 L18,3"/></svg></span>
-        <h3>Total Day Estimate</h3>
-        <p>Drive time + hiking time + radio time = one number. Compare summits and pick what fits your day.</p>
+        <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="16" r="11"/><path d="M8 20 Q12 8 16 14 Q20 20 24 10"/><circle cx="8" cy="20" r="2" fill="#1E3A5F"/><circle cx="24" cy="10" r="2" fill="#1E3A5F"/></svg></span>
+        <h3>Community Trail Data</h3>
+        <p>Routes, trailheads, and real-world hiking times contributed by hams who've already activated these summits — preloaded for thousands of peaks. No research required.</p>
     </div>
     <div class="feature">
-        <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6,26 12,10 18,20 26,6"/><circle cx="26" cy="6" r="3"/><line x1="4" y1="28" x2="28" y2="28"/></svg></span>
-        <h3>GPX Track Analysis</h3>
-        <p>Upload a recorded track to get real hiking time, activation time, rest breaks, elevation, and speed.</p>
+        <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="17" r="12"/><polyline points="16,10 16,17 21,17"/><path d="M16,5 L16,3"/><path d="M14,3 L18,3"/></svg></span>
+        <h3>Total Day Estimate</h3>
+        <p>Drive time + hiking time + radio time = one number. Know exactly what a summit requires — even one you've never visited — before you commit to the day.</p>
+    </div>
+    <div class="feature">
+        <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="13" r="5"/><path d="M16 18 C10 18 5 24 5 28 L27 28 C27 24 22 18 16 18"/><path d="M22 8 C24 6 28 8 26 12"/><path d="M10 8 C8 6 4 8 6 12"/></svg></span>
+        <h3>Plan From Anywhere</h3>
+        <p>Traveling somewhere new? Search summits near any location — a destination city, a vacation spot — and instantly see what the community knows about each hike.</p>
     </div>
     <div class="feature">
         <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="24" height="16" rx="2"/><polyline points="4,8 16,18 28,8"/></svg></span>
         <h3>Shareable Invitations</h3>
-        <p>Generate a public invite page for guests — timeline, map, driving directions, no login required.</p>
-    </div>
-    <div class="feature">
-        <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M4,26 C4,20 8,18 12,18 C16,18 20,20 20,26"/><circle cx="22" cy="12" r="3"/><path d="M22,18 C25,18 28,20 28,25"/></svg></span>
-        <h3>Group Planning</h3>
-        <p>Share a planning group with your activation partners. Everyone sees the same summit wishlist and research.</p>
+        <p>Generate a public invite page for guests — timeline, map, driving directions, and location sharing. No login required.</p>
     </div>
 </div>
 
@@ -487,28 +487,28 @@ try {
             <div class="step-num">1</div>
             <div>
                 <strong>Sign in</strong>
-                <p>Log in with your SOTA callsign. Your planning groups stay private to you and your invited partners.</p>
+                <p>Log in with your SOTA callsign. Your planning groups are private to you and your invited partners.</p>
             </div>
         </div>
         <div class="how-step">
             <div class="step-num">2</div>
             <div>
-                <strong>Create or join a group</strong>
-                <p>Set up a planning group for your crew, or join one you've been invited to.</p>
+                <strong>Search near any location</strong>
+                <p>Enter your home, a city you're visiting, or anywhere you'll be. SOTA Planner finds nearby summits and pulls in community trail data for each one.</p>
             </div>
         </div>
         <div class="how-step">
             <div class="step-num">3</div>
             <div>
-                <strong>Nominate &amp; research summits</strong>
-                <p>Add summits by SOTA reference, upload GPX tracks, and build up your wishlist.</p>
+                <strong>See what you're getting into</strong>
+                <p>Community routes, trailheads, real hiking times, and drive estimates are preloaded — so you can compare summits and pick what fits your schedule.</p>
             </div>
         </div>
         <div class="how-step">
             <div class="step-num">4</div>
             <div>
                 <strong>Plan and activate</strong>
-                <p>Schedule an activation, share the invite link, and go chase those points.</p>
+                <p>Schedule the activation, share the invite link with your hiking partners, and go chase those points.</p>
             </div>
         </div>
     </div>

@@ -1939,26 +1939,72 @@ if ($tl_show) {
           $peak_slug = strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '-', ($summit['sota_ref'] ?? '') . '-' . ($summit['name'] ?? '')), '-'));
           $invite_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . rtrim(dirname($_SERVER['REQUEST_URI']), '/') . '/activation_invite.php?id=' . $pa['id'] . '&peak=' . rawurlencode($peak_slug);
         ?>
-          <div style="display:flex; justify-content:space-between; align-items:flex-start; padding:0.875rem; background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-md); margin-bottom:0.625rem; gap:1rem; flex-wrap:wrap;">
-            <div>
-              <div style="font-size:0.9rem; font-weight:600; color:var(--ink);"><?= date('D, M j, Y', strtotime($pa['planned_date'])) ?></div>
-              <div style="font-size:0.8rem; color:var(--ink-3); margin-top:3px;">
-                Hike: <?= date('g:i A', strtotime($pa['hike_start_time'])) ?>
-                &middot; <?= $pa['activation_duration_min'] ?>m radio
-                &middot; <span style="font-family:var(--font-mono);"><?= htmlspecialchars($pa['callsigns']) ?></span>
+          <div style="background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-md); margin-bottom:0.625rem; overflow:hidden;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; padding:0.875rem; gap:1rem; flex-wrap:wrap;">
+              <div>
+                <div style="font-size:0.9rem; font-weight:600; color:var(--ink);"><?= date('D, M j, Y', strtotime($pa['planned_date'])) ?></div>
+                <div style="font-size:0.8rem; color:var(--ink-3); margin-top:3px;">
+                  Hike: <?= date('g:i A', strtotime($pa['hike_start_time'])) ?>
+                  &middot; <?= $pa['activation_duration_min'] ?>m radio
+                  &middot; <span style="font-family:var(--font-mono);"><?= htmlspecialchars($pa['callsigns']) ?></span>
+                </div>
+                <?php if ($pa['invitation_message']): ?>
+                  <div style="font-size:0.78rem; color:var(--ink-2); margin-top:4px; font-style:italic;">"<?= htmlspecialchars(substr($pa['invitation_message'], 0, 100)) ?><?= strlen($pa['invitation_message']) > 100 ? '…' : '' ?>"</div>
+                <?php endif; ?>
+                <div style="display:flex; gap:0.5rem; margin-top:0.625rem; flex-wrap:wrap;">
+                  <a href="<?= htmlspecialchars($invite_url) ?>" target="_blank" class="btn btn-accent btn-sm">View Invite</a>
+                  <button type="button" onclick="copyInviteLink('<?= htmlspecialchars($invite_url, ENT_QUOTES) ?>')" class="btn btn-ghost btn-sm">Copy Link</button>
+                  <button type="button" onclick="togglePaEdit(<?= $pa['id'] ?>)" class="btn btn-ghost btn-sm">Edit</button>
+                </div>
               </div>
-              <?php if ($pa['invitation_message']): ?>
-                <div style="font-size:0.78rem; color:var(--ink-2); margin-top:4px; font-style:italic;">"<?= htmlspecialchars(substr($pa['invitation_message'], 0, 100)) ?><?= strlen($pa['invitation_message']) > 100 ? '…' : '' ?>"</div>
-              <?php endif; ?>
-              <div style="display:flex; gap:0.5rem; margin-top:0.625rem; flex-wrap:wrap;">
-                <a href="<?= htmlspecialchars($invite_url) ?>" target="_blank" class="btn btn-accent btn-sm">View Invite</a>
-                <button type="button" onclick="copyInviteLink('<?= htmlspecialchars($invite_url, ENT_QUOTES) ?>')" class="btn btn-ghost btn-sm">Copy Link</button>
-              </div>
+              <form method="POST" style="margin:0; flex-shrink:0;" onsubmit="return confirm('Remove this planned activation?');">
+                <input type="hidden" name="planned_activation_id" value="<?= $pa['id'] ?>">
+                <button type="submit" name="delete_planned_activation" class="btn btn-danger btn-sm">×</button>
+              </form>
             </div>
-            <form method="POST" style="margin:0; flex-shrink:0;" onsubmit="return confirm('Remove this planned activation?');">
-              <input type="hidden" name="planned_activation_id" value="<?= $pa['id'] ?>">
-              <button type="submit" name="delete_planned_activation" class="btn btn-danger btn-sm">×</button>
-            </form>
+
+            <!-- Inline edit form -->
+            <div id="pa-edit-<?= $pa['id'] ?>" style="display:none; padding:0.875rem; border-top:1px solid var(--border); background:var(--surface);">
+              <form method="POST">
+                <input type="hidden" name="planned_activation_id" value="<?= $pa['id'] ?>">
+                <div class="field-row-2" style="margin-bottom:0.75rem;">
+                  <div class="form-group" style="margin:0;">
+                    <label class="form-label">Date</label>
+                    <input type="date" name="planned_date" class="form-input" required value="<?= htmlspecialchars($pa['planned_date']) ?>">
+                  </div>
+                  <div class="form-group" style="margin:0;">
+                    <label class="form-label">Hike Start Time</label>
+                    <input type="time" name="hike_start_time" class="form-input" value="<?= htmlspecialchars(substr($pa['hike_start_time'], 0, 5)) ?>">
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Callsigns</label>
+                  <input type="text" name="planned_callsigns" class="form-input" required value="<?= htmlspecialchars($pa['callsigns']) ?>">
+                </div>
+                <div class="field-row-2" style="margin-bottom:0.75rem;">
+                  <div class="form-group" style="margin:0;">
+                    <label class="form-label">Activation Duration (min)</label>
+                    <input type="number" name="activation_duration_min" class="form-input" min="15" max="480" required value="<?= (int)$pa['activation_duration_min'] ?>">
+                  </div>
+                  <div class="form-group" style="margin:0;">
+                    <label class="form-label">Live GPS Location Sharable Link (optional)</label>
+                    <input type="url" name="location_link" class="form-input" value="<?= htmlspecialchars($pa['location_link'] ?? '') ?>">
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Message for Guests (optional)</label>
+                  <textarea name="invitation_message" class="form-textarea" rows="3"><?= htmlspecialchars($pa['invitation_message'] ?? '') ?></textarea>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Parking &amp; Travel Notes (optional)</label>
+                  <textarea name="travel_notes" class="form-textarea" rows="2"><?= htmlspecialchars($pa['travel_notes'] ?? '') ?></textarea>
+                </div>
+                <div style="display:flex; gap:0.5rem;">
+                  <button type="submit" name="edit_planned_activation" class="btn btn-primary btn-sm">Save Changes</button>
+                  <button type="button" onclick="togglePaEdit(<?= $pa['id'] ?>)" class="btn btn-ghost btn-sm">Cancel</button>
+                </div>
+              </form>
+            </div>
           </div>
         <?php endforeach; ?>
         <div style="height:0.75rem;"></div>
@@ -2146,6 +2192,11 @@ function geocodeAddress() {
 }
 
 // ── Copy invite link ────────────────────────────────────────────────────────
+function togglePaEdit(id) {
+  var el = document.getElementById('pa-edit-' + id);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
 function copyInviteLink(url) {
   if (navigator.clipboard) {
     navigator.clipboard.writeText(url).then(() => { alert('Link copied to clipboard!'); });

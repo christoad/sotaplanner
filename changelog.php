@@ -233,9 +233,24 @@ session_start();
     <!-- v1.5.3 -->
     <div class="version-block current">
         <div class="version-header">
+            <span class="version-number">v1.5.4</span>
+            <span class="version-date">July 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Activation invite improvements and planned activation editing.</p>
+        <ul>
+            <li>Planned activations on the summit detail page can now be edited — click Edit to update the date, time, callsigns, duration, guest message, travel notes, or live GPS link without deleting and re-creating</li>
+            <li>The activation invite now shows a Get Directions button in the hero that opens Google Maps with the trailhead pre-set as the destination</li>
+            <li>The Day at a Glance timeline now includes a Back at Trailhead time so guests can see the full shape of the day</li>
+            <li>The invite page Gantt chart now uses the same hike time calculation as the summit detail page, including pace multiplier and one-way track handling</li>
+        </ul>
+    </div>
+
+    <!-- v1.5.3 -->
+    <div class="version-block">
+        <div class="version-header">
             <span class="version-number">v1.5.3</span>
             <span class="version-date">June 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Nominate page layout and summit validity improvements.</p>
         <ul>

@@ -629,10 +629,17 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
 
     /* ── Toolbar ── */
     .toolbar {
-      display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap;
+      display: flex; flex-direction: column; gap: 0;
       padding: var(--sp-3) var(--sp-4); background: var(--surface);
       border: 1px solid var(--border); border-radius: var(--r-lg);
       margin-bottom: var(--sp-3);
+    }
+    .toolbar-row {
+      display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap;
+    }
+    .toolbar-row + .toolbar-row {
+      margin-top: var(--sp-2); padding-top: var(--sp-2);
+      border-top: 1px solid var(--border);
     }
     .toolbar-label {
       font-size: 0.75rem; font-weight: 600; color: var(--ink-3);
@@ -1071,52 +1078,56 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
 
     <!-- Toolbar: filters + controls -->
     <div class="toolbar">
-        <span class="toolbar-label">Filter</span>
-        <div class="toolbar-sep"></div>
-        <div class="filter-row">
-            <?php
-            $all_filter_keys = ['drive-up', 'easy', 'moderate', 'hard', 'ready', 'needs-research', 'activated-this-year'];
-            $is_all = (count($active_filters) === count($all_filter_keys));
-            ?>
-            <button onclick="selectAll()" class="filter-pill <?= $is_all ? 'active' : '' ?>">All</button>
-            <div class="filter-sep"></div>
-            <?php
-            $diff_filters = ['drive-up' => 'Drive-up', 'easy' => 'Easy', 'moderate' => 'Moderate', 'hard' => 'Hard'];
-            foreach ($diff_filters as $key => $label):
-                $active = in_array($key, $active_filters);
-            ?>
-                <button onclick="toggleFilter('<?= $key ?>')" class="filter-pill <?= $active ? 'active' : '' ?>"><?= $label ?></button>
-            <?php endforeach; ?>
-            <div class="filter-sep"></div>
-            <?php
-            $status_filters = ['ready' => 'Ready', 'needs-research' => 'Research Needed', 'activated-this-year' => 'Activated This Year'];
-            foreach ($status_filters as $key => $label):
-                $active = in_array($key, $active_filters);
-            ?>
-                <button onclick="toggleFilter('<?= $key ?>')" class="filter-pill <?= $active ? 'active' : '' ?>"><?= $label ?></button>
-            <?php endforeach; ?>
+        <!-- Row 1: filters -->
+        <div class="toolbar-row">
+            <span class="toolbar-label">Filter</span>
+            <div class="toolbar-sep"></div>
+            <div class="filter-row">
+                <?php
+                $all_filter_keys = ['drive-up', 'easy', 'moderate', 'hard', 'ready', 'needs-research', 'activated-this-year'];
+                $is_all = (count($active_filters) === count($all_filter_keys));
+                ?>
+                <button onclick="selectAll()" class="filter-pill <?= $is_all ? 'active' : '' ?>">All</button>
+                <div class="filter-sep"></div>
+                <?php
+                $diff_filters = ['drive-up' => 'Drive-up', 'easy' => 'Easy', 'moderate' => 'Moderate', 'hard' => 'Hard'];
+                foreach ($diff_filters as $key => $label):
+                    $active = in_array($key, $active_filters);
+                ?>
+                    <button onclick="toggleFilter('<?= $key ?>')" class="filter-pill <?= $active ? 'active' : '' ?>"><?= $label ?></button>
+                <?php endforeach; ?>
+                <div class="filter-sep"></div>
+                <?php
+                $status_filters = ['ready' => 'Ready', 'needs-research' => 'Research Needed', 'activated-this-year' => 'Activated This Year'];
+                foreach ($status_filters as $key => $label):
+                    $active = in_array($key, $active_filters);
+                ?>
+                    <button onclick="toggleFilter('<?= $key ?>')" class="filter-pill <?= $active ? 'active' : '' ?>"><?= $label ?></button>
+                <?php endforeach; ?>
+            </div>
         </div>
-        <div class="toolbar-sep"></div>
-        <span style="font-size:0.78rem; color:var(--ink-3); white-space:nowrap">Activation</span>
-        <input type="number" id="activation_time" value="<?= $activation_time ?>" min="15" max="300" step="15" class="number-input-sm">
-        <span style="font-size:0.78rem; color:var(--ink-3)">min</span>
-        <div class="toolbar-right">
+        <!-- Row 2: controls -->
+        <div class="toolbar-row">
+            <span style="font-size:0.78rem; color:var(--ink-3); white-space:nowrap">Activation</span>
+            <input type="number" id="activation_time" value="<?= $activation_time ?>" min="15" max="300" step="15" class="number-input-sm">
+            <span style="font-size:0.78rem; color:var(--ink-3)">min</span>
             <?php if ($selected_address && GOOGLE_MAPS_API_KEY !== 'YOUR_API_KEY_HERE'): ?>
+                <div class="toolbar-sep"></div>
                 <form method="POST" style="margin:0">
                     <button type="submit" name="calculate_drive_times" class="btn btn-ghost btn-sm">Recalculate Drive Times</button>
                 </form>
             <?php endif; ?>
-            <a href="nominate.php" class="btn btn-primary btn-sm">+ Nominate Summit</a>
-            <div class="toolbar-sep"></div>
-            <div class="view-toggle-group">
-                <button class="view-toggle-btn active" id="btn-list-view" onclick="setDashView('list')" title="List view">
-                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4.5" y1="3" x2="12" y2="3"/><line x1="4.5" y1="6.5" x2="12" y2="6.5"/><line x1="4.5" y1="10" x2="12" y2="10"/><circle cx="2" cy="3" r="0.9" fill="currentColor" stroke="none"/><circle cx="2" cy="6.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="2" cy="10" r="0.9" fill="currentColor" stroke="none"/></svg>
-                    List
-                </button>
-                <button class="view-toggle-btn" id="btn-map-view" onclick="setDashView('map')" title="Map view">
-                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="1,2.5 4.5,1 8.5,2.5 12,1 12,10.5 8.5,12 4.5,10.5 1,12"/><line x1="4.5" y1="1" x2="4.5" y2="10.5"/><line x1="8.5" y1="2.5" x2="8.5" y2="12"/></svg>
-                    Map
-                </button>
+            <div class="toolbar-right">
+                <div class="view-toggle-group">
+                    <button class="view-toggle-btn active" id="btn-list-view" onclick="setDashView('list')" title="List view">
+                        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4.5" y1="3" x2="12" y2="3"/><line x1="4.5" y1="6.5" x2="12" y2="6.5"/><line x1="4.5" y1="10" x2="12" y2="10"/><circle cx="2" cy="3" r="0.9" fill="currentColor" stroke="none"/><circle cx="2" cy="6.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="2" cy="10" r="0.9" fill="currentColor" stroke="none"/></svg>
+                        List
+                    </button>
+                    <button class="view-toggle-btn" id="btn-map-view" onclick="setDashView('map')" title="Map view">
+                        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="1,2.5 4.5,1 8.5,2.5 12,1 12,10.5 8.5,12 4.5,10.5 1,12"/><line x1="4.5" y1="1" x2="4.5" y2="10.5"/><line x1="8.5" y1="2.5" x2="8.5" y2="12"/></svg>
+                        Map
+                    </button>
+                </div>
             </div>
         </div>
     </div>

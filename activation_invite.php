@@ -20,7 +20,7 @@ $stmt = $db->prepare("
            s.hike_time_up_min, s.hike_time_down_min,
            s.drive_time_min, s.difficulty, s.cell_service,
            s.trail_link, s.sotlas_link,
-           pg.name as group_name, pg.units, pg.owner_callsign,
+           pg.name as group_name, pg.units, pg.owner_callsign, pg.pace_multiplier,
            COALESCE(us.units, pg.units) AS owner_units
     FROM planned_activations pa
     JOIN summits s ON s.id = pa.summit_id
@@ -95,15 +95,38 @@ $gpx_download_name = preg_replace('/[^a-zA-Z0-9]+/', '-', $pa['summit_name'] ?? 
 
 // Timeline math
 $units         = $pa['owner_units'] ?? $pa['units'];
-$drive_one_way = round(($pa['drive_time_min'] ?? 0) / 2);
-$hike_up_min   = (int)($pa['hike_time_up_min'] ?? 0);
-$hike_down_min = (int)($pa['hike_time_down_min'] ?? 0);
+$drive_one_way  = round(($pa['drive_time_min'] ?? 0) / 2);
 $activation_min = (int)$pa['activation_duration_min'];
+$pace_multiplier = (float)($pa['pace_multiplier'] ?? 1.0);
 
-if ($gpx && $gpx['use_for_hike_time'] && $gpx['hiking_time'] > 0) {
-    $total_gpx_min = round($gpx['hiking_time'] / 60);
-    $hike_up_min   = round($total_gpx_min * 0.6);
-    $hike_down_min = $total_gpx_min - $hike_up_min;
+// Mirror summit_detail hike time logic exactly
+$track_type     = $gpx ? ($gpx['track_type'] ?? 'round-trip') : 'round-trip';
+$one_way        = ($track_type === 'ascent' || $track_type === 'descent');
+$has_timestamps = $gpx && $gpx['hiking_time'] > 0;
+
+$hike_time_total = 0;
+if ($gpx && $gpx['use_for_hike_time']) {
+    if ($has_timestamps) {
+        $secs = $gpx['hiking_time'];
+        if ($one_way) $secs *= 2;
+        $hike_time_total = round($secs / 60);
+    } else {
+        $dist_km = (float)($gpx['total_distance'] ?? 0);
+        if ($one_way) $dist_km *= 2;
+        $dist_mi = $dist_km * 0.621371;
+        $elev_ft = (float)($gpx['elevation_gain'] ?? 0) * 3.28084;
+        $hike_time_total = ($dist_mi || $elev_ft) ? calculateHikeTime($dist_mi, $elev_ft, $pace_multiplier) : 0;
+    }
+}
+
+if ($hike_time_total > 0) {
+    $hike_up_min   = intval(round($hike_time_total * 0.6));
+    $hike_down_min = $hike_time_total - $hike_up_min;
+} elseif ($pa['hike_time_up_min'] && $pa['hike_time_down_min']) {
+    $hike_up_min   = (int)$pa['hike_time_up_min'];
+    $hike_down_min = (int)$pa['hike_time_down_min'];
+} else {
+    $hike_up_min = $hike_down_min = 0;
 }
 
 $hike_start_ts    = strtotime($pa['planned_date'] . ' ' . $pa['hike_start_time']);
@@ -724,15 +747,10 @@ $difficulty_labels = [
         <a href="activation_ics.php?id=<?= $pa['pa_id'] ?>" class="hero-btn hero-btn-primary">
             Add to Calendar
         </a>
-        <?php if ($guest_drive_min !== null && $guest_directions_url): ?>
-            <a href="<?= htmlspecialchars($guest_directions_url) ?>" target="_blank" class="hero-btn hero-btn-primary">
+        <?php if ($trailhead_lat && $trailhead_lng): ?>
+            <a href="https://www.google.com/maps/dir/?api=1&destination=<?= urlencode($trailhead_lat . ',' . $trailhead_lng) ?>" target="_blank" class="hero-btn hero-btn-primary">
                 Get Directions
             </a>
-        <?php elseif ($trailhead_lat && $trailhead_lng): ?>
-            <button class="hero-btn hero-btn-outline"
-                onclick="document.getElementById('drive-section').scrollIntoView({behavior:'smooth'}); setTimeout(()=>document.getElementById('guest-address-input').focus({preventScroll:true}),400);">
-                Calculate My Drive Time
-            </button>
         <?php endif; ?>
         <button class="hero-btn hero-btn-outline" onclick="document.getElementById('sota-modal').classList.add('open')">
             What is SOTA?
@@ -797,6 +815,13 @@ $difficulty_labels = [
             <div class="fact-label">Radio Time</div>
             <div class="fact-val" style="font-size:0.82rem;"><?= date('g:i A', $at_summit_ts) ?>–<?= date('g:i A', $radio_done_ts) ?></div>
         </div>
+
+        <?php if ($hike_down_min > 0): ?>
+        <div class="fact-cell">
+            <div class="fact-label">Back at Trailhead</div>
+            <div class="fact-val"><?= date('g:i A', $back_trailhead_ts) ?></div>
+        </div>
+        <?php endif; ?>
 
         <?php if ($guest_back_home_ts): ?>
             <div class="fact-cell personalized">
@@ -942,9 +967,9 @@ $difficulty_labels = [
 
 <!-- YOUR DRIVE TIME -->
 <div class="section" id="drive-section">
-    <div class="section-title">Your Drive Time</div>
+    <div class="section-title">Calculate Your Drive Time</div>
     <p style="font-size:0.875rem; color:var(--ink-2); margin-bottom:1rem; line-height:1.6;">
-        Enter your starting address to get a personalized departure time and driving directions to the trailhead.
+        Add your starting address to personalize the timeline above with your leave time and estimated return.
     </p>
 
     <div class="drive-form">
