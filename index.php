@@ -208,6 +208,7 @@ $sort_order = $_GET['order'] ?? 'DESC';
 
 // Get filter parameter (comma-separated for multiple filters)
 $filter_param = $_GET['filter'] ?? 'all';
+$unique_only = isset($_GET['unique']) && $_GET['unique'] === '1';
 
 // Parse into array - 'all' means everything, 'none' means nothing
 if ($filter_param === 'all' || empty($filter_param)) {
@@ -310,6 +311,11 @@ if (!empty($active_statuses)) {
 // Apply all filters
 if (!empty($filter_conditions)) {
     $where_clause .= " AND " . implode(' AND ', $filter_conditions);
+}
+
+// Unique summits: nobody in this group has ever activated them
+if ($unique_only) {
+    $where_clause .= " AND s.activated_by IS NULL";
 }
 
 $stmt = $db->prepare("
@@ -662,6 +668,25 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     .filter-pill:hover { border-color: var(--accent-border); color: var(--ink); background: var(--accent-bg); }
     .filter-pill.active { background: var(--ink); border-color: var(--ink); color: #fff; }
     .filter-sep { width: 1px; height: 16px; background: var(--border-2); flex-shrink: 0; }
+
+    /* ── Unique toggle ── */
+    .unique-toggle {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      height: 28px; padding: 0 var(--sp-3); border-radius: var(--r-md);
+      font-size: 0.775rem; font-weight: 500; cursor: pointer;
+      border: 1.5px dashed var(--border-2); background: var(--surface);
+      color: var(--ink-3); transition: all 0.12s; font-family: var(--font-sans);
+      white-space: nowrap;
+    }
+    .unique-toggle:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-bg); border-style: solid; }
+    .unique-toggle.active { background: var(--blue-bg); border-color: var(--blue); border-style: solid; color: var(--blue); font-weight: 600; }
+
+    @media (max-width: 640px) {
+      .toolbar { padding: var(--sp-3); }
+      .toolbar-row { gap: var(--sp-2); }
+      .filter-row { gap: var(--sp-1); }
+      .toolbar-right { margin-left: 0; width: 100%; justify-content: flex-end; }
+    }
 
     /* ── Number input (activation time) ── */
     .number-input-sm {
@@ -1078,7 +1103,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
 
     <!-- Toolbar: filters + controls -->
     <div class="toolbar">
-        <!-- Row 1: filters -->
+        <!-- Row 1: filter pills -->
         <div class="toolbar-row">
             <span class="toolbar-label">Filter</span>
             <div class="toolbar-sep"></div>
@@ -1106,8 +1131,24 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                 <?php endforeach; ?>
             </div>
         </div>
-        <!-- Row 2: controls -->
+        <!-- Row 2: view toggle + unique toggle + activation controls -->
         <div class="toolbar-row">
+            <div class="view-toggle-group">
+                <button class="view-toggle-btn active" id="btn-list-view" onclick="setDashView('list')" title="List view">
+                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4.5" y1="3" x2="12" y2="3"/><line x1="4.5" y1="6.5" x2="12" y2="6.5"/><line x1="4.5" y1="10" x2="12" y2="10"/><circle cx="2" cy="3" r="0.9" fill="currentColor" stroke="none"/><circle cx="2" cy="6.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="2" cy="10" r="0.9" fill="currentColor" stroke="none"/></svg>
+                    List
+                </button>
+                <button class="view-toggle-btn" id="btn-map-view" onclick="setDashView('map')" title="Map view">
+                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="1,2.5 4.5,1 8.5,2.5 12,1 12,10.5 8.5,12 4.5,10.5 1,12"/><line x1="4.5" y1="1" x2="4.5" y2="10.5"/><line x1="8.5" y1="2.5" x2="8.5" y2="12"/></svg>
+                    Map
+                </button>
+            </div>
+            <div class="toolbar-sep"></div>
+            <button onclick="toggleUnique()" class="unique-toggle <?= $unique_only ? 'active' : '' ?>">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="6,1 7.5,4.5 11,4.8 8.5,7 9.3,10.5 6,8.5 2.7,10.5 3.5,7 1,4.8 4.5,4.5"/></svg>
+                Unique Summits
+            </button>
+            <div class="toolbar-sep"></div>
             <span style="font-size:0.78rem; color:var(--ink-3); white-space:nowrap">Activation</span>
             <input type="number" id="activation_time" value="<?= $activation_time ?>" min="15" max="300" step="15" class="number-input-sm">
             <span style="font-size:0.78rem; color:var(--ink-3)">min</span>
@@ -1117,18 +1158,6 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                     <button type="submit" name="calculate_drive_times" class="btn btn-ghost btn-sm">Recalculate Drive Times</button>
                 </form>
             <?php endif; ?>
-            <div class="toolbar-right">
-                <div class="view-toggle-group">
-                    <button class="view-toggle-btn active" id="btn-list-view" onclick="setDashView('list')" title="List view">
-                        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4.5" y1="3" x2="12" y2="3"/><line x1="4.5" y1="6.5" x2="12" y2="6.5"/><line x1="4.5" y1="10" x2="12" y2="10"/><circle cx="2" cy="3" r="0.9" fill="currentColor" stroke="none"/><circle cx="2" cy="6.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="2" cy="10" r="0.9" fill="currentColor" stroke="none"/></svg>
-                        List
-                    </button>
-                    <button class="view-toggle-btn" id="btn-map-view" onclick="setDashView('map')" title="Map view">
-                        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="1,2.5 4.5,1 8.5,2.5 12,1 12,10.5 8.5,12 4.5,10.5 1,12"/><line x1="4.5" y1="1" x2="4.5" y2="10.5"/><line x1="8.5" y1="2.5" x2="8.5" y2="12"/></svg>
-                        Map
-                    </button>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -1136,6 +1165,9 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
         <?= count($summits) ?> summit<?= count($summits) !== 1 ? 's' : '' ?>
         <?php if (!$is_all): ?>
             · <?= count($active_filters) ?> filter<?= count($active_filters) !== 1 ? 's' : '' ?> active
+        <?php endif; ?>
+        <?php if ($unique_only): ?>
+            · unique only
         <?php endif; ?>
     </div>
 
@@ -1446,6 +1478,16 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
         const urlParams = new URLSearchParams(window.location.search);
         const current = urlParams.get('filter') || 'all';
         urlParams.set('filter', current === 'all' || current === '' ? 'none' : 'all');
+        window.location.search = urlParams.toString();
+    }
+
+    function toggleUnique() {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('unique') === '1') {
+            urlParams.delete('unique');
+        } else {
+            urlParams.set('unique', '1');
+        }
         window.location.search = urlParams.toString();
     }
 

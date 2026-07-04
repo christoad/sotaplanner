@@ -230,12 +230,25 @@ session_start();
         <p>Release history and update notes for SOTA Planner</p>
     </div>
 
-    <!-- v1.5.3 -->
+    <!-- v1.5.5 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.5.5</span>
+            <span class="version-date">July 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Dashboard filter improvements and Unique Summits toggle.</p>
+        <ul>
+            <li>The dashboard filter bar is now organized into two clean rows — filters on top, controls below — and wraps properly on mobile</li>
+            <li>A new Unique Summits toggle lets you instantly filter to summits your group has never activated, making it easy to hunt for firsts</li>
+        </ul>
+    </div>
+
+    <!-- v1.5.4 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.5.4</span>
             <span class="version-date">July 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Activation invite improvements and planned activation editing.</p>
         <ul>
