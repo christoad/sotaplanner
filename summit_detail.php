@@ -732,7 +732,7 @@ if ($current_group && !empty($summit['sota_ref'])) {
         // so the dashboard last-activated field stays current
         if (!empty($sota_member_activations)) {
             $most_recent = $sota_member_activations[0];
-            $new_date    = date('Y-m-d', strtotime($most_recent['date']));
+            $new_date    = gmdate('Y-m-d', strtotime($most_recent['date']));
             $db->prepare("UPDATE summits SET last_activated_date = ?, activated_by = ?, status = 'activated'
                           WHERE id = ? AND (last_activated_date IS NULL OR last_activated_date < ?)")
                ->execute([$new_date, $most_recent['callsign'], $summit_id, $new_date]);
@@ -1746,7 +1746,7 @@ if ($tl_show) {
           <?php if ($last_global_activation && $last_global_activation['date']): ?>
             <span class="info-val">
               <span style="font-family:var(--font-mono); font-size:0.8rem;"><?= htmlspecialchars($last_global_activation['callsign']) ?></span>
-              <span style="color:var(--ink-3); font-size:0.78rem; margin-left:0.3rem;"><?= date('M j, Y', strtotime($last_global_activation['date'])) ?></span>
+              <span style="color:var(--ink-3); font-size:0.78rem; margin-left:0.3rem;"><?= gmdate('M j, Y', strtotime($last_global_activation['date'])) ?></span>
             </span>
           <?php else: ?>
             <span class="info-val">Never</span>
@@ -1760,7 +1760,7 @@ if ($tl_show) {
           <?php if ($last_group && $last_group['date']): ?>
             <span class="info-val">
               <span style="font-family:var(--font-mono); font-size:0.8rem;"><?= htmlspecialchars($last_group['callsign']) ?></span>
-              <span style="color:var(--ink-3); font-size:0.78rem; margin-left:0.3rem;"><?= date('M j, Y', strtotime($last_group['date'])) ?></span>
+              <span style="color:var(--ink-3); font-size:0.78rem; margin-left:0.3rem;"><?= gmdate('M j, Y', strtotime($last_group['date'])) ?></span>
             </span>
           <?php else: ?>
             <span class="info-val" style="color:var(--ink-4);">Never</span>
@@ -2126,7 +2126,7 @@ if ($tl_show) {
             <tbody>
               <?php foreach ($sota_member_activations as $sa): ?>
                 <tr>
-                  <td style="white-space:nowrap; font-weight:500; color:var(--ink);"><?= date('M j, Y', strtotime($sa['date'])) ?></td>
+                  <td style="white-space:nowrap; font-weight:500; color:var(--ink);"><?= gmdate('M j, Y', strtotime($sa['date'])) ?></td>
                   <td style="font-family:var(--font-mono); font-size:0.78rem; color:var(--ink);"><?= htmlspecialchars($sa['callsign']) ?></td>
                   <td style="text-align:right; font-weight:600; color:var(--green);"><?= $sa['qsos'] ?></td>
                 </tr>
