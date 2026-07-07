@@ -610,6 +610,13 @@ if ($gpx_data && $gpx_data['track_type'] === 'round-trip' && file_exists($gpx_da
         $db->prepare("UPDATE gpx_tracks SET track_type = ? WHERE id = ?")
            ->execute([$re['track_type'], $gpx_data['id']]);
         $gpx_data['track_type'] = $re['track_type'];
+        // Descent tracks: hike_elevation_gain_ft was auto-set from elevation_gain (≈0) — correct it using elevation_loss
+        if ($re['track_type'] === 'descent' && $re['elevation_loss'] > 0) {
+            $corrected_gain_ft = round($re['elevation_loss'] * 3.28084);
+            $db->prepare("UPDATE summits SET hike_elevation_gain_ft = ? WHERE id = ?")
+               ->execute([$corrected_gain_ft, $summit_id]);
+            $summit['hike_elevation_gain_ft'] = $corrected_gain_ft;
+        }
     }
 }
 
@@ -1612,7 +1619,7 @@ if ($tl_show) {
           <label class="form-label">Elev. Gain (<?= getElevationUnit($user_units) ?>)</label>
           <?php if ($gpx_active): ?><div class="gpx-tip" data-tip="Set by GPS track — uncheck 'Use GPS data' to edit"><?php endif; ?>
           <input type="number" class="form-input" name="hike_elevation_gain_ft" min="0"
-                 value="<?= htmlspecialchars($summit['hike_elevation_gain_ft'] ?? '') ?>" placeholder="0"
+                 value="<?= htmlspecialchars($gpx_active && $elevation_gain_display ? round(convertElevation($elevation_gain_display, $user_units)) : ($summit['hike_elevation_gain_ft'] ?? '')) ?>" placeholder="0"
                  <?= $gpx_active ? 'readonly style="opacity:0.45;cursor:not-allowed;background:var(--bg-2);"' : '' ?>>
           <?php if ($gpx_active): ?></div><?php endif; ?>
         </div>
