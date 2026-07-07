@@ -376,6 +376,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
             $summit_data = json_decode($response, true);
             if (!$summit_data) continue;
 
+            // Skip inactive summits
+            if (isset($summit_data['valid']) && $summit_data['valid'] === false) continue;
+            $valid_to = $summit_data['validTo'] ?? null;
+            if ($valid_to && strtotime($valid_to) < time()) continue;
+
             $name         = $summit_data['name'] ?? $summit_data['summitName'] ?? 'Unknown';
             $region       = $summit_data['regionName'] ?? $summit_data['region'] ?? '';
             $points       = $summit_data['points'] ?? 1;
@@ -454,6 +459,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
         $summit_data = json_decode($response, true);
 
         if ($summit_data) {
+            // Block inactive summits
+            if (isset($summit_data['valid']) && $summit_data['valid'] === false) {
+                $error = 'That summit is no longer valid for SOTA activations and cannot be added.';
+            } elseif (!empty($summit_data['validTo']) && strtotime($summit_data['validTo']) < time()) {
+                $error = 'That summit is no longer valid for SOTA activations and cannot be added.';
+            } else {
+
             $name = $summit_data['name'] ?? $summit_data['summitName'] ?? 'Unknown';
             $region = $summit_data['regionName'] ?? $summit_data['region'] ?? '';
             $points = $summit_data['points'] ?? 1;
@@ -638,6 +650,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
             } catch (PDOException $e) {
                 $error = "Error saving summit: " . $e->getMessage();
             }
+            } // end: active summit block
         }
     } else {
         $error = "Summit '$sota_ref' not found. Check the reference format (e.g., W6/CT-225).";
