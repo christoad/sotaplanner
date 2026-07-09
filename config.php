@@ -244,6 +244,28 @@ function isGodMode() {
     return getCurrentCallsign() === 'KI6CR';
 }
 
+/** Rename a callsign across all tables — used when an SSO user confirms a different
+ *  callsign than their SOTA account username. */
+function updateUserCallsign($db, $oldCallsign, $newCallsign) {
+    $tables = [
+        ["UPDATE planning_groups SET owner_callsign=? WHERE owner_callsign=?",          [$newCallsign, $oldCallsign]],
+        ["UPDATE planning_group_members SET callsign=? WHERE callsign=?",                [$newCallsign, $oldCallsign]],
+        ["UPDATE planning_group_members SET invited_by=? WHERE invited_by=?",            [$newCallsign, $oldCallsign]],
+        ["UPDATE summit_notes SET user_callsign=? WHERE user_callsign=?",                [$newCallsign, $oldCallsign]],
+        ["UPDATE user_settings SET user_callsign=? WHERE user_callsign=?",               [$newCallsign, $oldCallsign]],
+    ];
+    foreach ($tables as [$sql, $params]) {
+        $db->prepare($sql)->execute($params);
+    }
+    try {
+        $db->prepare("UPDATE users SET callsign=? WHERE callsign=?")->execute([$newCallsign, $oldCallsign]);
+    } catch (PDOException $e) {
+        // New callsign already has a users row — remove the stale old row instead
+        $db->prepare("DELETE FROM users WHERE callsign=?")->execute([$oldCallsign]);
+    }
+    $_SESSION['sota_callsign'] = $newCallsign;
+}
+
 // ── Planning group helpers ─────────────────────────────────────────────────
 
 /** Return all planning groups the current user owns or is a member of.

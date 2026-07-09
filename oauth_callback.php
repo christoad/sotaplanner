@@ -155,12 +155,34 @@ if (isset($_GET['code'])) {
     }
 
     // Store in session
-    $_SESSION['sota_callsign']      = $callsign;
-    $_SESSION['sota_login_type']    = 'oauth';
-    $_SESSION['sota_access_token']  = $tokens['access_token'];
-    $_SESSION['sota_id_token']      = $tokens['id_token'] ?? null;
-    $_SESSION['sota_refresh_token'] = $tokens['refresh_token'] ?? null;
-    $_SESSION['sota_token_expires'] = time() + ($tokens['expires_in'] ?? 300);
+    $_SESSION['sota_callsign']              = $callsign;
+    $_SESSION['sota_login_type']            = 'sota_oauth';
+    $_SESSION['sota_access_token']          = $tokens['access_token'];
+    $_SESSION['sota_id_token']              = $tokens['id_token'] ?? null;
+    $_SESSION['sota_refresh_token']         = $tokens['refresh_token'] ?? null;
+    $_SESSION['sota_token_expires']         = time() + ($tokens['expires_in'] ?? 300);
+    $_SESSION['sota_sso_sub']               = $userinfo['sub'] ?? null;
+    $_SESSION['sota_sso_preferred_username'] = $userinfo['preferred_username'] ?? null;
+
+    // Check if this user has confirmed their callsign yet
+    $stmt = $db->prepare("SELECT callsign_confirmed FROM users WHERE callsign = ?");
+    $stmt->execute([$callsign]);
+    $user_row = $stmt->fetch();
+    if (!$user_row || !(int)$user_row['callsign_confirmed']) {
+        // If the SSO username itself looks like a valid callsign, auto-confirm silently —
+        // no need to interrupt the user with a confirmation page.
+        $sso_username = $userinfo['preferred_username'] ?? '';
+        if (preg_match('/^[A-Z0-9]{3,10}$/i', $sso_username)) {
+            $db->prepare("
+                INSERT INTO users (callsign, callsign_confirmed, sso_sub)
+                VALUES (?, 1, ?)
+                ON DUPLICATE KEY UPDATE callsign_confirmed = 1, sso_sub = VALUES(sso_sub)
+            ")->execute([$callsign, $userinfo['sub'] ?? null]);
+        } else {
+            header('Location: callsign_confirm.php');
+            exit;
+        }
+    }
 
     // Find user's planning groups
     $stmt = $db->prepare("

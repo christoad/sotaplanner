@@ -5,9 +5,13 @@ requireLogin();
 
 $db           = getDbConnection();
 $current_user = getCurrentCallsign();
+$is_sso       = ($_SESSION['sota_login_type'] ?? '') === 'sota_oauth';
 $message      = '';
+$callsign_message = '';
+$callsign_error   = '';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+// ── Save preferences ──────────────────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_preferences'])) {
     $new_units       = in_array($_POST['units'] ?? '', ['imperial', 'metric']) ? $_POST['units'] : detectUnitsFromCallsign($current_user);
     $activation_time = max(15, min(300, (int)($_POST['default_activation_time'] ?? 60)));
 
@@ -23,12 +27,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $message = 'Settings saved.';
 }
 
+// ── Save callsigns ────────────────────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_callsigns'])) {
+    $new_primary = strtoupper(preg_replace('/[^A-Z0-9]/', '', strtoupper(trim($_POST['primary_callsign'] ?? ''))));
+    $raw_extra   = trim($_POST['additional_callsigns'] ?? '');
+
+    $extra_list = [];
+    foreach (explode(',', $raw_extra) as $cs) {
+        $cs = strtoupper(preg_replace('/[^A-Z0-9\/]/', '', strtoupper(trim($cs))));
+        if ($cs !== '' && $cs !== $new_primary && !in_array($cs, $extra_list)) {
+            $extra_list[] = $cs;
+        }
+    }
+    $additional_callsigns = $extra_list ? implode(', ', $extra_list) : null;
+
+    if ($is_sso && !preg_match('/^[A-Z0-9]{3,10}$/', $new_primary)) {
+        $callsign_error = 'Please enter a valid callsign (3–10 letters and numbers).';
+    } else {
+        if ($is_sso && $new_primary !== $current_user) {
+            updateUserCallsign($db, $current_user, $new_primary);
+            $current_user = $new_primary;
+        }
+        $db->prepare("
+            INSERT INTO users (callsign, callsign_confirmed, additional_callsigns)
+            VALUES (?, 1, ?)
+            ON DUPLICATE KEY UPDATE additional_callsigns = VALUES(additional_callsigns)
+        ")->execute([$current_user, $additional_callsigns]);
+        $callsign_message = 'Callsigns saved.';
+    }
+}
+
 $stmt = $db->prepare("SELECT * FROM user_settings WHERE user_callsign = ?");
 $stmt->execute([$current_user]);
 $settings = $stmt->fetch();
 
 $current_units       = $settings['units'] ?? detectUnitsFromCallsign($current_user);
 $default_activation  = (int)($settings['default_activation_time_min'] ?? 60);
+
+$stmt = $db->prepare("SELECT additional_callsigns FROM users WHERE callsign = ?");
+$stmt->execute([$current_user]);
+$user_profile = $stmt->fetch();
+$additional_callsigns = $user_profile['additional_callsigns'] ?? '';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -242,10 +281,78 @@ $default_activation  = (int)($settings['default_activation_time_min'] ?? 60);
 
     </div>
 
-    <button type="submit" class="btn-save">Save Settings</button>
+    <button type="submit" name="save_preferences" class="btn-save">Save Settings</button>
   </form>
 
 </div>
+
+  <!-- ── Callsigns card ─────────────────────────────────────────────── -->
+  <?php if ($callsign_message): ?>
+  <div class="msg-success" style="margin-top:1.25rem;">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.4"/><path d="M5 8l2 2 4-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <?= htmlspecialchars($callsign_message) ?>
+  </div>
+  <?php endif; ?>
+  <?php if ($callsign_error): ?>
+  <div style="background:var(--red-bg);border:1px solid oklch(82% 0.08 22);color:var(--red);border-radius:var(--r-md);padding:0.75rem 1rem;font-size:0.875rem;font-weight:500;margin-top:1.25rem;">
+    <?= htmlspecialchars($callsign_error) ?>
+  </div>
+  <?php endif; ?>
+
+  <form method="POST" style="margin-top:1.25rem;">
+    <div class="card">
+
+      <div class="card-section">
+        <div class="section-label">Callsigns</div>
+
+        <?php if ($is_sso): ?>
+          <div style="margin-bottom:1rem;">
+            <label class="section-label" style="margin-bottom:0.35rem; display:block; text-transform:none; font-size:0.82rem; color:var(--ink-2); font-weight:600;">Primary callsign</label>
+            <input
+              type="text"
+              name="primary_callsign"
+              value="<?= htmlspecialchars($current_user) ?>"
+              autocapitalize="characters" autocorrect="off" spellcheck="false"
+              style="width:100%; padding:0.5rem 0.75rem; border:1px solid var(--border); border-radius:var(--r-md);
+                     font-family:var(--font-mono); font-size:0.9375rem; color:var(--ink);
+                     background:var(--surface); outline:none; text-transform:uppercase; letter-spacing:0.04em;"
+              oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')"
+            >
+            <div class="hint">Your on-air callsign. Changing this renames your account across all planning groups and records.</div>
+          </div>
+        <?php else: ?>
+          <div style="margin-bottom:1rem;">
+            <div style="font-size:0.82rem; font-weight:600; color:var(--ink-2); margin-bottom:0.35rem;">Primary callsign</div>
+            <div style="font-family:var(--font-mono); font-size:0.9375rem; color:var(--ink); letter-spacing:0.04em;
+                        padding:0.5rem 0.75rem; background:var(--bg-2); border:1px solid var(--border);
+                        border-radius:var(--r-md);"><?= htmlspecialchars($current_user) ?></div>
+            <div class="hint">Logged in via early access — callsign is set at login.</div>
+          </div>
+        <?php endif; ?>
+
+        <div>
+          <label class="section-label" style="margin-bottom:0.35rem; display:block; text-transform:none; font-size:0.82rem; color:var(--ink-2); font-weight:600;">
+            Additional callsigns <span style="font-weight:400; color:var(--ink-4);">(optional)</span>
+          </label>
+          <input
+            type="text"
+            name="additional_callsigns"
+            value="<?= htmlspecialchars($additional_callsigns) ?>"
+            placeholder="e.g., W6CMY, KI6CR/VK3"
+            autocapitalize="characters" autocorrect="off" spellcheck="false"
+            style="width:100%; padding:0.5rem 0.75rem; border:1px solid var(--border); border-radius:var(--r-md);
+                   font-family:var(--font-mono); font-size:0.9375rem; color:var(--ink);
+                   background:var(--surface); outline:none; text-transform:uppercase; letter-spacing:0.02em;"
+            oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9\/,\s]/g,'')"
+          >
+          <div class="hint">Other calls you operate under — club callsigns, portable calls, etc. Separate with commas. Stored for reference.</div>
+        </div>
+      </div>
+
+    </div>
+
+    <button type="submit" name="save_callsigns" class="btn-save">Save Callsigns</button>
+  </form>
 
 <footer style="text-align:center; padding:2rem 1rem 1.5rem; color:var(--ink-4); font-size:0.78rem;">
   SOTA Planner &nbsp;·&nbsp;
