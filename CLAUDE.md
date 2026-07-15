@@ -182,6 +182,16 @@ Keycloak OIDC endpoints (already hardcoded in `oauth_callback.php`):
 - Token: `https://sso.sota.org.uk/auth/realms/SOTA/protocol/openid-connect/token`
 - UserInfo: `https://sso.sota.org.uk/auth/realms/SOTA/protocol/openid-connect/userinfo`
 
+**SSO is locked to sotaplanner.com only** — the SOTA team has only whitelisted the production redirect URI. Testing SSO via staging (christopherreddick.com/sotaplanner) is not possible.
+
+**JWT token claims:** SOTA's Keycloak does NOT include a custom `callsign` claim (unlike SOTLAS, which has a special realm config). `preferred_username` is present in both the `id_token` and `access_token` payloads, and `oauth_callback.php` reads the callsign from the decoded `id_token` JWT — no UserInfo endpoint call needed. (`SOTA_USERINFO_URL` is still defined but no longer called — kept only for reference.)
+
+**Callsign from SSO — not solved yet. Two next steps:**
+
+1. **Email VK3ARR** and request that a verified `callsign` claim be added to the JWT for the `sotaplanner` client (the same way SOTLAS has it). This is the clean solution — the callsign would come back signed in the token and no prompt would be needed.
+
+2. **Fix the auto-confirm bug in `oauth_callback.php`** — the current code silently auto-confirms `preferred_username` as the callsign if it matches `/^[A-Z0-9]{3,10}$/i`. This is wrong: a username like `JOHN123` or `BOB2024` would pass and get incorrectly confirmed as a callsign. Until we have a verified `callsign` claim, SSO users with unconfirmed callsigns should always go through `callsign_confirm.php` — remove the auto-confirm shortcut.
+
 The login button on `login.php` is active when `SOTA_CLIENT_ID` is defined. Client secret is optional — omitted from token exchange if `SOTA_CLIENT_SECRET` is not defined.
 
 ---

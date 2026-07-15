@@ -124,28 +124,26 @@ if (isset($_GET['code'])) {
         die('Login failed: no access token received.');
     }
 
-    // Fetch user profile from userinfo endpoint
-    $ch = curl_init(SOTA_USERINFO_URL);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HTTPHEADER     => ['Authorization: Bearer ' . $tokens['access_token']],
-        CURLOPT_SSL_VERIFYPEER => true,
-    ]);
-    $userinfo_raw = curl_exec($ch);
-    curl_close($ch);
-
-    $userinfo = json_decode($userinfo_raw, true);
-    if ($debug) {
-        echo "<pre>USERINFO RESPONSE:\n" . htmlspecialchars(json_encode($userinfo, JSON_PRETTY_PRINT)) . "</pre>";
+    // Decode id_token JWT payload — preferred_username is in the token, no UserInfo round-trip needed.
+    // SOTA's realm does not include a custom "callsign" claim; preferred_username is the callsign (lowercase).
+    $id_token_parts = explode('.', $tokens['id_token'] ?? '');
+    $id_payload = [];
+    if (count($id_token_parts) === 3) {
+        $raw  = str_replace(['-', '_'], ['+', '/'], $id_token_parts[1]);
+        $json = base64_decode(str_pad($raw, strlen($raw) + (4 - strlen($raw) % 4) % 4, '='));
+        $id_payload = ($json && ($decoded = json_decode($json, true))) ? $decoded : [];
     }
 
-    // Callsign is the preferred_username in SOTA's Keycloak
-    $callsign = strtoupper(trim($userinfo['preferred_username'] ?? $userinfo['sub'] ?? ''));
+    if ($debug) {
+        echo "<pre>ID_TOKEN PAYLOAD:\n" . htmlspecialchars(json_encode($id_payload, JSON_PRETTY_PRINT)) . "</pre>";
+    }
+
+    $callsign = strtoupper(trim($id_payload['preferred_username'] ?? ''));
 
     if (empty($callsign)) {
-        error_log("SOTA userinfo missing callsign: $userinfo_raw");
+        error_log("SOTA id_token missing preferred_username: " . json_encode($id_payload));
         if ($debug) {
-            die("<pre>NO CALLSIGN IN USERINFO\nFull userinfo: " . htmlspecialchars($userinfo_raw) . "</pre>");
+            die("<pre>NO CALLSIGN IN ID_TOKEN\nDecoded payload: " . htmlspecialchars(json_encode($id_payload, JSON_PRETTY_PRINT)) . "</pre>");
         }
         die('Login failed: could not retrieve callsign from SOTA account.');
     }
@@ -161,8 +159,8 @@ if (isset($_GET['code'])) {
     $_SESSION['sota_id_token']              = $tokens['id_token'] ?? null;
     $_SESSION['sota_refresh_token']         = $tokens['refresh_token'] ?? null;
     $_SESSION['sota_token_expires']         = time() + ($tokens['expires_in'] ?? 300);
-    $_SESSION['sota_sso_sub']               = $userinfo['sub'] ?? null;
-    $_SESSION['sota_sso_preferred_username'] = $userinfo['preferred_username'] ?? null;
+    $_SESSION['sota_sso_sub']               = $id_payload['sub'] ?? null;
+    $_SESSION['sota_sso_preferred_username'] = $id_payload['preferred_username'] ?? null;
 
     // Check if this user has confirmed their callsign yet
     $stmt = $db->prepare("SELECT callsign_confirmed FROM users WHERE callsign = ?");
@@ -171,13 +169,13 @@ if (isset($_GET['code'])) {
     if (!$user_row || !(int)$user_row['callsign_confirmed']) {
         // If the SSO username itself looks like a valid callsign, auto-confirm silently —
         // no need to interrupt the user with a confirmation page.
-        $sso_username = $userinfo['preferred_username'] ?? '';
+        $sso_username = $id_payload['preferred_username'] ?? '';
         if (preg_match('/^[A-Z0-9]{3,10}$/i', $sso_username)) {
             $db->prepare("
                 INSERT INTO users (callsign, callsign_confirmed, sso_sub)
                 VALUES (?, 1, ?)
                 ON DUPLICATE KEY UPDATE callsign_confirmed = 1, sso_sub = VALUES(sso_sub)
-            ")->execute([$callsign, $userinfo['sub'] ?? null]);
+            ")->execute([$callsign, $id_payload['sub'] ?? null]);
         } else {
             header('Location: callsign_confirm.php');
             exit;
