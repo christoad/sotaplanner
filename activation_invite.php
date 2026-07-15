@@ -153,6 +153,24 @@ if ($gpx && $gpx['use_for_hike_time']) {
     }
 }
 
+// Distance/elevation for display — mirror summit_detail.php's source-of-truth logic
+// (prefer live GPX track over the stale/manual summits.hike_distance_mi column,
+// applying the same one-way doubling used for hike time above)
+if ($gpx && $gpx['use_for_hike_time'] && $gpx['total_distance'] > 0) {
+    $dist_km_display = $gpx['total_distance'];
+    if ($one_way) $dist_km_display *= 2;
+    $distance_display_mi = round($dist_km_display * 0.621371, 2);
+} else {
+    $distance_display_mi = $pa['hike_distance_mi'];
+}
+if ($gpx && $gpx['use_for_elevation']) {
+    $elevation_gain_display = ($track_type === 'descent')
+        ? $gpx['elevation_loss'] * 3.28084
+        : $gpx['elevation_gain'] * 3.28084;
+} else {
+    $elevation_gain_display = $pa['hike_elevation_gain_ft'];
+}
+
 if ($hike_time_total > 0) {
     $hike_up_min   = intval(round($hike_time_total * 0.6));
     $hike_down_min = $hike_time_total - $hike_up_min;
@@ -231,12 +249,12 @@ $cell_info = isset($cell_labels[$pa['cell_service']]) ? $cell_labels[$pa['cell_s
 
 // Distance/elevation display
 if ($units === 'metric') {
-    $dist_display = $pa['hike_distance_mi'] ? round($pa['hike_distance_mi'] * 1.60934, 1) . ' km' : null;
-    $gain_display = $pa['hike_elevation_gain_ft'] ? round($pa['hike_elevation_gain_ft'] * 0.3048) . ' m gain' : null;
+    $dist_display = $distance_display_mi ? round($distance_display_mi * 1.60934, 1) . ' km' : null;
+    $gain_display = $elevation_gain_display ? round($elevation_gain_display * 0.3048) . ' m gain' : null;
     $elev_display = $pa['elevation_m'] ? number_format($pa['elevation_m']) . ' m' : null;
 } else {
-    $dist_display = $pa['hike_distance_mi'] ? $pa['hike_distance_mi'] . ' mi' : null;
-    $gain_display = $pa['hike_elevation_gain_ft'] ? number_format($pa['hike_elevation_gain_ft']) . ' ft gain' : null;
+    $dist_display = $distance_display_mi ? $distance_display_mi . ' mi' : null;
+    $gain_display = $elevation_gain_display ? number_format($elevation_gain_display) . ' ft gain' : null;
     $elev_display = $pa['elevation_ft'] ? number_format($pa['elevation_ft']) . ' ft' : null;
 }
 
