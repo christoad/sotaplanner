@@ -230,12 +230,26 @@ session_start();
         <p>Release history and update notes for SOTA Planner</p>
     </div>
 
-    <!-- v1.5.5 -->
+    <!-- v1.5.6 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.5.6</span>
+            <span class="version-date">July 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Richer dashboard map hover cards.</p>
+        <ul>
+            <li>Hovering a summit on the dashboard map now shows a points badge, plus a breakdown of drive time and hike time alongside the total</li>
+            <li>Summits without hike research no longer show a misleading time on the map — they're marked "+ Research" instead</li>
+            <li>Summits you've already activated this year now appear faded on the map so they stand out as done</li>
+        </ul>
+    </div>
+
+    <!-- v1.5.5 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.5.5</span>
             <span class="version-date">July 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Dashboard filter improvements and Unique Summits toggle.</p>
         <ul>

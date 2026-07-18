@@ -395,7 +395,7 @@ foreach ($summits as $sm) {
     }
     $drv = $sm['drive_time_min'] ?? 0;
     $tot = $hike_min + $drv + $activation_time;
-    $has_data = ($hike_min > 0 || $drv > 0);
+    $has_data = ($dist > 0 || $elev > 0);
     $act_yr = $sm['last_activated_date'] && (date('Y', strtotime($sm['last_activated_date'])) == gmdate('Y'));
     if ($act_yr) $badge = 'gray';
     elseif ($sm['status'] === 'ready' || ($sm['status'] === 'activated' && !$act_yr)) $badge = 'green';
@@ -408,6 +408,9 @@ foreach ($summits as $sm) {
         'lat'      => (float)$sm['latitude'],
         'lng'      => (float)$sm['longitude'],
         'label'    => $has_data ? formatTime($tot) : null,
+        'drive'    => $drv > 0 ? formatTime($drv) : null,
+        'hike'     => $has_data ? formatTime($hike_min) : null,
+        'points'   => (int)($sm['points'] ?? 0),
         'badge'    => $badge,
         'url'      => "summit_detail.php?id={$sm['id']}&group={$current_group['id']}",
         'path'     => extractGpxPath($sm['gpx_file_path'] ?? null),
@@ -976,9 +979,17 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
       font-family: 'DM Sans', system-ui, sans-serif;
     }
     .leaflet-tooltip.dash-tip::before { display: none; }
+    .dash-tip-points {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 24px; height: 24px; border-radius: 50%;
+      color: #fff; font-size: 0.75rem; font-weight: 800;
+      margin-bottom: 4px;
+    }
     .dash-tip-ref  { font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--ink-3); margin-bottom: 3px; }
     .dash-tip-name { font-size: 0.875rem; font-weight: 600; color: var(--ink); margin-bottom: 5px; line-height: 1.25; }
     .dash-tip-time { font-size: 0.8rem; font-weight: 700; color: var(--accent); }
+    .dash-tip-breakdown { font-size: 0.7rem; color: var(--ink-3); margin-top: 3px; display: flex; align-items: center; gap: 5px; }
+    .dash-tip-dot { color: var(--ink-4); }
     </style>
 </head>
 <body>
@@ -1787,6 +1798,11 @@ const DASH_SUMMITS = <?= $map_json ?>;
 
 let dashMap = null;
 
+const SOTA_POINTS_COLORS = { 0: '#a0a0a0', 1: '#4d7a20', 2: '#6da536', 4: '#aea727', 6: '#efa818', 8: '#dc5d04', 10: '#c8101e' };
+function pointsColor(points) {
+    return SOTA_POINTS_COLORS[points] || '#a0a0a0';
+}
+
 function initDashMap() {
     const container = document.getElementById('dash-map');
     if (!container) return;
@@ -1827,16 +1843,28 @@ function initDashMap() {
             iconAnchor: [0, 0]
         });
 
-        const marker = L.marker([s.lat, s.lng], { icon: icon }).addTo(dashMap);
+        const marker = L.marker([s.lat, s.lng], {
+            icon: icon,
+            opacity: s.badge === 'gray' ? 0.45 : 1
+        }).addTo(dashMap);
+
+        const tipPoints = '<div class="dash-tip-points" style="background:' + pointsColor(s.points) + '">' + s.points + '</div>';
 
         const tipTime = s.label
             ? '<div class="dash-tip-time">' + s.label + ' total</div>'
             : '<div class="dash-tip-time" style="color:var(--ink-3)">Add research for time estimate</div>';
 
+        const breakdownParts = [];
+        breakdownParts.push('<span>Drive ' + (s.drive || '—') + '</span>');
+        breakdownParts.push('<span>Hike ' + (s.hike || '—') + '</span>');
+        const tipBreakdown = '<div class="dash-tip-breakdown">' + breakdownParts.join('<span class="dash-tip-dot">·</span>') + '</div>';
+
         marker.bindTooltip(
+            tipPoints +
             '<div class="dash-tip-ref">' + s.ref + '</div>' +
             '<div class="dash-tip-name">' + s.name + '</div>' +
-            tipTime,
+            tipTime +
+            tipBreakdown,
             { direction: 'top', offset: [0, -6], className: 'dash-tip', sticky: false }
         );
 
