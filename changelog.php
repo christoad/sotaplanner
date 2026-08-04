@@ -230,12 +230,38 @@ session_start();
         <p>Release history and update notes for SOTA Planner</p>
     </div>
 
-    <!-- v1.5.6 -->
+    <!-- v1.5.8 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.5.8</span>
+            <span class="version-date">August 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">"Trailhead" and "Drive Time" now work for public transit too.</p>
+        <ul>
+            <li>"Trailhead" is now "Starting Point" throughout the app — it could be a trailhead, a parking lot, or a transit stop, wherever your journey to the summit begins</li>
+            <li>"Drive Time" is now "Travel Time," and the "Directions" links to Google Maps no longer force driving mode — Google will offer transit, walking, and driving options, which is handy for activations reached by train or bus</li>
+        </ul>
+    </div>
+
+    <!-- v1.5.7 -->
+    <div class="version-block">
+        <div class="version-header">
+            <span class="version-number">v1.5.7</span>
+            <span class="version-date">July 2026</span>
+        </div>
+        <p class="version-desc">Planning Groups are now called Dashboards.</p>
+        <ul>
+            <li>"Planning Groups" has been renamed "Dashboards" throughout the app — same feature, clearer name for the workspace that holds your summit list, addresses, and members</li>
+            <li>The "Groups & Addresses" page is now "Manage Dashboards"</li>
+        </ul>
+    </div>
+
+    <!-- v1.5.6 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.5.6</span>
             <span class="version-date">July 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Richer dashboard map hover cards.</p>
         <ul>

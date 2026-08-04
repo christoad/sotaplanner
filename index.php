@@ -36,7 +36,7 @@ if (!getCurrentPlanningGroup($db) && !empty($_COOKIE['sota_default_group'])) {
 if (isset($_POST['select_planning_group'])) {
     $group_id = (int)$_POST['planning_group_id'];
     setCurrentPlanningGroup($group_id);
-    $message = "Planning group switched!";
+    $message = "Dashboard switched!";
 }
 
 // Handle set default group
@@ -45,7 +45,7 @@ if (isset($_POST['set_default_group'])) {
     setcookie('sota_default_group', $group_id, time() + 60 * 60 * 24 * 365, '/');
     $_COOKIE['sota_default_group'] = $group_id;
     setCurrentPlanningGroup($group_id);
-    $message = "⭐ Default group saved — this group will load automatically next time.";
+    $message = "⭐ Default dashboard saved — this dashboard will load automatically next time.";
 }
 
 // Handle address selection
@@ -79,7 +79,7 @@ if (isset($_POST['calculate_drive_times'])) {
     $current_group = getCurrentPlanningGroup($db);
     
     if (!$current_group) {
-        $message = "Please select a planning group first";
+        $message = "Please select a dashboard first";
     } else {
         $selected_address = getSelectedAddress($db);
         
@@ -121,12 +121,12 @@ if (isset($_POST['calculate_drive_times'])) {
                 }
                 
                 if ($updated > 0) {
-                    $message = "Drive times updated for $updated summit(s) in {$current_group['name']}!";
+                    $message = "Travel times updated for $updated summit(s) in {$current_group['name']}!";
                     if ($failed > 0) {
                         $message .= " ($failed failed - check API key)";
                     }
                 } else {
-                    $message = "Failed to calculate drive times. Check your Google Maps API key and quota.";
+                    $message = "Failed to calculate travel times. Check your Google Maps API key and quota.";
                 }
             }
         }
@@ -1005,7 +1005,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
 
     <div class="topbar-context">
         <div class="ctx-group">
-            <span class="ctx-label">Group</span>
+            <span class="ctx-label">Dashboard</span>
             <form method="POST" style="display:contents">
                 <select name="planning_group_id" class="select-inline" onchange="this.form.submit()">
                     <?php foreach ($all_groups as $group): ?>
@@ -1021,7 +1021,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                 <input type="hidden" name="default_group_id" value="<?= $current_group['id'] ?>">
                 <button type="submit"
                         class="star-btn <?= (!empty($_COOKIE['sota_default_group']) && (int)$_COOKIE['sota_default_group'] === $current_group['id']) ? 'active' : '' ?>"
-                        title="Set as default group">★</button>
+                        title="Set as default dashboard">★</button>
             </form>
         </div>
 
@@ -1059,7 +1059,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
 
     <div class="topbar-right">
         <nav class="topbar-nav">
-            <a href="planning_groups.php">Planning Groups</a>
+            <a href="planning_groups.php">Manage Dashboards</a>
             <a href="about.php">About</a>
             <a href="#" onclick="document.getElementById('howModal').style.display='flex'; return false;">How It Works</a>
         </nav>
@@ -1075,7 +1075,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                 <?php if (($_SESSION['sota_callsign'] ?? '') === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
                     <a href="god_mode.php">God Mode</a>
                 <?php endif; ?>
-                <a href="planning_groups.php" class="dropdown-mobile-only">Planning Groups</a>
+                <a href="planning_groups.php" class="dropdown-mobile-only">Manage Dashboards</a>
                 <a href="user_settings.php">Settings</a>
                 <a href="logout.php">Sign Out</a>
             </div>
@@ -1107,7 +1107,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     <?php if (!empty($_GET['bulk_nominated'])): ?>
     <?php $bn = (int)$_GET['bulk_nominated']; ?>
     <div class="msg msg-success" style="margin-bottom:1rem;">
-        <span><?= $bn ?> summit<?= $bn !== 1 ? 's' : '' ?> added to your group.</span>
+        <span><?= $bn ?> summit<?= $bn !== 1 ? 's' : '' ?> added to your dashboard.</span>
         <button class="msg-dismiss" onclick="this.parentElement.remove()">×</button>
     </div>
     <?php endif; ?>
@@ -1166,7 +1166,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
             <?php if ($selected_address && GOOGLE_MAPS_API_KEY !== 'YOUR_API_KEY_HERE'): ?>
                 <div class="toolbar-sep"></div>
                 <form method="POST" style="margin:0">
-                    <button type="submit" name="calculate_drive_times" class="btn btn-ghost btn-sm">Recalculate Drive Times</button>
+                    <button type="submit" name="calculate_drive_times" class="btn btn-ghost btn-sm">Recalculate Travel Times</button>
                 </form>
             <?php endif; ?>
         </div>
@@ -1236,7 +1236,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                             Hike (RT) <span class="sort-icon"><?= $sort_by === 'hike_time' ? ($sort_order === 'ASC' ? '↑' : '↓') : '↕' ?></span>
                         </th>
                         <th class="<?= $sort_by === 'drive_time' ? 'sorted' : '' ?> td-hide-mobile text-right" onclick="sortTable('drive_time')">
-                            Drive (RT) <span class="sort-icon"><?= $sort_by === 'drive_time' ? ($sort_order === 'ASC' ? '↑' : '↓') : '↕' ?></span>
+                            Travel (RT) <span class="sort-icon"><?= $sort_by === 'drive_time' ? ($sort_order === 'ASC' ? '↑' : '↓') : '↕' ?></span>
                         </th>
                         <th class="<?= $sort_by === 'total_time' ? 'sorted' : '' ?> text-right" onclick="sortTable('total_time')">
                             Total Time <span class="sort-icon"><?= $sort_by === 'total_time' ? ($sort_order === 'ASC' ? '↑' : '↓') : '↕' ?></span>
@@ -1306,7 +1306,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                         // Mobile stats strip
                         $mobile_parts = array_filter([
                             $hike_time_total ? 'Hike ' . formatTime($hike_time_total) : null,
-                            $drive_time      ? 'Drive ' . formatTime($drive_time) : null,
+                            $drive_time      ? 'Travel ' . formatTime($drive_time) : null,
                             $distance_display_mi ? convertDistance($distance_display_mi, $user_units) . ' ' . getDistanceUnit($user_units) : null,
                             $elevation_for_display ? number_format(convertElevation($elevation_for_display, $user_units)) . ' ' . getElevationUnit($user_units) . ' gain' : null,
                         ]);
@@ -1405,7 +1405,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
         <h2 style="margin-bottom:var(--sp-5)">How SOTA Planner Works</h2>
 
         <p class="hiw-section">What This Tool Does</p>
-        <p style="font-size:0.9rem; color:var(--ink-2); margin-bottom:var(--sp-5); line-height:1.7">SOTA Planner helps your group plan activations from door to door — not just the hike. It combines drive time, hiking time, and radio time into a single total-day estimate so you can compare summits and pick the right one for your available time.</p>
+        <p style="font-size:0.9rem; color:var(--ink-2); margin-bottom:var(--sp-5); line-height:1.7">SOTA Planner helps you plan activations from door to door — not just the hike. It combines travel time, hiking time, and radio time into a single total-day estimate so you can compare summits and pick the right one for your available time.</p>
 
         <p class="hiw-section">The Summit List</p>
         <ul class="hiw-list">
@@ -1413,7 +1413,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
             <li><strong>Distance</strong> — round-trip hiking distance. From GPS track if one is loaded, otherwise manually entered.</li>
             <li><strong>Gain</strong> — total elevation gained on the approach.</li>
             <li><strong>Hike Time</strong> — round-trip hiking time. From GPS timestamps if available; otherwise Naismith's rule.</li>
-            <li><strong>Drive Time</strong> — round-trip drive from your selected address to the trailhead, via Google Maps.</li>
+            <li><strong>Travel Time</strong> — round-trip travel from your selected address to the starting point, via Google Maps.</li>
             <li><strong>Total Time</strong> — hike + drive + your planned activation time. Full door-to-door estimate.</li>
         </ul>
 
@@ -1421,11 +1421,11 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
         <ul class="hiw-list">
             <li><strong>Activation time</strong> — how long you plan to operate from the summit. Adjusts Total Time for all summits.</li>
             <li><strong>Status filters</strong> — show/hide summits by workflow stage.</li>
-            <li><strong>Recalculate Drive Times</strong> — re-query Google Maps for all summits in your list.</li>
+            <li><strong>Recalculate Travel Times</strong> — re-query Google Maps for all summits in your list.</li>
         </ul>
 
-        <p class="hiw-section">Planning Groups</p>
-        <p style="font-size:0.9rem; color:var(--ink-2); margin-bottom:var(--sp-5); line-height:1.7">Each group has its own summit list, addresses, and settings. Switch groups in the top bar. Groups let different clubs or styles maintain separate lists while sharing the same tool.</p>
+        <p class="hiw-section">Dashboards</p>
+        <p style="font-size:0.9rem; color:var(--ink-2); margin-bottom:var(--sp-5); line-height:1.7">Each dashboard has its own summit list, addresses, and settings. Switch dashboards in the top bar. Dashboards let different clubs or styles maintain separate lists while sharing the same tool.</p>
 
         <p class="hiw-section">Adding Summits</p>
         <p style="font-size:0.9rem; color:var(--ink-2); line-height:1.7">Click <strong>+ Nominate Summit</strong> to add a summit by SOTA reference. Coordinates and points pull from the SOTA database automatically. Use the summit detail page to add trail info, upload a GPX track, and log activations.</p>
@@ -1614,17 +1614,17 @@ var STEPS = [
     {
         sel: null,
         title: "Welcome to your dashboard!",
-        body:  "Your planning group is all set up. Let me show you the key parts of the dashboard so you can hit the ground running.",
+        body:  "Your dashboard is all set up. Let me show you the key parts so you can hit the ground running.",
     },
     {
         sel: '.topbar-context',
-        title: "Your planning group",
-        body:  "Your active group and starting address live here. Switch groups or addresses anytime — drive times and totals update automatically.",
+        title: "Your active dashboard",
+        body:  "Your active dashboard and starting address live here. Switch dashboards or addresses anytime — travel times and totals update automatically.",
     },
     {
         sel: '.topbar-nav a[href="planning_groups.php"]',
-        title: "Manage your group",
-        body:  "Planning Groups is where you add friends as co-activators, set up additional groups, and manage your starting addresses. Everything's editable anytime.",
+        title: "Manage your dashboards",
+        body:  "Manage Dashboards is where you add friends as co-activators, set up additional dashboards, and manage your starting addresses. Everything's editable anytime.",
     },
     {
         sel: 'a[href="nominate.php"].btn',
@@ -1639,7 +1639,7 @@ var STEPS = [
     {
         sel: null,
         title: "You're all set!",
-        body:  "Click any summit row to open its full detail page — interactive map, elevation chart, GPX upload, and planning tools. Manage your group anytime from Planning Groups in the nav.",
+        body:  "Click any summit row to open its full detail page — interactive map, elevation chart, GPX upload, and planning tools. Manage your dashboard anytime from Manage Dashboards in the nav.",
         final: true,
     },
 ];
@@ -1855,7 +1855,7 @@ function initDashMap() {
             : '<div class="dash-tip-time" style="color:var(--ink-3)">Add research for time estimate</div>';
 
         const breakdownParts = [];
-        breakdownParts.push('<span>Drive ' + (s.drive || '—') + '</span>');
+        breakdownParts.push('<span>Travel ' + (s.drive || '—') + '</span>');
         breakdownParts.push('<span>Hike ' + (s.hike || '—') + '</span>');
         const tipBreakdown = '<div class="dash-tip-breakdown">' + breakdownParts.join('<span class="dash-tip-dot">·</span>') + '</div>';
 

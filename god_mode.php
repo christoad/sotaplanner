@@ -88,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $db->prepare("DELETE FROM summits WHERE planning_group_id = ?")->execute([$gid]);
             $db->prepare("DELETE FROM planning_group_members WHERE planning_group_id = ?")->execute([$gid]);
             $db->prepare("DELETE FROM planning_groups WHERE id = ?")->execute([$gid]);
-            $message = "Group deleted.";
+            $message = "Dashboard deleted.";
         }
     }
 
@@ -158,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $gid = (int)$_POST['group_id'];
         if ($gid) {
             $db->prepare("UPDATE summits SET drive_time_min = NULL WHERE planning_group_id = ?")->execute([$gid]);
-            $message = "Drive times cleared — they'll recalculate on next visit.";
+            $message = "Travel times cleared — they'll recalculate on next visit.";
         }
     }
 
@@ -280,6 +280,23 @@ $la_rows = $db->query("
 $last_activity = [];
 foreach ($la_rows as $r) $last_activity[$r['actor']] = $r['last_activity'];
 
+// activity_log captures a broader, fresher set of events (edits, trailhead changes,
+// activation scheduling, etc.) — merge it in, keeping whichever timestamp is newer.
+try {
+    $al_rows = $db->query("
+        SELECT callsign AS actor, MAX(event_time) AS last_activity
+        FROM activity_log
+        GROUP BY callsign
+    ")->fetchAll();
+    foreach ($al_rows as $r) {
+        if (!isset($last_activity[$r['actor']]) || strtotime($r['last_activity']) > strtotime($last_activity[$r['actor']])) {
+            $last_activity[$r['actor']] = $r['last_activity'];
+        }
+    }
+} catch (PDOException $e) {
+    // activity_log table not yet created — fall back to the derived query above
+}
+
 // Try the structured activity_log table first; fall back to derived query if table doesn't exist yet
 try {
     $activity_feed = $db->query("
@@ -296,7 +313,9 @@ try {
 }
 
 // ── Cron log reader ──────────────────────────────────────────────────────────
-$cron_log_path   = dirname(__DIR__) . '/sota_logs/gpx_cron.log';
+$cron_log_path   = file_exists(dirname(__DIR__) . '/sota_logs/gpx_cron.log')
+    ? dirname(__DIR__) . '/sota_logs/gpx_cron.log'
+    : dirname(dirname(__DIR__)) . '/sota_logs/gpx_cron.log';
 $cron_log_lines  = [];
 $cron_last_run   = null;
 $cron_last_stats = null;
@@ -334,7 +353,7 @@ if (is_dir($gpx_dir)) {
 }
 
 $active_tab = $_GET['tab'] ?? 'overview';
-$tabs = ['overview' => 'Overview', 'users' => 'Users', 'groups' => 'Groups', 'activity' => 'Activity', 'data' => 'Data Tools', 'cleanup' => 'Cleanup', 'api' => 'API Status'];
+$tabs = ['overview' => 'Overview', 'users' => 'Users', 'groups' => 'Dashboards', 'activity' => 'Activity', 'data' => 'Data Tools', 'cleanup' => 'Cleanup', 'api' => 'API Status'];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -534,7 +553,7 @@ select.form-input { cursor: pointer; }
             </div>
             <div class="stat-card">
                 <div class="stat-num"><?= $stats['groups'] ?></div>
-                <div class="stat-label">Groups</div>
+                <div class="stat-label">Dashboards</div>
             </div>
             <div class="stat-card">
                 <div class="stat-num"><?= $stats['summits'] ?></div>
@@ -554,7 +573,7 @@ select.form-input { cursor: pointer; }
         <div class="section-head">
             <div>
                 <h2>Sitewide Notice</h2>
-                <p>Posts a banner on the dashboard and planning groups page for all logged-in users.</p>
+                <p>Posts a banner on the dashboard and Manage Dashboards page for all logged-in users.</p>
             </div>
         </div>
         <div class="card">
@@ -623,7 +642,7 @@ select.form-input { cursor: pointer; }
                 <thead>
                     <tr>
                         <th>Callsign</th>
-                        <th>Groups</th>
+                        <th>Dashboards</th>
                         <th>Last Activity</th>
                         <th class="text-right">Actions</th>
                     </tr>
@@ -662,8 +681,8 @@ select.form-input { cursor: pointer; }
 
         <div class="section-head">
             <div>
-                <h2>All Planning Groups</h2>
-                <p><?= count($groups) ?> groups</p>
+                <h2>All Dashboards</h2>
+                <p><?= count($groups) ?> dashboards</p>
             </div>
         </div>
 
@@ -697,15 +716,15 @@ select.form-input { cursor: pointer; }
                     <?php if ($g['missing_drive'] > 0): ?>
                     <form method="POST" class="inline-form">
                         <input type="hidden" name="group_id" value="<?= $g['id'] ?>">
-                        <button type="submit" name="clear_drive_times" class="btn btn-sm btn-ghost" onclick="return confirm('Clear all drive times for this group?')">
-                            Clear drive times (<?= (int)$g['missing_drive'] ?> missing)
+                        <button type="submit" name="clear_drive_times" class="btn btn-sm btn-ghost" onclick="return confirm('Clear all travel times for this group?')">
+                            Clear travel times (<?= (int)$g['missing_drive'] ?> missing)
                         </button>
                     </form>
                     <?php else: ?>
                     <form method="POST" class="inline-form">
                         <input type="hidden" name="group_id" value="<?= $g['id'] ?>">
-                        <button type="submit" name="clear_drive_times" class="btn btn-sm btn-ghost" onclick="return confirm('Clear all drive times for this group so they recalculate?')">
-                            Reset drive times
+                        <button type="submit" name="clear_drive_times" class="btn btn-sm btn-ghost" onclick="return confirm('Clear all travel times for this group so they recalculate?')">
+                            Reset travel times
                         </button>
                     </form>
                     <?php endif; ?>
@@ -738,14 +757,14 @@ select.form-input { cursor: pointer; }
                         <input type="text" name="new_owner" class="form-input" placeholder="Callsign" autocapitalize="characters" style="width:130px;">
                     </div>
                     <button type="submit" name="transfer_ownership" class="btn btn-sm btn-ghost"
-                        onclick="return confirm('Transfer ownership of this group?')">Transfer</button>
+                        onclick="return confirm('Transfer ownership of this dashboard?')">Transfer</button>
                 </form>
             </div>
         </div>
         <?php endforeach; ?>
 
         <?php if (empty($groups)): ?>
-            <div class="empty">No planning groups yet.</div>
+            <div class="empty">No dashboards yet.</div>
         <?php endif; ?>
 
     <!-- ── ACTIVITY ── -->
@@ -842,7 +861,7 @@ select.form-input { cursor: pointer; }
                 </div>
                 <div style="background:var(--bg); border:1px solid var(--border); border-radius:var(--r-md); padding:0.75rem 1rem;">
                     <div style="font-size:1.3rem; font-weight:700; color:var(--blue); line-height:1.1;"><?= number_format($gpx_progress['has_trail']) ?></div>
-                    <div style="font-size:0.72rem; color:var(--ink-3); font-weight:600; text-transform:uppercase; letter-spacing:0.05em; margin-top:0.25rem;">With Trailhead</div>
+                    <div style="font-size:0.72rem; color:var(--ink-3); font-weight:600; text-transform:uppercase; letter-spacing:0.05em; margin-top:0.25rem;">With Starting Point</div>
                     <div style="font-size:0.75rem; color:var(--ink-3); margin-top:0.1rem;"><?= $gpx_progress['trail_pct'] ?>% of routes</div>
                 </div>
                 <div style="background:<?= $is_done ? 'var(--green-bg)' : 'var(--accent-bg)' ?>; border:1px solid <?= $is_done ? 'oklch(85% 0.07 155)' : 'var(--accent-border)' ?>; border-radius:var(--r-md); padding:0.75rem 1rem;">
@@ -854,7 +873,7 @@ select.form-input { cursor: pointer; }
 
             <?php if (!$is_done && $remaining > 0): ?>
             <div style="margin-top:var(--sp-3); font-size:0.8rem; color:var(--ink-3); line-height:1.5;">
-                Use the <strong>Batch GPX Import</strong> tool below to continue. When Remaining reaches 0, run <strong>Trailhead Lookup</strong> once, then enable the three DreamHost cron jobs.
+                Use the <strong>Batch GPX Import</strong> tool below to continue. When Remaining reaches 0, run <strong>Starting Point Lookup</strong> once, then enable the three DreamHost cron jobs.
             </div>
             <?php endif; ?>
         </div>
@@ -954,10 +973,10 @@ select.form-input { cursor: pointer; }
         <div class="card" style="margin-bottom:var(--sp-4);">
             <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:var(--sp-6);">
                 <div>
-                    <div style="font-weight:600; font-size:1rem; margin-bottom:0.3rem;">Trailhead Lookup (OpenStreetMap)</div>
+                    <div style="font-weight:600; font-size:1rem; margin-bottom:0.3rem;">Starting Point Lookup (OpenStreetMap)</div>
                     <div style="font-size:0.85rem; color:var(--ink-2); line-height:1.55;">
-                        For summits that are missing trailhead coordinates, queries OpenStreetMap for nearby trailheads and
-                        parking areas. Once a trailhead is found, drive time calculations unlock automatically for that summit.
+                        For summits that are missing starting point coordinates, queries OpenStreetMap for nearby trailheads and
+                        parking areas. Once a starting point is found, travel time calculations unlock automatically for that summit.
                     </div>
                 </div>
                 <a href="admin_trailhead_osm.php" class="btn btn-primary" style="flex-shrink:0;">Open →</a>
@@ -968,7 +987,7 @@ select.form-input { cursor: pointer; }
         <div class="section-head" style="margin-top:var(--sp-8);">
             <div>
                 <h2>Cron Activity Log</h2>
-                <p>Output from the automated GPX and trailhead cron jobs.</p>
+                <p>Output from the automated GPX and starting point cron jobs.</p>
             </div>
             <a href="god_mode.php?tab=data" class="btn btn-ghost btn-sm">Refresh</a>
         </div>
@@ -981,8 +1000,8 @@ select.form-input { cursor: pointer; }
             </div>
             <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md); padding:0.75rem 1rem;">
                 <div style="font-size:0.72rem; font-weight:700; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.35rem;">Nightly · 1:00am</div>
-                <div style="font-size:0.82rem; font-weight:600; color:var(--ink); margin-bottom:0.2rem;">Trailhead Lookup</div>
-                <div style="font-size:0.77rem; color:var(--ink-3); line-height:1.4;">Queries OpenStreetMap for trailhead/parking coordinates for any new routes without one.</div>
+                <div style="font-size:0.82rem; font-weight:600; color:var(--ink); margin-bottom:0.2rem;">Starting Point Lookup</div>
+                <div style="font-size:0.77rem; color:var(--ink-3); line-height:1.4;">Queries OpenStreetMap for starting point/parking coordinates for any new routes without one.</div>
             </div>
             <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md); padding:0.75rem 1rem;">
                 <div style="font-size:0.72rem; font-weight:700; color:var(--green); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.35rem;">Saturday · 12:30am</div>
@@ -1071,8 +1090,8 @@ select.form-input { cursor: pointer; }
         <!-- Missing drive times -->
         <div class="section-head">
             <div>
-                <h2>Drive Time Coverage</h2>
-                <p>Summits with trailhead coordinates but no drive time calculated yet.</p>
+                <h2>Travel Time Coverage</h2>
+                <p>Summits with starting point coordinates but no travel time calculated yet.</p>
             </div>
         </div>
         <div class="card" style="padding:0; overflow:hidden;">
@@ -1086,13 +1105,13 @@ select.form-input { cursor: pointer; }
             ")->fetchAll();
             ?>
             <?php if (empty($drive_gaps)): ?>
-                <div class="empty">All trailheads have drive times calculated.</div>
+                <div class="empty">All starting points have travel times calculated.</div>
             <?php else: ?>
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>Group</th>
-                        <th>Summits missing drive time</th>
+                        <th>Dashboard</th>
+                        <th>Summits missing travel time</th>
                         <th class="text-right">Action</th>
                     </tr>
                 </thead>
@@ -1105,7 +1124,7 @@ select.form-input { cursor: pointer; }
                             <form method="POST" class="inline-form">
                                 <input type="hidden" name="group_id" value="<?= $g['id'] ?>">
                                 <button type="submit" name="clear_drive_times" class="btn btn-sm btn-ghost"
-                                    onclick="return confirm('Reset all drive times for this group?')">Reset all drive times</button>
+                                    onclick="return confirm('Reset all travel times for this group?')">Reset all travel times</button>
                             </form>
                         </td>
                     </tr>
@@ -1245,7 +1264,7 @@ select.form-input { cursor: pointer; }
                     <span style="margin-left:auto; font-size:0.72rem; font-weight:600; color:<?= $dm_ok ? 'var(--green)' : 'var(--red)' ?>; text-transform:uppercase; letter-spacing:0.05em;"><?= $dm_ok ? 'PASS' : 'FAIL' ?></span>
                 </div>
                 <div style="font-size:0.82rem; color:var(--ink-2); line-height:1.5;"><?= htmlspecialchars($dm_msg) ?></div>
-                <div style="font-size:0.75rem; color:var(--ink-3); margin-top:0.5rem;">Used for: drive time from home to trailhead</div>
+                <div style="font-size:0.75rem; color:var(--ink-3); margin-top:0.5rem;">Used for: travel time from home to starting point</div>
             </div>
 
         </div>

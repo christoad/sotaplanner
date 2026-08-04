@@ -158,7 +158,7 @@ html, body { height: 100%; font-family: var(--font-sans); background: var(--bg);
     <div class="stat-item">
       <span class="stat-dot stat-dot-orange"></span>
       <span class="stat-num"><?= number_format($total_in_plans) ?></span>
-      <span class="stat-label">nominated in a planning group</span>
+      <span class="stat-label">nominated in a dashboard</span>
     </div>
     <div class="stat-bar-right" id="zoom-hint">Zoom in to see individual summits &nbsp;&rsaquo;</div>
   </div>

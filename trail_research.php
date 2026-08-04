@@ -535,7 +535,7 @@ $google_maps = "https://www.google.com/maps/search/" . urlencode($summit_name . 
             <div class="msg msg-ok">
               <strong>Found from <?= htmlspecialchars($scraped['source']) ?>:</strong>
               <?php
-              $labels = ['distance_mi'=>'Distance', 'elevation_gain_ft'=>'Elevation Gain', 'difficulty'=>'Difficulty', 'trailhead'=>'Trailhead'];
+              $labels = ['distance_mi'=>'Distance', 'elevation_gain_ft'=>'Elevation Gain', 'difficulty'=>'Difficulty', 'trailhead'=>'Starting Point'];
               foreach ($scraped['fields_found'] as $f) {
                 if (isset($labels[$f])) echo ' <span class="auto-badge">' . $labels[$f] . '</span>';
               }
@@ -613,7 +613,7 @@ $google_maps = "https://www.google.com/maps/search/" . urlencode($summit_name . 
 
           <?php if ($scraped && in_array('trailhead', $scraped['fields_found'] ?? [])): ?>
           <p style="font-size:0.82rem; color:var(--green); margin-bottom:1rem;">
-            Trailhead coordinates captured: <?= $scraped['trailhead_lat'] ?>, <?= $scraped['trailhead_lng'] ?>
+            Starting point coordinates captured: <?= $scraped['trailhead_lat'] ?>, <?= $scraped['trailhead_lng'] ?>
           </p>
           <?php endif; ?>
 

@@ -461,12 +461,12 @@ try {
     <div class="feature">
         <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="16" r="11"/><path d="M8 20 Q12 8 16 14 Q20 20 24 10"/><circle cx="8" cy="20" r="2" fill="#1E3A5F"/><circle cx="24" cy="10" r="2" fill="#1E3A5F"/></svg></span>
         <h3>Community Trail Data</h3>
-        <p>Routes, trailheads, and real-world hiking times contributed by hams who've already activated these summits — preloaded for thousands of peaks. No research required.</p>
+        <p>Routes, starting points, and real-world hiking times contributed by hams who've already activated these summits — preloaded for thousands of peaks. No research required.</p>
     </div>
     <div class="feature">
         <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="17" r="12"/><polyline points="16,10 16,17 21,17"/><path d="M16,5 L16,3"/><path d="M14,3 L18,3"/></svg></span>
         <h3>Total Day Estimate</h3>
-        <p>Drive time + hiking time + radio time = one number. Know exactly what a summit requires — even one you've never visited — before you commit to the day.</p>
+        <p>Travel time + hiking time + radio time = one number. Know exactly what a summit requires — even one you've never visited — before you commit to the day.</p>
     </div>
     <div class="feature">
         <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="13" r="5"/><path d="M16 18 C10 18 5 24 5 28 L27 28 C27 24 22 18 16 18"/><path d="M22 8 C24 6 28 8 26 12"/><path d="M10 8 C8 6 4 8 6 12"/></svg></span>
@@ -476,7 +476,7 @@ try {
     <div class="feature">
         <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="24" height="16" rx="2"/><polyline points="4,8 16,18 28,8"/></svg></span>
         <h3>Shareable Invitations</h3>
-        <p>Generate a public invite page for guests — timeline, map, driving directions, and location sharing. No login required.</p>
+        <p>Generate a public invite page for guests — timeline, map, directions, and location sharing. No login required.</p>
     </div>
 </div>
 
@@ -487,7 +487,7 @@ try {
             <div class="step-num">1</div>
             <div>
                 <strong>Sign in</strong>
-                <p>Log in with your SOTA callsign. Your planning groups are private to you and your invited partners.</p>
+                <p>Log in with your SOTA callsign. Your dashboards are private to you and your invited partners.</p>
             </div>
         </div>
         <div class="how-step">
@@ -501,7 +501,7 @@ try {
             <div class="step-num">3</div>
             <div>
                 <strong>See what you're getting into</strong>
-                <p>Community routes, trailheads, real hiking times, and drive estimates are preloaded — so you can compare summits and pick what fits your schedule.</p>
+                <p>Community routes, starting points, real hiking times, and travel estimates are preloaded — so you can compare summits and pick what fits your schedule.</p>
             </div>
         </div>
         <div class="how-step">

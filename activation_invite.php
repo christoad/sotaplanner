@@ -211,9 +211,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty(trim($_POST['guest_address']
     if ($guest_drive_min !== null) {
         $guest_leave_ts = $hike_start_ts - ($guest_drive_min * 60);
         $guest_directions_url = "https://www.google.com/maps/dir/?api=1&origin=" .
-            urlencode($guest_address) . "&destination=" . $dest_lat . "," . $dest_lng . "&travelmode=driving";
+            urlencode($guest_address) . "&destination=" . $dest_lat . "," . $dest_lng;
     } else {
-        $guest_error = "Couldn't calculate drive time for that address. Try a full street address including city and state.";
+        $guest_error = "Couldn't calculate travel time for that address. Try a full street address including city and state.";
     }
 }
 
@@ -871,7 +871,7 @@ $difficulty_labels = [
 
         <?php if ($hike_down_min > 0): ?>
         <div class="fact-cell">
-            <div class="fact-label">Back at Trailhead</div>
+            <div class="fact-label">Back at Starting Point</div>
             <div class="fact-val"><?= date('g:i A', $back_trailhead_ts) ?></div>
         </div>
         <?php endif; ?>
@@ -938,13 +938,13 @@ $difficulty_labels = [
         $cursor = 0;
         if ($gantt_leave_ts) { $m[] = [$cursor, date('g:i A', $gantt_leave_ts), 'Leave Home']; }
         $cursor += $drive_pct;
-        $m[] = [$cursor, date('g:i A', $hike_start_ts), 'Trailhead'];
+        $m[] = [$cursor, date('g:i A', $hike_start_ts), 'Starting Point'];
         $cursor += $hike_up_pct;
         if ($hike_up_min > 0) { $m[] = [$cursor, date('g:i A', $at_summit_ts), 'Summit']; }
         $cursor += $activation_pct;
         $m[] = [$cursor, date('g:i A', $radio_done_ts), 'Radio Done'];
         $cursor += $hike_down_pct;
-        if ($hike_down_min > 0) { $m[] = [$cursor, date('g:i A', $back_trailhead_ts), 'Trailhead']; }
+        if ($hike_down_min > 0) { $m[] = [$cursor, date('g:i A', $back_trailhead_ts), 'Starting Point']; }
         $cursor += $drive_pct;
         if ($gantt_back_home_ts) { $m[] = [$cursor, date('g:i A', $gantt_back_home_ts), 'Home']; }
         ?>
@@ -961,7 +961,7 @@ $difficulty_labels = [
 
     <div class="gantt-legend">
         <?php if ($show_drive): ?>
-        <div class="legend-item"><div class="legend-dot" style="background:oklch(55% 0.04 50);"></div> Drive (<?= $gantt_drive ?> min each way — your estimate)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:oklch(55% 0.04 50);"></div> Travel (<?= $gantt_drive ?> min each way — your estimate)</div>
         <?php endif; ?>
         <?php if ($hike_up_pct > 0): ?>
         <div class="legend-item"><div class="legend-dot" style="background:var(--green);"></div> Hike Up (<?= $hike_up_min ?> min)</div>
@@ -975,7 +975,7 @@ $difficulty_labels = [
         <?php else: ?>
         <div class="legend-item" style="color:var(--accent); cursor:pointer;"
              onclick="document.getElementById('drive-section').scrollIntoView({behavior:'smooth'}); document.getElementById('guest-address-input').focus({preventScroll:true});">
-            <em>Add your address below to include drive time</em>
+            <em>Add your address below to include travel time</em>
         </div>
         <?php endif; ?>
     </div>
@@ -1020,7 +1020,7 @@ $difficulty_labels = [
 
 <!-- YOUR DRIVE TIME -->
 <div class="section" id="drive-section">
-    <div class="section-title">Calculate Your Drive Time</div>
+    <div class="section-title">Calculate Your Travel Time</div>
     <p style="font-size:0.875rem; color:var(--ink-2); margin-bottom:1rem; line-height:1.6;">
         Add your starting address to personalize the timeline above with your leave time and estimated return.
     </p>
@@ -1047,7 +1047,7 @@ $difficulty_labels = [
     <?php if ($guest_drive_min !== null): ?>
         <div class="drive-result">
             <span class="drive-result-text">
-                <?= formatTime($guest_drive_min) ?> drive — your times are updated above.
+                <?= formatTime($guest_drive_min) ?> travel — your times are updated above.
             </span>
             <a href="<?= htmlspecialchars($guest_directions_url) ?>" target="_blank" class="btn btn-green" style="font-size:0.82rem;">
                 Get Directions ↗
@@ -1056,7 +1056,7 @@ $difficulty_labels = [
     <?php endif; ?>
 
     <p style="font-size:0.75rem; color:var(--ink-4); margin-top:0.75rem;">
-        Drive times calculated via Google Maps. Use nearby cross streets for privacy.
+        Travel times calculated via Google Maps. Use nearby cross streets for privacy.
     </p>
 </div>
 
@@ -1202,7 +1202,7 @@ $difficulty_labels = [
                 html: '<div style="background:var(--green,#2E7D32);color:white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:15px;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3)">P</div>',
                 iconSize:[28,28], className:''
             })
-        }).bindPopup('Trailhead').addTo(map);
+        }).bindPopup('Starting Point').addTo(map);
 
         // Summit marker
         L.marker([<?= $gpx['summit_lat'] ?>, <?= $gpx['summit_lon'] ?>], {
@@ -1462,9 +1462,9 @@ $difficulty_labels = [
 function openTrailheadDirections(lat, lng) {
     var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
     if (isIOS) {
-        window.location = 'maps://maps.apple.com/?daddr=' + lat + ',' + lng + '&dirflg=d';
+        window.location = 'maps://maps.apple.com/?daddr=' + lat + ',' + lng;
     } else {
-        window.open('https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng + '&travelmode=driving', '_blank');
+        window.open('https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng, '_blank');
     }
 }
 </script>

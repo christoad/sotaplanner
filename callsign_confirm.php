@@ -274,7 +274,7 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--ink); 
         </p>
         <p class="hero-body">
             Please confirm the callsign you use for activations — this is how you'll appear in
-            planning groups and activation records. If your username already <em>is</em> your
+            dashboards and activation records. If your username already <em>is</em> your
             callsign, just click Confirm.
         </p>
 

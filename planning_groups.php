@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $dupe = $db->prepare("SELECT id FROM planning_groups WHERE name = ? AND owner_callsign = ?");
                 $dupe->execute([$group_name, $current_callsign]);
                 if ($dupe->fetch()) {
-                    $error = "You already have a group named \"" . htmlspecialchars($group_name) . "\". Choose a different name.";
+                    $error = "You already have a dashboard named \"" . htmlspecialchars($group_name) . "\". Choose a different name.";
                 } else {
                 $stmt = $db->prepare("INSERT INTO planning_groups (name, units, owner_callsign) VALUES (?, ?, ?)");
                 $stmt->execute([$group_name, $user_units, $current_callsign]);
@@ -54,14 +54,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 setCurrentPlanningGroup($new_group_id);
                 $_SESSION['manage_group_id'] = $new_group_id;
 
-                $message = "Planning group created! Add a starting location so we can calculate drive times.";
+                $message = "Dashboard created! Add a starting location so we can calculate travel times.";
                 $open_address_modal = true;
                 } // end else (no duplicate)
             } catch (PDOException $e) {
-                $error = "Error creating group: " . $e->getMessage();
+                $error = "Error creating dashboard: " . $e->getMessage();
             }
         } else {
-            $error = "Group name is required.";
+            $error = "Dashboard name is required.";
         }
     }
 
@@ -105,10 +105,10 @@ if (isset($_POST['select_group'])) {
                 header("Location: index.php");
                 exit;
             } else {
-                $error = "Invalid planning group selected.";
+                $error = "Invalid dashboard selected.";
             }
         } else {
-            $error = "Please select a planning group from the dropdown above.";
+            $error = "Please select a dashboard from the dropdown above.";
         }
     }
 
@@ -186,7 +186,7 @@ if (isset($_POST['select_group'])) {
                 $error = "Error adding member: " . $e->getMessage();
             }
         } else {
-            $error = "You must be a member of this group to add members.";
+            $error = "You must be a member of this dashboard to add members.";
         }
     }
 
@@ -200,7 +200,7 @@ if (isset($_POST['select_group'])) {
         if ($grp && $grp['owner_callsign'] === $current_callsign && $remove_cs !== $current_callsign) {
             $stmt = $db->prepare("DELETE FROM planning_group_members WHERE planning_group_id = ? AND callsign = ? AND role != 'owner'");
             $stmt->execute([$group_id, $remove_cs]);
-            $message = "Removed $remove_cs from the group.";
+            $message = "Removed $remove_cs from the dashboard.";
         } else {
             $error = "Cannot remove yourself (owner) or you don't have permission.";
         }
@@ -214,18 +214,18 @@ if (isset($_POST['select_group'])) {
         $stmt->execute([$group_id]);
         $grp = $stmt->fetch();
         if (!$grp || $grp['owner_callsign'] !== $current_callsign) {
-            $error = "You don't have permission to rename this group.";
+            $error = "You don't have permission to rename this dashboard.";
         } elseif (empty($new_name)) {
-            $error = "Group name cannot be empty.";
+            $error = "Dashboard name cannot be empty.";
         } else {
             $dupe = $db->prepare("SELECT id FROM planning_groups WHERE name = ? AND owner_callsign = ? AND id != ?");
             $dupe->execute([$new_name, $current_callsign, $group_id]);
             if ($dupe->fetch()) {
-                $error = "You already have a group named \"" . htmlspecialchars($new_name) . "\". Choose a different name.";
+                $error = "You already have a dashboard named \"" . htmlspecialchars($new_name) . "\". Choose a different name.";
             } else {
                 $db->prepare("UPDATE planning_groups SET name = ? WHERE id = ? AND owner_callsign = ?")
                    ->execute([$new_name, $group_id, $current_callsign]);
-                $message = "Group renamed to \"" . htmlspecialchars($new_name) . "\".";
+                $message = "Dashboard renamed to \"" . htmlspecialchars($new_name) . "\".";
             }
         }
     }
@@ -243,7 +243,7 @@ if (isset($_POST['select_group'])) {
                ->execute([$multiplier, $group_id]);
             $message = "Pace adjustment saved.";
         } else {
-            $error = "You don't have permission to change this group's settings.";
+            $error = "You don't have permission to change this dashboard's settings.";
         }
     }
 
@@ -254,7 +254,7 @@ if (isset($_POST['select_group'])) {
         $stmt->execute([$group_id]);
         $grp = $stmt->fetch();
         if (!$grp || $grp['owner_callsign'] !== $current_callsign) {
-            $error = "You don't have permission to delete this group.";
+            $error = "You don't have permission to delete this dashboard.";
         } else {
             try {
                 // Get all summit IDs for this group
@@ -298,7 +298,7 @@ if (isset($_POST['select_group'])) {
                 header("Location: planning_groups.php?deleted=1");
                 exit;
             } catch (PDOException $e) {
-                $error = "Error deleting group: " . $e->getMessage();
+                $error = "Error deleting dashboard: " . $e->getMessage();
             }
         }
     }
@@ -378,7 +378,7 @@ $is_first_visit = !$managing_group_id;
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Groups & Addresses — SOTA Planner</title>
+    <title>Manage Dashboards — SOTA Planner</title>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
 :root {
@@ -730,7 +730,7 @@ a:hover { text-decoration: underline; }
     <div class="topbar-divider"></div>
     <div class="topbar-nav">
         <a href="index.php">Dashboard</a>
-        <a href="planning_groups.php" class="active">Groups &amp; Addresses</a>
+        <a href="planning_groups.php" class="active">Manage Dashboards</a>
     </div>
     <div class="topbar-right">
         <div class="user-chip" id="userChip">
@@ -762,15 +762,15 @@ a:hover { text-decoration: underline; }
 <div class="page">
     <div class="page-header">
         <div>
-            <div class="page-title">Groups &amp; Addresses</div>
-            <div class="page-subtitle">Manage planning groups and their starting addresses for drive-time calculations.</div>
+            <div class="page-title">Manage Dashboards</div>
+            <div class="page-subtitle">Manage your dashboards and their starting addresses for travel-time calculations.</div>
         </div>
-        <button class="btn btn-primary" onclick="document.getElementById('createGroupModal').classList.add('open')">+ New Group</button>
+        <button class="btn btn-primary" onclick="document.getElementById('createGroupModal').classList.add('open')">+ New Dashboard</button>
     </div>
 
     <?php if (isset($_GET['deleted'])): ?>
         <div class="msg msg-success">
-            <span>Planning group deleted.</span>
+            <span>Dashboard deleted.</span>
             <button class="msg-dismiss" onclick="this.parentElement.remove()">×</button>
         </div>
     <?php endif; ?>
@@ -795,14 +795,14 @@ a:hover { text-decoration: underline; }
         <div style="flex: 1; min-width: 200px;">
             <div style="font-size: 1rem; font-weight: 800; color: #1E3A5F; margin-bottom: 0.35rem;">Welcome to SOTA Planner, <?= htmlspecialchars($current_callsign) ?>!</div>
             <div style="font-size: 0.875rem; color: #444; line-height: 1.55; margin-bottom: 1rem;">
-                You don't have any planning groups yet. Planning groups are how you organize your summit wishlist — each group can have its own members, addresses, and summits.
+                You don't have any dashboards yet. Dashboards are how you organize your summit wishlist — each dashboard can have its own members, addresses, and summits.
             </div>
             <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
                 <button class="btn btn-primary" onclick="document.getElementById('createGroupModal').classList.add('open')" style="font-size: 0.875rem;">
-                    + Create my first group
+                    + Create my first dashboard
                 </button>
                 <div style="font-size: 0.82rem; color: #666; line-height: 1.4;">
-                    Or, ask a group owner to add your callsign (<strong><?= htmlspecialchars($current_callsign) ?></strong>) to their group — it'll appear here automatically next time you sign in.
+                    Or, ask a dashboard owner to add your callsign (<strong><?= htmlspecialchars($current_callsign) ?></strong>) to their dashboard — it'll appear here automatically next time you sign in.
                 </div>
             </div>
         </div>
@@ -814,7 +814,7 @@ a:hover { text-decoration: underline; }
         <!-- Sidebar: Group list -->
         <div class="card" style="padding: 0.5rem;">
             <div style="padding: 0.5rem 0.75rem 0.375rem; margin-bottom: 0.25rem;">
-                <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3);">Planning Groups</div>
+                <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3);">Dashboards</div>
             </div>
 
             <?php if (count($all_groups) > 0): ?>
@@ -840,7 +840,7 @@ a:hover { text-decoration: underline; }
                 <?php endforeach; ?>
             <?php else: ?>
                 <div style="padding: 1.25rem 1rem; text-align: center; color: var(--ink-3); font-size: 0.875rem;">
-                    No groups yet
+                    No dashboards yet
                 </div>
             <?php endif; ?>
 
@@ -850,7 +850,7 @@ a:hover { text-decoration: underline; }
                     style="color: var(--accent); font-size: 0.85rem; font-weight: 500;"
                     onclick="document.getElementById('createGroupModal').classList.add('open')"
                 >
-                    <span>+ New group</span>
+                    <span>+ New dashboard</span>
                 </button>
             </div>
         </div>
@@ -885,7 +885,7 @@ a:hover { text-decoration: underline; }
                     <?php if ($is_group_owner): ?>
                     <div style="margin-left:auto;">
                         <button class="btn btn-ghost btn-sm" onclick="openDeleteModal()"
-                                style="color:var(--red); border-color:oklch(85% 0.06 22);">Delete Group</button>
+                                style="color:var(--red); border-color:oklch(85% 0.06 22);">Delete Dashboard</button>
                     </div>
                     <?php endif; ?>
                 </div>
@@ -897,7 +897,7 @@ a:hover { text-decoration: underline; }
                 <div class="section-head">
                     <div>
                         <h2>Hike Pace</h2>
-                        <p style="font-size: 0.8rem; color: var(--ink-3); margin-top: 3px;">Scales Naismith estimated hike times up or down for this group's fitness level.</p>
+                        <p style="font-size: 0.8rem; color: var(--ink-3); margin-top: 3px;">Scales Naismith estimated hike times up or down for this dashboard's fitness level.</p>
                     </div>
                 </div>
                 <?php
@@ -933,7 +933,7 @@ a:hover { text-decoration: underline; }
                 <div class="section-head">
                     <div>
                         <h2>Starting Addresses</h2>
-                        <p style="font-size: 0.8rem; color: var(--ink-3); margin-top: 3px;">Drive times are calculated from the current address.</p>
+                        <p style="font-size: 0.8rem; color: var(--ink-3); margin-top: 3px;">Travel times are calculated from the current address.</p>
                     </div>
                     <button class="btn btn-secondary btn-sm" onclick="document.getElementById('addressModal').classList.add('open')">+ Add Address</button>
                 </div>
@@ -942,7 +942,7 @@ a:hover { text-decoration: underline; }
                     <div style="text-align: center; padding: 2rem 1rem; background: var(--bg-2); border-radius: var(--r-md); border: 1px dashed var(--border-2);">
                         <div style="font-size: 1.5rem; margin-bottom: 0.75rem; opacity: 0.3;">📍</div>
                         <div style="font-weight: 500; font-size: 0.9rem; margin-bottom: 0.4rem; color: var(--ink);">No addresses yet</div>
-                        <div style="font-size: 0.8rem; color: var(--ink-3); margin-bottom: 1rem; max-width: 34ch; margin-left: auto; margin-right: auto;">Add a home address, cross street, or any starting point to calculate drive times to summits.</div>
+                        <div style="font-size: 0.8rem; color: var(--ink-3); margin-bottom: 1rem; max-width: 34ch; margin-left: auto; margin-right: auto;">Add a home address, cross street, or any starting point to calculate travel times to summits.</div>
                         <button class="btn btn-secondary btn-sm" onclick="document.getElementById('addressModal').classList.add('open')">Add a Location</button>
                     </div>
                 <?php else: ?>
@@ -989,8 +989,8 @@ a:hover { text-decoration: underline; }
             <div class="card" style="margin-top: 1.25rem;">
                 <div class="section-head">
                     <div>
-                        <h2>Group Members</h2>
-                        <p style="font-size: 0.8rem; color: var(--ink-3); margin-top: 3px;">Members can see this group's summits and addresses when they log in.</p>
+                        <h2>Dashboard Members</h2>
+                        <p style="font-size: 0.8rem; color: var(--ink-3); margin-top: 3px;">Members can see this dashboard's summits and addresses when they log in.</p>
                     </div>
                     <button onclick="document.getElementById('memberModal').classList.add('open')" class="btn btn-secondary btn-sm">+ Add Member</button>
                 </div>
@@ -1012,14 +1012,14 @@ a:hover { text-decoration: underline; }
                                         <input type="hidden" name="remove_callsign" value="<?= htmlspecialchars($mem['callsign']) ?>">
                                         <button type="submit" name="remove_member" class="btn btn-ghost btn-sm"
                                                 style="color: var(--red); border-color: oklch(85% 0.06 22);"
-                                                onclick="return confirm('Remove <?= htmlspecialchars($mem['callsign']) ?> from the group?')">Remove</button>
+                                                onclick="return confirm('Remove <?= htmlspecialchars($mem['callsign']) ?> from the dashboard?')">Remove</button>
                                     </form>
                                 <?php endif; ?>
                             </div>
                         <?php endforeach; ?>
                     </div>
                 <?php else: ?>
-                    <p class="form-hint">No members yet. Add callsigns to share this group.</p>
+                    <p class="form-hint">No members yet. Add callsigns to share this dashboard.</p>
                 <?php endif; ?>
             </div>
         </div>
@@ -1029,13 +1029,13 @@ a:hover { text-decoration: underline; }
         <div class="card" style="text-align: center; padding: 3rem 2rem; color: var(--ink-3);">
             <div style="font-size: 1.5rem; margin-bottom: 0.75rem; opacity: 0.25;">⛰</div>
             <div style="font-weight: 500; font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--ink);">
-                <?= count($all_groups) > 0 ? 'Select a group from the list' : 'Create your first group to get started' ?>
+                <?= count($all_groups) > 0 ? 'Select a dashboard from the list' : 'Create your first dashboard to get started' ?>
             </div>
             <p style="font-size: 0.85rem; max-width: 36ch; margin: 0 auto 1.25rem;">
-                A planning group holds your summit wishlist, addresses, and drive-time calculations.
+                A dashboard holds your summit wishlist, addresses, and travel-time calculations.
             </p>
             <?php if (count($all_groups) === 0): ?>
-                <button class="btn btn-primary" onclick="document.getElementById('createGroupModal').classList.add('open')">Create a Group</button>
+                <button class="btn btn-primary" onclick="document.getElementById('createGroupModal').classList.add('open')">Create a Dashboard</button>
             <?php endif; ?>
         </div>
         <?php endif; ?>
@@ -1051,10 +1051,10 @@ a:hover { text-decoration: underline; }
 <div id="createGroupModal" class="modal-overlay" onclick="if(event.target===this)this.classList.remove('open')">
     <div class="modal-box">
         <button class="modal-close" onclick="document.getElementById('createGroupModal').classList.remove('open')">×</button>
-        <div class="modal-title">Create Planning Group</div>
+        <div class="modal-title">Create Dashboard</div>
         <form method="POST">
             <div class="form-group">
-                <label class="form-label">Group Name</label>
+                <label class="form-label">Dashboard Name</label>
                 <input type="text" name="group_name" class="form-input" placeholder="e.g., KI6CR & Friends, Weekend Warriors" required autofocus>
                 <div class="form-hint">Name it after your crew or callsign</div>
             </div>
@@ -1064,7 +1064,7 @@ a:hover { text-decoration: underline; }
                 <div class="form-hint">Comma-separated. Each callsign will see this group when they log in.</div>
             </div>
             <div style="display: flex; gap: 0.75rem;">
-                <button type="submit" name="create_group" class="btn btn-primary" style="flex: 1;">Create Group</button>
+                <button type="submit" name="create_group" class="btn btn-primary" style="flex: 1;">Create Dashboard</button>
                 <button type="button" class="btn btn-ghost" onclick="document.getElementById('createGroupModal').classList.remove('open')">Cancel</button>
             </div>
         </form>
@@ -1075,7 +1075,7 @@ a:hover { text-decoration: underline; }
 <div id="memberModal" class="modal-overlay" onclick="if(event.target===this)this.classList.remove('open')">
     <div class="modal-box">
         <button class="modal-close" onclick="document.getElementById('memberModal').classList.remove('open')">×</button>
-        <div class="modal-title">Add Group Member</div>
+        <div class="modal-title">Add Dashboard Member</div>
         <?php if ($managing_group): ?>
             <p class="modal-subtitle">For <strong><?= htmlspecialchars($managing_group['name']) ?></strong></p>
         <?php endif; ?>
@@ -1101,7 +1101,7 @@ a:hover { text-decoration: underline; }
         <?php if ($managing_group): ?>
             <p class="modal-subtitle">For <strong><?= htmlspecialchars($managing_group['name']) ?></strong></p>
         <?php endif; ?>
-        <p style="font-size: 0.85rem; color: var(--ink-2); margin-bottom: 1rem; line-height: 1.5;">SOTA Planner uses this to calculate accurate drive time estimates from your starting point to each summit's trailhead — so you can see the full door-to-door time for an activation.</p>
+        <p style="font-size: 0.85rem; color: var(--ink-2); margin-bottom: 1rem; line-height: 1.5;">SOTA Planner uses this to calculate accurate travel time estimates from this address to each summit's starting point — so you can see the full door-to-door time for an activation.</p>
         <form method="POST">
             <div class="form-group">
                 <label class="form-label">Label (optional)</label>
@@ -1149,7 +1149,7 @@ a:hover { text-decoration: underline; }
 <div id="renameGroupModal" class="modal-overlay" onclick="if(event.target===this)this.classList.remove('open')">
     <div class="modal-box">
         <button class="modal-close" onclick="document.getElementById('renameGroupModal').classList.remove('open')">×</button>
-        <div class="modal-title">Rename Group</div>
+        <div class="modal-title">Rename Dashboard</div>
         <form method="POST">
             <div class="form-group">
                 <label class="form-label">New Name</label>
@@ -1168,7 +1168,7 @@ a:hover { text-decoration: underline; }
 <div id="deleteGroupModal" class="modal-overlay" onclick="if(event.target===this)this.classList.remove('open')">
     <div class="modal-box">
         <button class="modal-close" onclick="document.getElementById('deleteGroupModal').classList.remove('open')">×</button>
-        <div class="modal-title" style="color:var(--red);">Delete Group</div>
+        <div class="modal-title" style="color:var(--red);">Delete Dashboard</div>
         <p style="font-size:0.875rem; color:var(--ink-2); margin-bottom:1rem; line-height:1.5;">
             This will permanently delete <strong><?= htmlspecialchars($managing_group['name'] ?? '') ?></strong>
             and all of its data — <?= ($counts ? (int)$counts['total'] : 0) ?> summit<?= ($counts && (int)$counts['total'] !== 1 ? 's' : '') ?>,
@@ -1177,7 +1177,7 @@ a:hover { text-decoration: underline; }
         <form method="POST">
             <input type="hidden" name="delete_group" value="1">
             <div style="display:flex; gap:0.75rem;">
-                <button type="submit" class="btn btn-sm" style="flex:1; background:var(--red); color:#fff; height:36px;">Yes, delete this group</button>
+                <button type="submit" class="btn btn-sm" style="flex:1; background:var(--red); color:#fff; height:36px;">Yes, delete this dashboard</button>
                 <button type="button" class="btn btn-ghost" onclick="document.getElementById('deleteGroupModal').classList.remove('open')">Cancel</button>
             </div>
         </form>

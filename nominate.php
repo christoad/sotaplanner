@@ -971,7 +971,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
   <div class="topbar-divider"></div>
   <div class="topbar-nav">
     <a href="index.php">Dashboard</a>
-    <a href="planning_groups.php">Planning Groups</a>
+    <a href="planning_groups.php">Manage Dashboards</a>
   </div>
   <div class="topbar-right">
     <div class="user-chip" onclick="this.classList.toggle('open')" id="userChip">
@@ -994,7 +994,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
 
   <div style="margin-bottom: 1.5rem;">
     <h1 style="font-size: 1.375rem; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); margin-bottom: 0.25rem;">Nominate a Summit</h1>
-    <p style="font-size: 0.875rem; color: var(--ink-3);">Add one summit or a whole list to your planning group.</p>
+    <p style="font-size: 0.875rem; color: var(--ink-3);">Add one summit or a whole list to your dashboard.</p>
   </div>
 
   <?php if ($message): ?>

@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_group'])) {
     $units = in_array($_POST['units'] ?? '', ['imperial', 'metric']) ? $_POST['units'] : detectUnitsFromCallsign($callsign);
 
     if ($group_name === '') {
-        $error = 'Please give your group a name.';
+        $error = 'Please give your dashboard a name.';
     } else {
         try {
             // Save units as the user's personal preference
@@ -59,9 +59,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_group'])) {
             exit;
         } catch (PDOException $e) {
             if (str_contains($e->getMessage(), 'Duplicate')) {
-                $error = 'That group name is already taken. Please choose a different name.';
+                $error = 'That dashboard name is already taken. Please choose a different name.';
             } else {
-                $error = 'Could not create group. Please try again.';
+                $error = 'Could not create dashboard. Please try again.';
             }
         }
     }
@@ -496,8 +496,8 @@ window.addEventListener('pageshow', snapTopAndFocus);
                 1
             <?php endif; ?>
         </div>
-        <div class="step-label <?= $step > 1 ? 'done' : 'active' ?>">Create Group</div>
-        <div class="step-sublabel <?= $step === 1 ? 'active' : '' ?>">Name your workspace</div>
+        <div class="step-label <?= $step > 1 ? 'done' : 'active' ?>">Create Dashboard</div>
+        <div class="step-sublabel <?= $step === 1 ? 'active' : '' ?>">Name your dashboard</div>
     </div>
 
     <div class="step-connector-wrap">
@@ -523,7 +523,7 @@ window.addEventListener('pageshow', snapTopAndFocus);
     <div class="step-item">
         <div class="step-circle <?= $step >= 3 ? 'active' : '' ?>">3</div>
         <div class="step-label <?= $step >= 3 ? 'active' : '' ?>">Set Location</div>
-        <div class="step-sublabel <?= $step === 3 ? 'active' : '' ?>">For drive times</div>
+        <div class="step-sublabel <?= $step === 3 ? 'active' : '' ?>">For travel times</div>
     </div>
 
 </div>
@@ -537,7 +537,7 @@ window.addEventListener('pageshow', snapTopAndFocus);
 
     <?php if ($step === 1): ?>
     <!-- ═══════════════════════════════════════════════════════════════ -->
-    <!-- STEP 1: Create a Planning Group                                -->
+    <!-- STEP 1: Create a Dashboard                                     -->
     <!-- ═══════════════════════════════════════════════════════════════ -->
     <div class="hero-card">
 
@@ -550,31 +550,31 @@ window.addEventListener('pageshow', snapTopAndFocus);
             </svg>
         </span>
 
-        <h1 class="hero-title">Create your planning group</h1>
+        <h1 class="hero-title">Create your dashboard</h1>
 
         <p class="hero-body">
-            A <strong>planning group</strong> is a single activator, or a team of activators, who
-            collaborate together to find and research summits. Everyone in the group shares the
+            A <strong>dashboard</strong> is a single activator, or a team of activators, who
+            collaborate together to find and research summits. Everyone on the dashboard shares the
             same wishlist — nominating peaks, uploading GPX tracks, adding trail notes, and
             building up research side by side.
         </p>
 
         <p class="hero-body">
-            Solo activators use one group for themselves. Teams name theirs after their crew
-            or callsigns. You can create additional groups later if you activate with
+            Solo activators use one dashboard for themselves. Teams name theirs after their crew
+            or callsigns. You can create additional dashboards later if you activate with
             multiple sets of friends.
         </p>
 
         <div class="hero-note">
-            After setup, you can add co-activators by callsign from the <strong>Planning Groups</strong> page — they'll see all the shared research the next time they log in.
+            After setup, you can add co-activators by callsign from the <strong>Manage Dashboards</strong> page — they'll see all the shared research the next time they log in.
         </div>
 
         <form method="POST">
             <div class="form-section">
-                <div class="form-section-title">Name your group</div>
+                <div class="form-section-title">Name your dashboard</div>
 
                 <div class="form-group">
-                    <label class="form-label" for="group_name">Group name</label>
+                    <label class="form-label" for="group_name">Dashboard name</label>
                     <input
                         type="text"
                         id="group_name"
@@ -609,7 +609,7 @@ window.addEventListener('pageshow', snapTopAndFocus);
             </div>
 
             <button type="submit" name="create_group" class="btn-submit">
-                Create Group &nbsp;→
+                Create Dashboard &nbsp;→
             </button>
         </form>
 
@@ -635,8 +635,8 @@ window.addEventListener('pageshow', snapTopAndFocus);
         <h1 class="hero-title">Who activates with you?</h1>
 
         <p class="hero-body">
-            Add the callsigns of anyone who shares this group with you. <strong>The next time
-            they log in to SOTA Planner, this group will already be there</strong> — they'll
+            Add the callsigns of anyone who shares this dashboard with you. <strong>The next time
+            they log in to SOTA Planner, this dashboard will already be there</strong> — they'll
             see all the shared research, summit wishlist, and notes without any extra setup
             on their end.
         </p>
@@ -646,7 +646,7 @@ window.addEventListener('pageshow', snapTopAndFocus);
         </p>
 
         <div class="hero-note">
-            You can add or remove callsigns anytime from <strong>Planning Groups</strong> in the nav menu.
+            You can add or remove callsigns anytime from <strong>Manage Dashboards</strong> in the nav menu.
         </div>
 
         <form method="POST">
@@ -707,8 +707,8 @@ window.addEventListener('pageshow', snapTopAndFocus);
         <h1 class="hero-title">Set your starting location</h1>
 
         <p class="hero-body">
-            SOTA Planner calculates <strong>drive time from your starting point to each summit's
-            trailhead</strong>, then adds it to the hike time and radio time. That total
+            SOTA Planner calculates <strong>travel time from this address to each summit's
+            starting point</strong>, then adds it to the hike time and radio time. That total
             door-to-door number is the key figure for deciding whether a summit fits your day.
         </p>
 
@@ -765,7 +765,7 @@ window.addEventListener('pageshow', snapTopAndFocus);
     <?php endif; ?>
 
     <div class="manage-later">
-        You can update all of this anytime from <a href="planning_groups.php">Planning Groups</a>.
+        You can update all of this anytime from <a href="planning_groups.php">Manage Dashboards</a>.
     </div>
 
 </div>

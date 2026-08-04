@@ -25,7 +25,7 @@ try { $db->exec("ALTER TABLE global_gpx_tracks ADD COLUMN sotamaps_track_count I
 $current_group = getCurrentPlanningGroup($db);
 
 if (!$current_group) {
-    echo json_encode(['error' => 'No planning group selected']);
+    echo json_encode(['error' => 'No dashboard selected']);
     exit;
 }
 

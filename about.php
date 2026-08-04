@@ -231,7 +231,7 @@ session_start();
 
     <!-- Hub-and-spoke illustration: inputs scattered on left → SOTAplanner logo on right -->
     <div class="about-section" style="padding:0;overflow:hidden;margin-bottom:1rem;">
-        <svg viewBox="0 0 680 460" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;max-width:100%;" aria-label="Five inputs — Summit, Drive Time, Hike Time, Trail, Activation Time — all flow into SOTAplanner">
+        <svg viewBox="0 0 680 460" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;max-width:100%;" aria-label="Five inputs — Summit, Travel Time, Hike Time, Trail, Activation Time — all flow into SOTAplanner">
           <defs>
             <marker id="arr" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto">
               <path d="M1.5,1.5 L7.5,4.5 L1.5,7.5" fill="none" stroke="#C2BDB4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -281,13 +281,13 @@ session_start();
           </g>
           <text x="138" y="183" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#1C1B19">Trail Info</text>
 
-          <!-- 3. Drive Time (52, 228) — staggered LEFT -->
+          <!-- 3. Travel Time (52, 228) — staggered LEFT -->
           <circle cx="52" cy="228" r="30" fill="white" stroke="#E5E2DA" stroke-width="1.5"/>
           <g transform="translate(52,228) scale(1.8) translate(-12,-12)" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 1 1 18 0z"/>
             <circle cx="12" cy="10" r="3"/>
           </g>
-          <text x="52" y="271" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#1C1B19">Drive Time</text>
+          <text x="52" y="271" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#1C1B19">Travel Time</text>
 
           <!-- 4. Hike Time (140, 315) — staggered RIGHT -->
           <circle cx="140" cy="315" r="30" fill="white" stroke="#E5E2DA" stroke-width="1.5"/>
@@ -318,7 +318,7 @@ session_start();
         <h2>What It Does</h2>
         <p>
             <strong>SOTA Planner</strong> pulls together everything required to activate a summit —
-            drive time from your front door, hike distance and elevation, time on the air, and the
+            travel time from your front door, hike distance and elevation, time on the air, and the
             return trip — so you can see the full door-to-door picture and know whether a given
             summit fits the time you have.
         </p>
@@ -333,15 +333,15 @@ session_start();
                     <polyline points="12 7 12 12 15 15"/>
                 </svg>
                 <h3>Total Time Estimate</h3>
-                <p>Drive + hike + activation + return, all in one number</p>
+                <p>Travel + hike + activation + return, all in one number</p>
             </div>
             <div class="feature-tile">
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 1 1 18 0z"/>
                     <circle cx="12" cy="10" r="3"/>
                 </svg>
-                <h3>Drive Time</h3>
-                <p>Automatic routing from your address to each trailhead</p>
+                <h3>Travel Time</h3>
+                <p>Automatic routing from your address to each starting point</p>
             </div>
             <div class="feature-tile">
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
@@ -357,7 +357,7 @@ session_start();
                     <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
                     <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                 </svg>
-                <h3>Planning Groups</h3>
+                <h3>Dashboards</h3>
                 <p>Share summit research and notes with co-activators</p>
             </div>
         </div>

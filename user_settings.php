@@ -222,7 +222,7 @@ $additional_callsigns = $user_profile['additional_callsigns'] ?? '';
   <div class="topbar-divider"></div>
   <div class="topbar-nav">
     <a href="index.php">Dashboard</a>
-    <a href="planning_groups.php">Planning Groups</a>
+    <a href="planning_groups.php">Manage Dashboards</a>
   </div>
   <div class="topbar-right">
     <div class="user-chip" onclick="this.classList.toggle('open')" id="userChip">
@@ -318,7 +318,7 @@ $additional_callsigns = $user_profile['additional_callsigns'] ?? '';
                      background:var(--surface); outline:none; text-transform:uppercase; letter-spacing:0.04em;"
               oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')"
             >
-            <div class="hint">Your on-air callsign. Changing this renames your account across all planning groups and records.</div>
+            <div class="hint">Your on-air callsign. Changing this renames your account across all dashboards and records.</div>
           </div>
         <?php else: ?>
           <div style="margin-bottom:1rem;">

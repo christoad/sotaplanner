@@ -92,7 +92,7 @@ Before merging, always:
 
 SOTA Planner is a web app for amateur radio operators who participate in **SOTA — Summits On The Air**. SOTA is an amateur radio program where operators ("activators") hike to a designated summit and operate a radio station from the top to earn points. Chasers contact activators from home. Both activators and chasers log contacts; summits have point values based on height and difficulty.
 
-The app's core value proposition is **doorstep-to-doorstep time planning**. Activations require coordinating drive time, hike time, time on summit for radio, and the return trip. Most tools only show hiking distance and elevation — SOTA Planner brings everything together into one total time estimate so an activator can quickly judge whether a given summit fits the time they have available.
+The app's core value proposition is **doorstep-to-doorstep time planning**. Activations require coordinating travel time, hike time, time on summit for radio, and the return trip. Most tools only show hiking distance and elevation — SOTA Planner brings everything together into one total time estimate so an activator can quickly judge whether a given summit fits the time they have available.
 
 **Creator:** Christopher Reddick, KI6CR. Built for himself and the broader SOTA community. Free to use, no signup required (early access uses callsign-only login; full SOTA SSO OAuth is planned once credentials are obtained from the SOTA organization).
 
@@ -103,24 +103,28 @@ The app's core value proposition is **doorstep-to-doorstep time planning**. Acti
 ### Summits
 A SOTA summit is a designated peak with a unique reference code (e.g. `W7O/NC-001`). Each summit has a points value (1–10), elevation, and geographic coordinates. The app pulls summit data from the SOTA API and SOTLAS. Users nominate summits they're interested in activating and build up research data on each one.
 
-### Planning Groups
-The primary organizational unit. A planning group is a named collection of summits, members, and starting addresses. Most users have one group; some have multiple (e.g. separate groups for different activation partners or regions). Groups are private — only visible to the owner and invited members. The group owner can add members by callsign.
+### Dashboards (formerly "Planning Groups")
+The primary organizational unit. A dashboard is a named collection of summits, members, and starting addresses. Most users have one dashboard; some have multiple (e.g. separate dashboards for different activation partners or regions). Dashboards are private — only visible to the owner and invited members. The dashboard owner can add members by callsign.
 
-Key group attributes:
-- **Units**: metric or imperial (stored per group, affects all distance/elevation display)
+**Terminology note (renamed 2026-07):** The user-facing term is **"Dashboard"** everywhere — nav link is "Manage Dashboards" (`planning_groups.php`), buttons read "Create Dashboard" / "Delete Dashboard" / "Rename Dashboard", etc. Under the hood the table, PHP functions/variables, and session keys still use `planning_group` (`planning_groups` table, `getCurrentPlanningGroup()`, `setCurrentPlanningGroup()`, `$_SESSION['current_planning_group_id']`, `selected_address_group_{id}` setting key) — this was an intentional UI-text-only rename to avoid a DB migration and code-wide refactor. When writing new UI copy, always say "Dashboard"; when writing/reading code, the internal name is still "planning group".
+
+Key dashboard attributes:
+- **Units**: metric or imperial (stored per dashboard, affects all distance/elevation display)
 - **Addresses**: one or more starting locations (home, trailhead area, etc.) used for Google Maps drive time calculations
 - **Selected address**: the currently active address for drive time — stored in `app_settings` as `selected_address_group_{id}`
-- **Default group**: users can save a preferred group via cookie (`sota_default_group`) so it loads automatically on login
+- **Default dashboard**: users can save a preferred dashboard via cookie (`sota_default_group`) so it loads automatically on login
 
 ### Summit Data & Research
 Each summit in a group has:
 - **Basic SOTA data**: name, region, points, elevation, coordinates (from SOTA API / SOTLAS)
 - **Hike data**: trail distance (mi), elevation gain (ft), hike time up/down (min) — entered manually or imported from GPX
-- **Drive time**: calculated from the group's selected address via Google Maps Distance Matrix API
-- **Total time**: drive + hike up + activation time + hike down + drive back = full day estimate
+- **Travel time**: calculated from the group's selected address via Google Maps Distance Matrix API
+- **Total time**: travel + hike up + activation time + hike down + travel back = full day estimate
 - **Status**: Nominated, Researched, Planned, Activated — tracks progress through the planning lifecycle
 - **Difficulty**: Easy / Moderate / Hard / Very Hard
 - **Links**: trail link, SOTLAS link, map link, GPX link
+
+**Terminology note (renamed 2026-08):** The user-facing terms are **"Starting Point"** (not "Trailhead" — could be a trailhead, a parking lot, or a transit stop, e.g. for European activations reached by train/bus) and **"Travel Time"** (not "Drive Time" — the Google Maps "Directions" links no longer force `travelmode=driving`, so Google offers transit/walk/drive/bike). Under the hood, this is still a UI-text-only rename: the `trailhead_lat`/`trailhead_lng` columns, `drive_time_min` column, `calculateDriveTime()` function, and the Distance Matrix API call all keep their original names and still compute *driving* time specifically — there is no real transit-time calculation yet. When writing new UI copy, say "Starting Point" / "Travel Time"; when writing/reading code, the internal name is still "trailhead" / "drive time".
 
 ### GPX Track Analysis
 Users can upload a recorded GPX track from a past activation. The app parses it to extract real-world stats: total hiking time, activation time (time spent in the activation zone), rest break time, hiking distance, elevation gain/loss, average hiking speed, and summit coordinates. These stats can be used as the authoritative hike time for that summit. The activation zone polygon is overlaid on the map using the activation.zone API.
@@ -142,11 +146,11 @@ Past activations can be logged against a summit: date, callsigns of participants
 
 | Page | File | Purpose |
 |------|------|---------|
-| Login | `login.php` | Callsign login (early access) + SOTA SSO (when live). Returning users skip group picker and land on dashboard. |
-| Dashboard | `index.php` | Main summit list for the active planning group. Filter by status/difficulty, sort columns, quick-edit activation time, nominate new summits. |
+| Login | `login.php` | Callsign login (early access) + SOTA SSO (when live). Returning users skip the dashboard picker and land on the main dashboard view. |
+| Dashboard (main view) | `index.php` | Main summit list for the active dashboard. Filter by status/difficulty, sort columns, quick-edit activation time, nominate new summits. |
 | Summit Detail | `summit_detail.php` | Full detail view for one summit: map, elevation chart, activation zone, GPX upload/analysis, activation timeline, planned activations, notes. |
-| Planning Groups | `planning_groups.php` | Create/manage groups, add members, manage starting addresses, switch active group, set default group. |
-| Nominate Summit | `nominate.php` | Add a summit to the current group by SOTA reference — fetches data from SOTA API. |
+| Manage Dashboards | `planning_groups.php` | Create/manage dashboards, add members, manage starting addresses, switch active dashboard, set default dashboard. |
+| Nominate Summit | `nominate.php` | Add a summit to the current dashboard by SOTA reference — fetches data from SOTA API. |
 | Activation Invite | (generated URL) | Public shareable page for a planned activation. No login required. |
 | Trail Research | `trail_research.php` | Dedicated view for editing hike distance, gain, trailhead, and trail notes for a summit. |
 | User Settings | `user_settings.php` | Per-user preferences — default activation time on summit (minutes). |
@@ -288,8 +292,8 @@ Currently in **early access mode**: any valid callsign (3–10 alphanumeric char
 
 Login flow:
 1. User enters callsign → session set
-2. If returning user with groups: go straight to dashboard (last-used group from cookie, or owned group, or first group)
-3. If new user (no groups): go to planning_groups.php with welcome banner
+2. If returning user with dashboards: go straight to the main dashboard view (last-used dashboard from cookie, or owned dashboard, or first dashboard)
+3. If new user (no dashboards): go to planning_groups.php (Manage Dashboards) with welcome banner
 
 Session keys: `sota_callsign`, `sota_login_type`, `current_planning_group_id`
 
@@ -498,7 +502,7 @@ Every logged-in page has a sticky 56px topbar. Use this HTML/CSS pattern exactly
     <div class="topbar-divider"></div>
     <div class="topbar-nav">
         <a href="index.php">Dashboard</a>
-        <a href="planning_groups.php">Groups</a>
+        <a href="planning_groups.php">Manage Dashboards</a>
     </div>
     <div class="topbar-right">
         <!-- user chip goes here — see below -->

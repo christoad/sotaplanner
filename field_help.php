@@ -47,7 +47,7 @@ $field_help = [
     
     'hike_distance' => [
         'title' => 'Round-Trip Distance',
-        'content' => 'Total hiking distance from trailhead to summit and back. Used to:<br>
+        'content' => 'Total hiking distance from the starting point to summit and back. Used to:<br>
         • Calculate estimated hiking time<br>
         • Help you plan your day<br>
         • Compare summit difficulty<br><br>
@@ -81,9 +81,9 @@ $field_help = [
     ],
     
     'trailhead_coords' => [
-        'title' => 'Trailhead Coordinates',
-        'content' => 'GPS coordinates where you start hiking. Used to:<br>
-        • Calculate drive time from your address<br>
+        'title' => 'Starting Point Coordinates',
+        'content' => 'GPS coordinates where you start hiking — a trailhead, parking area, or transit stop. Used to:<br>
+        • Calculate travel time from your address<br>
         • Generate Google Maps directions<br>
         • Show exact parking location<br><br>
         <strong>Input Options:</strong><br>
@@ -95,11 +95,11 @@ $field_help = [
     ],
     
     'drive_time' => [
-        'title' => 'Drive Time (Round Trip)',
-        'content' => 'Total driving time from your address to trailhead and back, calculated using Google Maps with current traffic patterns.<br><br>
+        'title' => 'Travel Time (Round Trip)',
+        'content' => 'Total driving time from your address to the starting point and back, calculated using Google Maps with current traffic patterns.<br><br>
         <strong>How It Works:</strong><br>
         1. Select your address in the dashboard<br>
-        2. Click "Calculate Drive Times"<br>
+        2. Click "Calculate Travel Times"<br>
         3. System queries Google Maps for each summit<br><br>
         This helps you plan total door-to-door time for activation trips.',
         'example' => 'Example: 1h 20m (40 min each way)'
@@ -123,13 +123,13 @@ $field_help = [
     'total_time' => [
         'title' => 'Total Trip Time',
         'content' => 'Complete door-to-door time estimate:<br><br>
-        <strong>Total = Drive + Hike + Activation</strong><br><br>
+        <strong>Total = Travel + Hike + Activation</strong><br><br>
         Components:<br>
-        • <strong>Drive Time:</strong> Google Maps calculation<br>
+        • <strong>Travel Time:</strong> Google Maps calculation<br>
         • <strong>Hike Time:</strong> Calculated or GPX-derived<br>
         • <strong>Activation Time:</strong> 45 min default, or GPX-measured<br><br>
         This is your complete time commitment for the activation, helping you choose summits that fit your available time.',
-        'example' => 'Example: 6h 15m total (1h 20m drive + 3h 30m hike + 45m activation + buffer)'
+        'example' => 'Example: 6h 15m total (1h 20m travel + 3h 30m hike + 45m activation + buffer)'
     ],
     
     'activation_time' => [
@@ -161,18 +161,18 @@ $field_help = [
     
     'last_activated' => [
         'title' => 'Last Activated',
-        'content' => 'Most recent activation date for this summit by your planning group.<br><br>
+        'content' => 'Most recent activation date for this summit on your dashboard.<br><br>
         <strong>Why Track This:</strong><br>
         • SOTA rules: Summits activated in current calendar year aren\'t eligible for points again until next year<br>
         • Dashboard shows gray rows for recently activated summits<br>
         • Helps prioritize which summits to target<br><br>
-        Each planning group tracks activations separately - other groups\' activations don\'t affect your eligibility.',
+        Each dashboard tracks activations separately - other dashboards\' activations don\'t affect your eligibility.',
         'example' => 'Feb 17, 2026 | KI6CR, W6ABC'
     ],
     
     'activation_history' => [
         'title' => 'Activation History',
-        'content' => 'Complete log of all activations for this summit by your planning group.<br><br>
+        'content' => 'Complete log of all activations for this summit on your dashboard.<br><br>
         <strong>What to Track:</strong><br>
         • Date of activation<br>
         • Callsigns of all activators<br>

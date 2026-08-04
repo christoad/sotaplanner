@@ -64,8 +64,8 @@ if (isset($_GET['geocoded'])) {
 }
 if (isset($_GET['drive_error'])) {
     $error = $_GET['drive_error'] == 2
-        ? 'No address set — add a starting address in the Groups page first.'
-        : 'Drive time calculation failed. Check that your Google Maps API key has the Distance Matrix API enabled, or try again.';
+        ? 'No address set — add a starting address in the Manage Dashboards page first.'
+        : 'Travel time calculation failed. Check that your Google Maps API key has the Distance Matrix API enabled, or try again.';
 }
 
 
@@ -317,7 +317,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $stmt = $db->prepare("UPDATE summits SET trailhead_lat = ?, trailhead_lng = ?, trailhead_manual = FALSE WHERE id = ?");
                         $stmt->execute([$lat, $lng, $summit_id]);
                         
-                        $msg = urlencode("Trailhead set to: " . $formatted_address . " + other fields saved");
+                        $msg = urlencode("Starting point set to: " . $formatted_address . " + other fields saved");
                         header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&geocoded=" . $msg);
                         exit;
                     }
@@ -352,7 +352,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $drive_time_rt = $drive_time * 2;
                 $stmt = $db->prepare("UPDATE summits SET drive_time_min = ? WHERE id = ?");
                 $stmt->execute([$drive_time_rt, $summit_id]);
-                $msg = urlencode("Drive time (RT): " . formatTime($drive_time_rt));
+                $msg = urlencode("Travel time (RT): " . formatTime($drive_time_rt));
                 header("Location: summit_detail.php?id=" . $summit_id . "&group=" . ($current_group['id'] ?? '') . "&geocoded=" . $msg);
             } else {
                 header("Location: summit_detail.php?id=" . $summit_id . "&group=" . ($current_group['id'] ?? '') . "&drive_error=1");
@@ -870,13 +870,13 @@ if ($tl_show) {
     $elapsed = 0;
     if ($tl_drive_one > 0) { $tl_m[] = [0, 'Depart', 0]; }
     $elapsed += $tl_drive_one;
-    $tl_m[] = [round($elapsed / $tl_total * 100, 1), 'Trailhead', $elapsed];
+    $tl_m[] = [round($elapsed / $tl_total * 100, 1), 'Starting Point', $elapsed];
     $elapsed += $tl_hike_up;
     if ($tl_hike_up > 0) $tl_m[] = [round($elapsed / $tl_total * 100, 1), 'Summit', $elapsed];
     $elapsed += $tl_activation;
     $tl_m[] = [round($elapsed / $tl_total * 100, 1), 'Radio Done', $elapsed];
     $elapsed += $tl_hike_down;
-    if ($tl_hike_down > 0) $tl_m[] = [round($elapsed / $tl_total * 100, 1), 'Trailhead', $elapsed];
+    if ($tl_hike_down > 0) $tl_m[] = [round($elapsed / $tl_total * 100, 1), 'Starting Point', $elapsed];
     $elapsed += $tl_drive_one;
     if ($tl_drive_one > 0) $tl_m[] = [round($elapsed / $tl_total * 100, 1), 'Home', $elapsed];
 }
@@ -1311,7 +1311,7 @@ if ($tl_show) {
   <div class="topbar-divider"></div>
   <div class="topbar-nav">
     <a href="index.php">Dashboard</a>
-    <a href="planning_groups.php">Manage Planning Groups</a>
+    <a href="planning_groups.php">Manage Dashboards</a>
     <a href="about.php">About</a>
   </div>
   <div class="topbar-right">
@@ -1359,7 +1359,7 @@ if ($tl_show) {
         <a href="<?= htmlspecialchars($summit['trail_link']) ?>" target="_blank" class="btn btn-ghost btn-sm">Trail ↗</a>
       <?php endif; ?>
       <?php if ($selected_address && $directions_lat && $directions_lng): ?>
-        <a href="https://www.google.com/maps/dir/?api=1&origin=<?= urlencode($selected_address['address']) ?>&destination=<?= $directions_lat ?>,<?= $directions_lng ?>&travelmode=driving" target="_blank" class="btn btn-ghost btn-sm">Directions ↗</a>
+        <a href="https://www.google.com/maps/dir/?api=1&origin=<?= urlencode($selected_address['address']) ?>&destination=<?= $directions_lat ?>,<?= $directions_lng ?>" target="_blank" class="btn btn-ghost btn-sm">Directions ↗</a>
       <?php endif; ?>
       <?php if (!empty($planned_activations_list)): ?>
         <?php
@@ -1390,7 +1390,7 @@ if ($tl_show) {
   <?php endif; ?>
   <?php if (isset($_GET['shared_data'])): ?>
     <div class="msg msg-info">
-      <span>Summit data copied from another group — customize it below for your group.</span>
+      <span>Summit data copied from another dashboard — customize it below for your dashboard.</span>
       <button class="msg-dismiss" onclick="this.parentElement.style.display='none'" type="button">×</button>
     </div>
   <?php endif; ?>
@@ -1443,7 +1443,7 @@ if ($tl_show) {
       ?>
       <div class="stat-grid-4">
         <div class="stat-cell">
-          <div class="stat-cell-label">Drive (RT)</div>
+          <div class="stat-cell-label">Travel (RT)</div>
           <?php if ($drive_rt): ?>
             <div class="stat-cell-val"><?= floor($drive_rt/60) ?>h <?= $drive_rt%60 ?>m</div>
             <div class="stat-cell-sub"><?= $selected_address ? htmlspecialchars($selected_address['label'] ?: 'from base') : 'round-trip' ?></div>
@@ -1575,7 +1575,7 @@ if ($tl_show) {
           <span class="map-divider"></span>
           <a href="https://www.google.com/maps/search/?api=1&query=<?= $summit['latitude'] ?>,<?= $summit['longitude'] ?>" target="_blank" class="btn btn-sm btn-ghost">Maps ↗</a>
           <?php if ($selected_address && $directions_lat && $directions_lng): ?>
-            <a href="https://www.google.com/maps/dir/?api=1&origin=<?= urlencode($selected_address['address']) ?>&destination=<?= $directions_lat ?>,<?= $directions_lng ?>&travelmode=driving" target="_blank" class="btn btn-sm btn-ghost">Directions ↗</a>
+            <a href="https://www.google.com/maps/dir/?api=1&origin=<?= urlencode($selected_address['address']) ?>&destination=<?= $directions_lat ?>,<?= $directions_lng ?>" target="_blank" class="btn btn-sm btn-ghost">Directions ↗</a>
           <?php endif; ?>
         </div>
       </div>
@@ -1583,7 +1583,7 @@ if ($tl_show) {
       <div id="map-ctx-menu">
         <button type="button" id="ctx-copy-coords" style="color:var(--ink-2); font-family:var(--font-mono); font-size:0.78rem; letter-spacing:0.01em;"></button>
         <div style="height:1px; background:var(--border); margin:0;"></div>
-        <button type="button" id="ctx-set-trailhead">Set trailhead here</button>
+        <button type="button" id="ctx-set-trailhead">Set starting point here</button>
       </div>
       <div id="coords-toast">Copied to clipboard</div>
 
@@ -1611,7 +1611,7 @@ if ($tl_show) {
           <label class="form-label">Distance (<?= getDistanceUnit($user_units) ?>, RT)</label>
           <?php if ($gpx_active): ?><div class="gpx-tip" data-tip="Set by GPS track — uncheck 'Use GPS data' to edit"><?php endif; ?>
           <input type="number" class="form-input" name="hike_distance_mi" step="0.01" min="0"
-                 value="<?= htmlspecialchars($summit['hike_distance_mi'] ?? '') ?>" placeholder="0.0"
+                 value="<?= htmlspecialchars($gpx_active && $distance_display_mi ? convertDistance($distance_display_mi, $user_units) : ($summit['hike_distance_mi'] ?? '')) ?>" placeholder="0.0"
                  <?= $gpx_active ? 'readonly style="opacity:0.45;cursor:not-allowed;background:var(--bg-2);"' : '' ?>>
           <?php if ($gpx_active): ?></div><?php endif; ?>
         </div>
@@ -1649,7 +1649,7 @@ if ($tl_show) {
         </div>
         <!-- Trailhead location -->
         <div class="form-group" style="margin:0;">
-          <label class="form-label">Trailhead</label>
+          <label class="form-label">Starting Point</label>
           <!-- State: coordinates are set -->
           <div id="trailhead-set-state" style="display:<?= !empty($summit['trailhead_lat']) ? 'block' : 'none' ?>;">
             <div style="background:var(--green-bg); border:1px solid #b8d9c9; border-radius:var(--r-md); padding:0.45rem 0.75rem; display:flex; align-items:center; justify-content:space-between; gap:0.5rem; height:36px;">
@@ -1658,7 +1658,7 @@ if ($tl_show) {
             </div>
             <?php if ($trailhead_needs_validation): ?>
             <div id="trailhead-validate-banner" style="margin-top:0.4rem; background:var(--orange-bg); border:1px solid oklch(84% 0.08 58); border-radius:var(--r-md); padding:0.45rem 0.75rem; display:flex; align-items:center; justify-content:space-between; gap:0.75rem;">
-              <span style="font-size:0.78rem; color:var(--orange); line-height:1.3;">Auto-detected trailhead — check the pin on the map and right-click to move it if needed.</span>
+              <span style="font-size:0.78rem; color:var(--orange); line-height:1.3;">Auto-detected starting point — check the pin on the map and right-click to move it if needed.</span>
               <button type="button" class="btn btn-sm" style="flex-shrink:0; background:var(--orange); color:#fff; height:28px; padding:0 0.6rem; font-size:0.75rem; white-space:nowrap;" onclick="confirmTrailhead()">Looks good</button>
             </div>
             <?php endif; ?>
@@ -1668,7 +1668,7 @@ if ($tl_show) {
           <!-- State: no coordinates — show right-click hint + address fallback -->
           <div id="trailhead-empty-state" style="display:<?= empty($summit['trailhead_lat']) ? 'flex' : 'none' ?>; flex-direction:column; gap:0.4rem;">
             <div style="background:var(--accent-bg); border:1px solid var(--accent-border); border-radius:var(--r-md); padding:0.45rem 0.75rem; font-size:0.8rem; color:var(--accent-2); font-weight:600; text-align:center; line-height:1.3;">
-              Right-click the map above to set trailhead location
+              Right-click the map above to set the starting point
             </div>
             <div style="display:flex; gap:0.5rem;">
               <input type="text" class="form-input" id="geocode_address" placeholder="or enter address / lat,lng" style="flex:1; height:36px; padding:0.5rem 0.75rem; font-size:0.8rem;">
@@ -1704,7 +1704,7 @@ if ($tl_show) {
       <div style="display:flex; gap:0.75rem; padding-top:1rem; border-top:1px solid var(--border);">
         <button type="submit" name="update_summit" class="btn btn-primary">Save Changes</button>
         <?php if ($selected_address && $drive_rt): ?>
-          <button type="submit" name="calculate_drive_time" class="btn btn-ghost btn-sm" style="align-self:center;">Recalculate Drive Time</button>
+          <button type="submit" name="calculate_drive_time" class="btn btn-ghost btn-sm" style="align-self:center;">Recalculate Travel Time</button>
         <?php endif; ?>
       </div>
     </div>
@@ -1760,7 +1760,7 @@ if ($tl_show) {
           <?php endif; ?>
         </div>
         <div class="info-row" style="border-bottom:none; padding-bottom:0;">
-          <span class="info-label">By This Group</span>
+          <span class="info-label">By This Dashboard</span>
           <?php
             $last_group = $sota_member_activations[0] ?? null;
           ?>
@@ -1925,7 +1925,7 @@ if ($tl_show) {
           <textarea class="form-textarea" name="note" rows="3" placeholder="Add notes about access, parking, trail conditions..." style="font-size:0.875rem; resize:vertical;"></textarea>
           <label style="display:flex; align-items:center; gap:0.4rem; margin-top:0.5rem; font-size:0.8rem; color:var(--ink-2); cursor:pointer;">
             <input type="checkbox" name="note_public" value="1" style="accent-color:var(--green); width:14px; height:14px;">
-            Share publicly — visible to all planning groups on this summit
+            Share publicly — visible to all dashboards on this summit
           </label>
           <button type="submit" name="add_note" class="btn btn-secondary btn-sm btn-full" style="margin-top:0.5rem;">Add Note</button>
         </form>
@@ -1938,7 +1938,7 @@ if ($tl_show) {
     <div class="section-card">
       <div class="section-title" style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
         Planned Activations
-        <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem; white-space:nowrap;">This group</span>
+        <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem; white-space:nowrap;">This dashboard</span>
       </div>
 
       <?php if (!empty($planned_activations_list)): ?>
@@ -2069,7 +2069,7 @@ if ($tl_show) {
     <div class="section-card">
       <div class="section-title" style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
         SOTAwatch Alerts
-        <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem; white-space:nowrap;">Community — not this group</span>
+        <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem; white-space:nowrap;">Community — not this dashboard</span>
       </div>
       <?php if (!empty($sota_alerts)): ?>
         <div style="overflow-x:auto;">
@@ -2118,7 +2118,7 @@ if ($tl_show) {
     <div class="section-card">
       <div class="section-title" style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
         Activation History
-        <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem; white-space:nowrap;">Group members only</span>
+        <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem; white-space:nowrap;">Dashboard members only</span>
       </div>
       <?php if (!empty($sota_member_activations)): ?>
         <div style="overflow-x:auto;">
@@ -2145,7 +2145,7 @@ if ($tl_show) {
           Pulled from the SOTA database · refreshed every 24 hours
         </p>
       <?php elseif ($sota_member_activations === [] && !empty($summit['sota_ref'])): ?>
-        <p style="color:var(--ink-3); font-size:0.875rem;">No activations by any planning group members on record for this summit.</p>
+        <p style="color:var(--ink-3); font-size:0.875rem;">No activations by any dashboard members on record for this summit.</p>
       <?php else: ?>
         <p style="color:var(--ink-3); font-size:0.875rem;">Could not reach the SOTA API.</p>
       <?php endif; ?>
@@ -2177,7 +2177,7 @@ if ($tl_show) {
 <script>
 // ── Reset trailhead ─────────────────────────────────────────────────────────
 function resetTrailhead() {
-  if (!confirm('Clear the saved trailhead coordinates?')) return;
+  if (!confirm('Clear the saved starting point coordinates?')) return;
   const f = document.createElement('form');
   f.method = 'POST';
   f.action = window.location.href;
@@ -2269,7 +2269,7 @@ L.circleMarker([sumLat, sumLng], { radius: 7, color: '#C03030', fillColor: '#C03
 let trailheadMarker = null;
 if (trailLat !== null && trailLng !== null) {
   trailheadMarker = L.circleMarker([trailLat, trailLng], { radius: 6, color: '#2D8653', fillColor: '#2D8653', fillOpacity: 0.9, weight: 2 })
-    .bindPopup('Trailhead').addTo(map);
+    .bindPopup('Starting Point').addTo(map);
 }
 
 // ── Map expand toggle ────────────────────────────────────────────────────────
@@ -2352,7 +2352,7 @@ document.getElementById('ctx-set-trailhead').addEventListener('click', function(
   // Move marker on map
   if (trailheadMarker) map.removeLayer(trailheadMarker);
   trailheadMarker = L.circleMarker([lat, lng], { radius: 6, color: '#2D8653', fillColor: '#2D8653', fillOpacity: 0.9, weight: 2 })
-    .bindPopup('Trailhead').addTo(map);
+    .bindPopup('Starting Point').addTo(map);
 
   // Update the trailhead display section immediately — no page reload needed
   const setState   = document.getElementById('trailhead-set-state');
@@ -2377,8 +2377,8 @@ document.getElementById('ctx-set-trailhead').addEventListener('click', function(
   fd.append('trailhead_lng', lng);
   fetch('summit_detail.php?id=<?= $summit_id ?>', { method: 'POST', body: fd })
     .then(r => r.json())
-    .then(d => showMapToast(d.ok ? '✓ Trailhead saved — no other save needed' : 'Error saving trailhead'))
-    .catch(() => showMapToast('Error saving trailhead'));
+    .then(d => showMapToast(d.ok ? '✓ Starting point saved — no other save needed' : 'Error saving starting point'))
+    .catch(() => showMapToast('Error saving starting point'));
 
   // Moving the pin counts as confirming — dismiss the validation banner
   const banner = document.getElementById('trailhead-validate-banner');
@@ -2398,10 +2398,10 @@ function confirmTrailhead() {
       if (d.ok) {
         const banner = document.getElementById('trailhead-validate-banner');
         if (banner) banner.remove();
-        showMapToast('✓ Trailhead confirmed');
+        showMapToast('✓ Starting point confirmed');
       }
     })
-    .catch(() => showMapToast('Error confirming trailhead'));
+    .catch(() => showMapToast('Error confirming starting point'));
 }
 
 function showMapToast(msg) {
