@@ -160,6 +160,13 @@ if (!$current_group) {
     }
 }
 
+// Sync activation status from the SOTA API in the background, once per session/day per dashboard
+$activations_sync_flag_key = 'activations_synced_group_' . $current_group['id'];
+$should_sync_activations = ($_SESSION[$activations_sync_flag_key] ?? null) !== gmdate('Y-m-d');
+if ($should_sync_activations) {
+    $_SESSION[$activations_sync_flag_key] = gmdate('Y-m-d');
+}
+
 // Restore default address from cookie if nothing is selected yet
 $cookie_addr_key = 'sota_default_address_' . $current_group['id'];
 if (!getSelectedAddress($db) && !empty($_COOKIE[$cookie_addr_key])) {
@@ -1360,7 +1367,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                         <td class="td-time text-right">
                             <span class="total-time"><?= formatTime($total_time) ?></span>
                         </td>
-                        <td class="td-hide-mobile">
+                        <td class="td-hide-mobile td-last-activated">
                             <?php if ($summit['last_activated_date']): ?>
                                 <div class="stat-val"><?= date('M j, Y', strtotime($summit['last_activated_date'])) ?></div>
                                 <?php if (!empty($summit['this_year_callsigns'])): ?>
@@ -1991,5 +1998,44 @@ try {
   window.history.replaceState({}, '', clean.toString());
 })();
 </script>
+
+<?php if ($should_sync_activations): ?>
+<script>
+// Background sync: check the SOTA API for any "ready" summit this dashboard's
+// team has actually already activated, and fade the row to activated in place.
+(function() {
+  function escapeHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  fetch('sync_dashboard_activations.php', { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      (data.updated || []).forEach(u => {
+        const row = document.querySelector('tr[data-summit-id="' + u.id + '"]');
+        if (!row) return;
+
+        row.style.transition = 'background-color 0.8s ease, opacity 0.8s ease';
+        row.classList.remove('row-ready');
+        row.classList.add('row-activated');
+
+        const badgeCell = row.querySelector('.td-status');
+        if (badgeCell) {
+          badgeCell.innerHTML = '<span class="badge badge-activated">Activated ' + u.year + '</span>';
+        }
+
+        const lastActCell = row.querySelector('.td-last-activated');
+        if (lastActCell) {
+          lastActCell.innerHTML = '<div class="stat-val">' + escapeHtml(u.last_activated_display) + '</div>' +
+            (u.activated_by ? '<div class="last-act-callsign">' + escapeHtml(u.activated_by) + '</div>' : '');
+        }
+      });
+    })
+    .catch(() => {}); // silent — this is a best-effort background refresh
+})();
+</script>
+<?php endif; ?>
 </body>
 </html>

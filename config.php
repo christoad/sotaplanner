@@ -1,5 +1,5 @@
 <?php
-define('APP_VERSION', '1.5.8');
+define('APP_VERSION', '1.5.9');
 
 // Enable error reporting for debugging
 error_reporting(E_ALL);
@@ -288,6 +288,54 @@ function getAllPlanningGroups($db) {
     ");
     $stmt->execute([':cs' => $callsign, ':cs2' => $callsign]);
     return $stmt->fetchAll();
+}
+
+// ── SOTA API activation history (shared by summit_detail.php and the
+//    background dashboard sync) ──────────────────────────────────────────────
+
+/** True if the cached activation list for a summit ref is still within the 24h TTL. */
+function sotaActivationsCacheIsFresh($db, string $sota_ref): bool {
+    $cache_key = 'sota_activations_' . preg_replace('/[^a-zA-Z0-9_]/', '_', $sota_ref);
+    $stmt = $db->prepare("SELECT updated_at FROM app_settings WHERE setting_key = ?");
+    $stmt->execute([$cache_key]);
+    $row = $stmt->fetch();
+    return $row && (time() - strtotime($row['updated_at'])) < 86400;
+}
+
+/** Return the full list of official SOTA activations for a summit ref, using a
+ *  24h cache in app_settings. Pass $allow_live_fetch = false to only use the
+ *  cache (for rate-limiting bulk callers). Returns null on cache miss + no fetch,
+ *  or if the SOTA API call fails. */
+function fetchSotaActivations($db, string $sota_ref, bool $allow_live_fetch = true): ?array {
+    $cache_key = 'sota_activations_' . preg_replace('/[^a-zA-Z0-9_]/', '_', $sota_ref);
+    $cache_stmt = $db->prepare("SELECT setting_value, updated_at FROM app_settings WHERE setting_key = ?");
+    $cache_stmt->execute([$cache_key]);
+    $cache_row = $cache_stmt->fetch();
+
+    if ($cache_row && (time() - strtotime($cache_row['updated_at'])) < 86400) {
+        $decoded = json_decode($cache_row['setting_value'], true);
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    if (!$allow_live_fetch) return null;
+
+    $ref_parts = explode('/', $sota_ref, 2);
+    if (count($ref_parts) !== 2) return null;
+
+    $api_url = 'https://api2.sota.org.uk/api/activations/' . urlencode($ref_parts[0]) . '/' . urlencode($ref_parts[1]);
+    $ctx = stream_context_create(['http' => ['timeout' => 6, 'ignore_errors' => true,
+        'header' => "Accept: application/json\r\nUser-Agent: SOTAplanner/1.0\r\n"]]);
+    $raw = @file_get_contents($api_url, false, $ctx);
+    if ($raw === false) return null;
+
+    $fetched = json_decode($raw, true);
+    if (!is_array($fetched)) return null;
+
+    $db->prepare("INSERT INTO app_settings (setting_key, setting_value, updated_at)
+        VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=NOW()")
+       ->execute([$cache_key, json_encode($fetched)]);
+
+    return $fetched;
 }
 
 // GPX PROCESSING FUNCTIONS

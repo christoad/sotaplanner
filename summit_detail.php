@@ -687,32 +687,7 @@ if ($current_group && !empty($summit['sota_ref'])) {
     $group_callsigns = array_map('strtoupper', array_column($member_stmt->fetchAll(), 'callsign'));
 
     // Cache SOTA API results in app_settings (24-hour TTL)
-    $cache_key   = 'sota_activations_' . preg_replace('/[^a-zA-Z0-9_]/', '_', $summit['sota_ref']);
-    $cache_stmt  = $db->prepare("SELECT setting_value, updated_at FROM app_settings WHERE setting_key = ?");
-    $cache_stmt->execute([$cache_key]);
-    $cache_row   = $cache_stmt->fetch();
-    $all_sota_activations = null;
-
-    if ($cache_row && (time() - strtotime($cache_row['updated_at'])) < 86400) {
-        $all_sota_activations = json_decode($cache_row['setting_value'], true);
-    } else {
-        $ref_parts = explode('/', $summit['sota_ref'], 2);
-        if (count($ref_parts) === 2) {
-            $api_url = 'https://api2.sota.org.uk/api/activations/' . urlencode($ref_parts[0]) . '/' . urlencode($ref_parts[1]);
-            $ctx = stream_context_create(['http' => ['timeout' => 6, 'ignore_errors' => true,
-                'header' => "Accept: application/json\r\nUser-Agent: SOTAplanner/1.0\r\n"]]);
-            $raw = @file_get_contents($api_url, false, $ctx);
-            if ($raw !== false) {
-                $fetched = json_decode($raw, true);
-                if (is_array($fetched)) {
-                    $all_sota_activations = $fetched;
-                    $db->prepare("INSERT INTO app_settings (setting_key, setting_value, updated_at)
-                        VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=NOW()")
-                       ->execute([$cache_key, json_encode($all_sota_activations)]);
-                }
-            }
-        }
-    }
+    $all_sota_activations = fetchSotaActivations($db, $summit['sota_ref']);
 
     if (is_array($all_sota_activations)) {
         foreach ($all_sota_activations as $act) {
@@ -1398,14 +1373,16 @@ if ($tl_show) {
 
   <!-- STATUS PIPELINE -->
   <?php
-    $pipe_steps = ['nominated','researched','ready','activated'];
-    $pipe_idx   = array_search($summit['status'], $pipe_steps);
+    $pipe_steps  = ['nominated','researched','ready','activated'];
+    $pipe_labels = ['ready' => 'Ready to Activate'];
+    $pipe_idx    = array_search($summit['status'], $pipe_steps);
     if ($pipe_idx === false) $pipe_idx = 0;
   ?>
   <div class="status-pipeline">
     <?php foreach ($pipe_steps as $i => $step):
       $cls = $i < $pipe_idx ? 'done' : ($i === $pipe_idx ? 'active' : '');
       $icon = $i < $pipe_idx ? '✓' : ($i === $pipe_idx ? '●' : '○');
+      $label = $pipe_labels[$step] ?? ucfirst($step);
     ?>
       <form method="POST" style="flex:1; display:flex; margin:0;">
         <input type="hidden" name="update_summit" value="1">
@@ -1417,9 +1394,9 @@ if ($tl_show) {
         <input type="hidden" name="trailhead_lat" value="<?= htmlspecialchars($summit['trailhead_lat'] ?? '') ?>">
         <input type="hidden" name="trailhead_lng" value="<?= htmlspecialchars($summit['trailhead_lng'] ?? '') ?>">
         <input type="hidden" name="cell_service" value="<?= htmlspecialchars($summit['cell_service'] ?? '') ?>">
-        <button type="submit" class="pipeline-step <?= $cls ?>" style="flex:1;" title="Set status to <?= ucfirst($step) ?>">
+        <button type="submit" class="pipeline-step <?= $cls ?>" style="flex:1;" title="Set status to <?= $label ?>">
           <div class="pipeline-icon"><?= $icon ?></div>
-          <div class="pipeline-label"><?= ucfirst($step) ?></div>
+          <div class="pipeline-label"><?= $label ?></div>
         </button>
       </form>
     <?php endforeach; ?>

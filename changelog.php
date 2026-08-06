@@ -230,12 +230,25 @@ session_start();
         <p>Release history and update notes for SOTA Planner</p>
     </div>
 
-    <!-- v1.5.8 -->
+    <!-- v1.5.9 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.5.9</span>
+            <span class="version-date">August 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Dashboard summits now update live when your team activates them.</p>
+        <ul>
+            <li>Opening your dashboard now quietly checks the SOTA activation record in the background — if a summit your team already activated is still showing as Ready, the row fades from green to grey and picks up the activation date automatically, no page reload needed</li>
+            <li>Summit detail now shows "Ready to Activate" instead of just "Ready" on the status buttons</li>
+        </ul>
+    </div>
+
+    <!-- v1.5.8 -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.5.8</span>
             <span class="version-date">August 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">"Trailhead" and "Drive Time" now work for public transit too.</p>
         <ul>
