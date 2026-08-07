@@ -770,7 +770,9 @@ The changelog is **user-facing and feature-focused**. Keep it high-level and rea
 **What to omit:**
 - Bug fixes, PHP errors, internal refactors, cosmetic tweaks, technical debt cleanup — none of this belongs in the public changelog
 
-**Format per version block:** version number, month+year date, "Current" badge on the latest only, one-sentence description of the release theme, then a short plain-English bullet list (no tags, no technical jargon). Each bullet should describe what the user can now *do* or *see*, not what changed in the code.
+**Grouped by month (changed 2026-08):** one `version-block` per calendar month, not per version bump — otherwise the page grows a new header/date block for every small release. When shipping a feature in a month that already has a block, append a bullet to that month's `<ul>` and bump the `version-number` shown in its header to the new `APP_VERSION`; only start a new block when the calendar month changes. The "Current" badge always lives on the latest (top) block.
+
+**Format per version block:** version number (the latest reached that month), month+year date, "Current" badge on the latest only, one-sentence description summarizing the month's theme, then a plain-English bullet list (no tags, no technical jargon) with the newest change first. Each bullet should describe what the user can now *do* or *see*, not what changed in the code.
 
 ## Version bumping
 
