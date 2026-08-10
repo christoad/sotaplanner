@@ -966,6 +966,22 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     .lmap-gray   { background: oklch(50% 0.02 200); color: #fff; }
     .lmap-warn   { background: #888; color: #fff; font-weight: 600; }
 
+    /* ── Base map type toggle ── */
+    .dash-base-toggle {
+      display: flex; background: var(--surface); border: 1px solid var(--border-2);
+      border-radius: var(--r-md); overflow: hidden; box-shadow: 0 1px 4px rgba(28,27,25,0.12);
+    }
+    .dash-base-btn {
+      display: flex; align-items: center; justify-content: center;
+      height: 32px; padding: 0 12px; font-family: 'DM Sans', system-ui, sans-serif;
+      font-size: 0.8rem; font-weight: 500; color: var(--ink-2);
+      background: var(--surface); border: none; cursor: pointer; white-space: nowrap;
+      transition: background 0.12s, color 0.12s;
+    }
+    .dash-base-btn + .dash-base-btn { border-left: 1px solid var(--border-2); }
+    .dash-base-btn:hover { background: var(--bg-2); color: var(--ink); }
+    .dash-base-btn.active { background: var(--ink); color: #fff; }
+
     /* ── Find-summits control button ── */
     .dash-find-btn {
       display: inline-flex; align-items: center; gap: 6px;
@@ -1804,6 +1820,9 @@ window.addEventListener('load', function() { show(0); });
 const DASH_SUMMITS = <?= $map_json ?>;
 
 let dashMap = null;
+let dashBaseLayers = null;
+let activeDashBase = 'light';
+try { activeDashBase = localStorage.getItem('sota_dash_base') || 'light'; } catch(e) {}
 
 const SOTA_POINTS_COLORS = { 0: '#a0a0a0', 1: '#4d7a20', 2: '#6da536', 4: '#aea727', 6: '#efa818', 8: '#dc5d04', 10: '#c8101e' };
 function pointsColor(points) {
@@ -1816,11 +1835,22 @@ function initDashMap() {
 
     dashMap = L.map('dash-map', { zoomControl: true });
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
-        maxZoom: 19,
-        subdomains: 'abcd'
-    }).addTo(dashMap);
+    dashBaseLayers = {
+        light: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
+            maxZoom: 19,
+            subdomains: 'abcd'
+        }),
+        topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+            attribution: '© <a href="https://opentopomap.org">OpenTopoMap</a>',
+            maxZoom: 17
+        }),
+        satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: '© Esri',
+            maxZoom: 19
+        })
+    };
+    dashBaseLayers[activeDashBase].addTo(dashMap);
 
     const bounds = [];
 
@@ -1902,9 +1932,36 @@ function initDashMap() {
     };
     findControl.addTo(dashMap);
 
+    // Base map type toggle (Map / Topo / Satellite)
+    const baseToggleControl = L.control({ position: 'topright' });
+    baseToggleControl.onAdd = function() {
+        const wrap = L.DomUtil.create('div', 'dash-base-toggle');
+        [['light', 'Map'], ['topo', 'Topo'], ['satellite', 'Satellite']].forEach(function(pair) {
+            const btn = L.DomUtil.create('button', 'dash-base-btn' + (pair[0] === activeDashBase ? ' active' : ''), wrap);
+            btn.type = 'button';
+            btn.textContent = pair[1];
+            btn.dataset.base = pair[0];
+            L.DomEvent.on(btn, 'click', function() { switchDashBase(pair[0]); });
+        });
+        L.DomEvent.disableClickPropagation(wrap);
+        return wrap;
+    };
+    baseToggleControl.addTo(dashMap);
+
     // Hide loading overlay once tiles start appearing
     dashMap.once('load', removeDashLoading);
     setTimeout(removeDashLoading, 1800); // fallback
+}
+
+function switchDashBase(name) {
+    if (!dashMap || !dashBaseLayers || name === activeDashBase) return;
+    dashMap.removeLayer(dashBaseLayers[activeDashBase]);
+    dashBaseLayers[name].addTo(dashMap);
+    activeDashBase = name;
+    try { localStorage.setItem('sota_dash_base', name); } catch(e) {}
+    document.querySelectorAll('.dash-base-btn').forEach(function(b) {
+        b.classList.toggle('active', b.dataset.base === name);
+    });
 }
 
 function removeDashLoading() {

@@ -1479,7 +1479,7 @@ if ($tl_show) {
         <div class="time-bar">
           <?php if ($tl_drive_pct > 0): ?>
             <div class="time-bar-seg" style="flex:<?= $tl_drive_one ?>; background:#7A6858;">
-              <span class="time-bar-label">Drive</span>
+              <span class="time-bar-label">Travel</span>
               <span class="time-bar-time"><?= $tl_drive_one ?>m</span>
             </div>
           <?php endif; ?>
