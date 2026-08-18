@@ -677,14 +677,8 @@ if (empty($summit['drive_time_min']) && $selected_address && !empty($summit['lat
 $sota_member_activations = [];
 $last_global_activation  = null;
 if ($current_group && !empty($summit['sota_ref'])) {
-    // Collect all group member callsigns (owner + members)
-    $member_stmt = $db->prepare("
-        SELECT callsign FROM planning_group_members WHERE planning_group_id = ?
-        UNION
-        SELECT owner_callsign FROM planning_groups WHERE id = ?
-    ");
-    $member_stmt->execute([$current_group['id'], $current_group['id']]);
-    $group_callsigns = array_map('strtoupper', array_column($member_stmt->fetchAll(), 'callsign'));
+    // Collect all group member callsigns (owner + members + their additional callsigns)
+    $group_callsigns = getGroupHomeCallsigns($db, $current_group['id']);
 
     // Cache SOTA API results in app_settings (24-hour TTL)
     $all_sota_activations = fetchSotaActivations($db, $summit['sota_ref']);
@@ -692,7 +686,7 @@ if ($current_group && !empty($summit['sota_ref'])) {
     if (is_array($all_sota_activations)) {
         foreach ($all_sota_activations as $act) {
             $cs = strtoupper(trim($act['ownCallsign'] ?? ''));
-            if (in_array($cs, $group_callsigns)) {
+            if (sotaCallsignMatchesHome($cs, $group_callsigns) !== null) {
                 $sota_member_activations[] = [
                     'date'     => $act['activationDate'] ?? '',
                     'callsign' => $cs,

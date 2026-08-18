@@ -28,13 +28,7 @@ if (!$current_group) {
     exit;
 }
 
-$member_stmt = $db->prepare("
-    SELECT callsign FROM planning_group_members WHERE planning_group_id = ?
-    UNION
-    SELECT owner_callsign FROM planning_groups WHERE id = ?
-");
-$member_stmt->execute([$current_group['id'], $current_group['id']]);
-$group_callsigns = array_map('strtoupper', array_column($member_stmt->fetchAll(), 'callsign'));
+$group_callsigns = getGroupHomeCallsigns($db, $current_group['id']);
 
 // Candidates are exactly the summits shown "green" (ready) on the dashboard —
 // the only ones whose row would visibly change if a new activation is found.
@@ -67,7 +61,7 @@ foreach ($candidates as $s) {
     $member_acts = [];
     foreach ($acts as $act) {
         $cs = strtoupper(trim($act['ownCallsign'] ?? ''));
-        if (in_array($cs, $group_callsigns)) {
+        if (sotaCallsignMatchesHome($cs, $group_callsigns) !== null) {
             $member_acts[] = ['date' => $act['activationDate'] ?? '', 'callsign' => $cs];
         }
     }

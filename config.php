@@ -338,6 +338,49 @@ function fetchSotaActivations($db, string $sota_ref, bool $allow_live_fetch = tr
     return $fetched;
 }
 
+/** Returns every home callsign for a dashboard's owner + members, including
+ *  each member's additional callsigns (e.g. a separate DX license held in
+ *  another country) from their user profile — for matching against SOTA
+ *  activation logs via sotaCallsignMatchesHome(). */
+function getGroupHomeCallsigns($db, int $group_id): array {
+    $stmt = $db->prepare("
+        SELECT callsign FROM planning_group_members WHERE planning_group_id = ?
+        UNION
+        SELECT owner_callsign FROM planning_groups WHERE id = ?
+    ");
+    $stmt->execute([$group_id, $group_id]);
+    $callsigns = array_map('strtoupper', array_column($stmt->fetchAll(), 'callsign'));
+    if (empty($callsigns)) return [];
+
+    $placeholders = implode(',', array_fill(0, count($callsigns), '?'));
+    $ustmt = $db->prepare("SELECT additional_callsigns FROM users WHERE callsign IN ($placeholders)");
+    $ustmt->execute($callsigns);
+    foreach ($ustmt->fetchAll() as $row) {
+        if (empty($row['additional_callsigns'])) continue;
+        foreach (explode(',', $row['additional_callsigns']) as $extra) {
+            $extra = strtoupper(trim($extra));
+            if ($extra !== '') $callsigns[] = $extra;
+        }
+    }
+    return array_values(array_unique($callsigns));
+}
+
+/** Match an operating callsign (as logged on an activation, e.g. "KI6CR/P" or
+ *  "HB9/KI6CR/P" for a DX trip needing only a prefix/suffix change) against a
+ *  list of home callsigns. Splits on "/" and checks each segment for an exact
+ *  match, since a portable suffix or country prefix can appear on either side
+ *  and can't be reliably guessed from format alone. A vacation callsign that's
+ *  an entirely new license (no shared segment) correctly won't match. Returns
+ *  the matched home callsign, or null. */
+function sotaCallsignMatchesHome(string $opCallsign, array $homeCallsigns): ?string {
+    $opCallsign = strtoupper(trim($opCallsign));
+    if ($opCallsign === '') return null;
+    foreach (explode('/', $opCallsign) as $part) {
+        if (in_array($part, $homeCallsigns, true)) return $part;
+    }
+    return null;
+}
+
 // GPX PROCESSING FUNCTIONS
 function analyze_gpx_track($gpx_file_path, $summit_ref = null) {
     $stationary_threshold = 0.3;

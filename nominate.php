@@ -265,13 +265,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'nominate_one') {
     $last_activated_by   = null;
     $activated_this_year = false;
 
-    $ms = $db->prepare("
-        SELECT callsign FROM planning_group_members WHERE planning_group_id = ?
-        UNION
-        SELECT owner_callsign FROM planning_groups WHERE id = ?
-    ");
-    $ms->execute([$current_group['id'], $current_group['id']]);
-    $group_callsigns = array_map('strtoupper', array_column($ms->fetchAll(), 'callsign'));
+    $group_callsigns = getGroupHomeCallsigns($db, $current_group['id']);
 
     $cache_key = 'sota_activations_' . preg_replace('/[^a-zA-Z0-9_]/', '_', $sota_ref);
     $cstmt = $db->prepare("SELECT setting_value, updated_at FROM app_settings WHERE setting_key = ?");
@@ -308,7 +302,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'nominate_one') {
         $member_acts = [];
         foreach ($all_acts as $act) {
             $cs2 = strtoupper(trim($act['ownCallsign'] ?? ''));
-            if (in_array($cs2, $group_callsigns)) {
+            if (sotaCallsignMatchesHome($cs2, $group_callsigns) !== null) {
                 $member_acts[] = ['date' => $act['activationDate'] ?? '', 'callsign' => $cs2];
             }
         }

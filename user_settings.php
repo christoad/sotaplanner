@@ -331,6 +331,10 @@ $additional_callsigns = $user_profile['additional_callsigns'] ?? '';
         <?php endif; ?>
 
         <div>
+          <div style="font-size:0.78rem; color:var(--ink-2); background:var(--accent-bg); border:1px solid var(--accent-border);
+                      border-radius:var(--r-md); padding:0.5rem 0.7rem; margin-bottom:0.6rem; line-height:1.45;">
+            Prefix/suffix variations of your primary callsign — like <strong><?= htmlspecialchars($current_user) ?>/P</strong> or <strong>HB9/<?= htmlspecialchars($current_user) ?></strong> — are matched automatically, so there's no need to list those below. Use this field only for a genuinely different callsign you own, such as a separate license issued in another country.
+          </div>
           <label class="section-label" style="margin-bottom:0.35rem; display:block; text-transform:none; font-size:0.82rem; color:var(--ink-2); font-weight:600;">
             Additional callsigns <span style="font-weight:400; color:var(--ink-4);">(optional)</span>
           </label>
@@ -338,14 +342,14 @@ $additional_callsigns = $user_profile['additional_callsigns'] ?? '';
             type="text"
             name="additional_callsigns"
             value="<?= htmlspecialchars($additional_callsigns) ?>"
-            placeholder="e.g., W6CMY, KI6CR/VK3"
+            placeholder="e.g., VK3ABC, W6CMY"
             autocapitalize="characters" autocorrect="off" spellcheck="false"
             style="width:100%; padding:0.5rem 0.75rem; border:1px solid var(--border); border-radius:var(--r-md);
                    font-family:var(--font-mono); font-size:0.9375rem; color:var(--ink);
                    background:var(--surface); outline:none; text-transform:uppercase; letter-spacing:0.02em;"
             oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9\/,\s]/g,'')"
           >
-          <div class="hint">Other calls you operate under — club callsigns, portable calls, etc. Separate with commas. Stored for reference.</div>
+          <div class="hint">Separate with commas. Activations logged under any of these count toward your dashboards too.</div>
         </div>
       </div>
 

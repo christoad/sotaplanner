@@ -78,14 +78,8 @@ if (!is_array($all_activations)) {
     exit;
 }
 
-// Get group member callsigns
-$member_stmt = $db->prepare("
-    SELECT callsign FROM planning_group_members WHERE planning_group_id = ?
-    UNION
-    SELECT owner_callsign FROM planning_groups WHERE id = ?
-");
-$member_stmt->execute([$group_id, $group_id]);
-$group_callsigns = array_map('strtoupper', array_column($member_stmt->fetchAll(), 'callsign'));
+// Get group member callsigns (including their additional callsigns)
+$group_callsigns = getGroupHomeCallsigns($db, $group_id);
 
 // Filter to group members and find most recent
 $most_recent_date     = null;
@@ -93,7 +87,7 @@ $most_recent_callsign = null;
 foreach ($all_activations as $act) {
     $act_cs   = strtoupper(trim($act['ownCallsign'] ?? ''));
     $act_date = $act['activationDate'] ?? '';
-    if (!in_array($act_cs, $group_callsigns) || !$act_date) continue;
+    if (sotaCallsignMatchesHome($act_cs, $group_callsigns) === null || !$act_date) continue;
     $act_date_fmt = date('Y-m-d', strtotime($act_date));
     if ($most_recent_date === null || $act_date_fmt > $most_recent_date) {
         $most_recent_date     = $act_date_fmt;
