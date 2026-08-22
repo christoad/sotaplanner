@@ -445,7 +445,7 @@ try {
     <div class="hero-logo-wrap">
         <img src="sota-planner-logo-font.svg" width="280" height="280" alt="SOTA Planner">
     </div>
-    <p class="tagline">Thousands of hams have already hiked these trails and shared what they found. SOTA Planner puts that community knowledge to work — so you can plan any activation, anywhere, even if you've never been there before.</p>
+    <p class="tagline">SOTA activators everywhere are researching trails and hikes for the summits they climb. SOTA Planner lets you share and leverage each other's work — so you can get on the trail faster, with less effort.</p>
     <?php if ($ready_count > 0): ?>
     <div>
         <span class="hero-stat-pill">
@@ -473,11 +473,6 @@ try {
         <h3>Plan From Anywhere</h3>
         <p>Traveling somewhere new? Search summits near any location — a destination city, a vacation spot — and instantly see what the community knows about each hike.</p>
     </div>
-    <div class="feature">
-        <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="24" height="16" rx="2"/><polyline points="4,8 16,18 28,8"/></svg></span>
-        <h3>Shareable Invitations</h3>
-        <p>Generate a public invite page for guests — timeline, map, directions, and location sharing. No login required.</p>
-    </div>
 </div>
 
 <!-- How it works steps -->
@@ -500,15 +495,8 @@ try {
         <div class="how-step">
             <div class="step-num">3</div>
             <div>
-                <strong>See what you're getting into</strong>
-                <p>Community routes, starting points, real hiking times, and travel estimates are preloaded — so you can compare summits and pick what fits your schedule.</p>
-            </div>
-        </div>
-        <div class="how-step">
-            <div class="step-num">4</div>
-            <div>
                 <strong>Plan and activate</strong>
-                <p>Schedule the activation, share the invite link with your hiking partners, and go chase those points.</p>
+                <p>Compare total time estimates, schedule your activation, and go chase those points.</p>
             </div>
         </div>
     </div>
