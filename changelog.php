@@ -233,12 +233,13 @@ session_start();
     <!-- August 2026 (v1.5.8-v1.6.0) -->
     <div class="version-block current">
         <div class="version-header">
-            <span class="version-number">v1.6.0</span>
+            <span class="version-number">v1.7.0</span>
             <span class="version-date">August 2026</span>
             <span class="version-badge">Current</span>
         </div>
-        <p class="version-desc">Live activation syncing with the SOTA API, and travel terminology that works for transit trips too.</p>
+        <p class="version-desc">Live activation syncing with the SOTA API, a new Community Growth page, and travel terminology that works for transit trips too.</p>
         <ul>
+            <li>New "Community Growth" page (in the top nav) shows every summit with community trail data plotted on a world map, plus a chart of how that number has grown over time — including a callout marking the big June 2026 SOTA Mapping Project import</li>
             <li>The dashboard map now has a Map / Topo / Satellite toggle, same as the summit detail map, so you can switch base layers when scanning your summit list</li>
             <li>Opening your dashboard now quietly checks the SOTA activation record in the background — if a summit your team already activated is still showing as Ready, the row fades from green to grey and picks up the activation date automatically, no page reload needed</li>
             <li>Summit detail now shows "Ready to Activate" instead of just "Ready" on the status buttons</li>

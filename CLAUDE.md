@@ -66,11 +66,9 @@ Always save Playwright screenshots to the `playwright/` folder in the project ro
 The staging login page shows a hero section by default. To log in, click the small **"Developer access"** link in the bottom-left corner of the page — this reveals the callsign input. Enter `KI6CR` and click **Go**.
 
 ### Branches
-- **`main`** — production branch. Only merge here when a feature is tested and confirmed working.
-- **`dev`** — development branch. All new work happens here.
+**Work happens directly on `main`.** The repo also has a `dev` branch, but it's stale (abandoned since 2026-05-30, ~55 commits behind) — everything since the global GPX library work has been committed straight to `main`. Don't use `dev` for new work; it's not part of the active workflow. (Noted 2026-08-23.)
 
-### Merging dev → main
-Before merging, always:
+### Before Committing a Feature
 1. Bump `APP_VERSION` in `config.php`
 2. Add a new version block to `changelog.php` describing the new features in plain English (see changelog conventions below)
 
@@ -78,11 +76,11 @@ Before merging, always:
 - **URL:** christopherreddick.com/sotaplanner/
 - **Server path:** `/home/chrisr069/christopherreddick.com/sotaplanner/`
 - **Database:** Same production DB (shared — no schema changes without care)
-- **Deploy dev to staging:**
+- **Deploy to staging:**
   ```
   rsync -avz --exclude='.git' --exclude='.claude' --exclude='.playwright-mcp' --exclude='playwright' "/Users/chris/Dropbox/ham - amateur radio/sotaplanner/" dreamhost-sota:/home/chrisr069/christopherreddick.com/sotaplanner/
   ```
-- After confirming on staging, merge `dev` → `main` in GitHub Desktop, then deploy to production as usual.
+- After confirming on staging, commit on `main` and deploy to production as usual.
 - **GPX files + SOTA cache** are synced from production → staging daily at 2am via `/home/chrisr069/sync_sites.sh`. No need to manually copy GPX files when testing on staging.
 
 ---

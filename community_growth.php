@@ -1,0 +1,501 @@
+<?php
+require_once 'config.php';
+session_start();
+requireLogin();
+
+$db = getDbConnection();
+reconcileTrailDataGrowthLog($db);
+
+$total_ready = (int)$db->query("SELECT COUNT(*) FROM trail_data_growth_log")->fetchColumn();
+
+// Monthly new-summit counts, turned into a running cumulative total
+$rows = $db->query("
+    SELECT DATE_FORMAT(first_seen_date, '%Y-%m-01') AS month, COUNT(*) AS cnt
+    FROM trail_data_growth_log
+    GROUP BY month
+    ORDER BY month ASC
+")->fetchAll();
+
+$growth = [];
+$running = 0;
+foreach ($rows as $r) {
+    $running += (int)$r['cnt'];
+    $growth[] = ['month' => $r['month'], 'total' => $running, 'added' => (int)$r['cnt']];
+}
+
+$bkey = defined('GOOGLE_MAPS_BROWSER_KEY') ? GOOGLE_MAPS_BROWSER_KEY : '';
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Community Growth — SOTA Planner</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:            #F7F6F3;
+  --bg-2:          #EFEDE8;
+  --bg-3:          #E5E2DA;
+  --ink:           #1C1B19;
+  --ink-2:         #4A4844;
+  --ink-3:         #8C8A86;
+  --ink-4:         #B8B5B0;
+  --accent:        oklch(52% 0.13 50);
+  --accent-2:      oklch(44% 0.13 50);
+  --accent-bg:     oklch(96% 0.04 65);
+  --accent-border: oklch(84% 0.08 65);
+  --surface:       #FFFFFF;
+  --border:        #E5E2DA;
+  --border-2:      #D4D0C8;
+  --font-sans:     'DM Sans', system-ui, sans-serif;
+  --font-mono:     'DM Mono', 'Courier New', monospace;
+  --r-sm: 4px; --r-md: 8px; --r-lg: 12px; --r-xl: 16px;
+  --sp-1: 0.25rem; --sp-2: 0.5rem; --sp-3: 0.75rem; --sp-4: 1rem;
+  --sp-6: 1.5rem; --sp-8: 2rem;
+  --shadow-sm: 0 1px 3px rgba(28,27,25,0.07), 0 1px 2px rgba(28,27,25,0.05);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+body { font-family: var(--font-sans); background: var(--bg); color: var(--ink); line-height: 1.5; min-height: 100vh; }
+
+.topbar {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  height: 56px; display: flex; align-items: center; padding: 0 var(--sp-8);
+  gap: var(--sp-4); position: sticky; top: 0; z-index: 100;
+}
+.topbar-logo { display: flex; align-items: center; gap: var(--sp-3); text-decoration: none; color: var(--ink); font-weight: 600; font-size: 0.95rem; letter-spacing: -0.01em; flex-shrink: 0; }
+.topbar-logo:hover { text-decoration: none; color: var(--ink); }
+.topbar-logo .logo-mark { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.topbar-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+.topbar-nav { display: flex; align-items: center; gap: var(--sp-1); }
+.topbar-nav a { color: var(--ink-3); font-size: 0.875rem; font-weight: 500; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); transition: color 0.15s, background 0.15s; text-decoration: none; white-space: nowrap; }
+.topbar-nav a:hover { color: var(--ink); background: var(--bg-2); }
+.topbar-nav a.active { color: var(--ink); background: var(--bg-2); }
+.topbar-right { display: flex; align-items: center; gap: var(--sp-3); margin-left: auto; flex-shrink: 0; }
+
+.page { padding: var(--sp-8); max-width: 1100px; margin: 0 auto; }
+.page-header { margin-bottom: var(--sp-6); }
+.page-header h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 0.35rem; }
+.page-header p { color: var(--ink-3); font-size: 0.9rem; max-width: 640px; }
+
+.stat-hero {
+  display: inline-flex; align-items: baseline; gap: 0.6rem;
+  background: var(--accent-bg); border: 1px solid var(--accent-border);
+  border-radius: var(--r-lg); padding: 0.9rem 1.4rem; margin-bottom: var(--sp-6);
+}
+.stat-hero-num { font-size: 2rem; font-weight: 700; color: var(--accent-2); font-variant-numeric: proportional-nums; }
+.stat-hero-label { font-size: 0.85rem; color: var(--ink-2); font-weight: 500; }
+
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); box-shadow: var(--shadow-sm);
+  margin-bottom: var(--sp-6); overflow: hidden;
+}
+.card-header { padding: var(--sp-4) var(--sp-6); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); }
+.card-header h2 { font-size: 1rem; font-weight: 600; }
+.card-header p { font-size: 0.8rem; color: var(--ink-3); margin-top: 0.15rem; }
+.card-body { padding: var(--sp-6); }
+
+.btn-ghost {
+  display: inline-flex; align-items: center; height: 30px; padding: 0 var(--sp-3);
+  border-radius: var(--r-md); font-size: 0.8rem; font-weight: 500; cursor: pointer;
+  background: transparent; color: var(--ink-2); border: 1px solid var(--border);
+  font-family: var(--font-sans); transition: background 0.15s, color 0.15s;
+}
+.btn-ghost:hover { background: var(--bg-2); color: var(--ink); }
+
+#map-wrap { position: relative; height: 460px; }
+#map { width: 100%; height: 100%; }
+#map-loading {
+  position: absolute; inset: 0; background: rgba(247,246,243,0.85);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  z-index: 10; gap: 0.75rem;
+}
+.spinner { width: 30px; height: 30px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.75s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#map-hint { position: absolute; bottom: var(--sp-3); right: var(--sp-3); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0.3rem 0.6rem; font-size: 0.75rem; color: var(--ink-3); z-index: 5; }
+
+.gm-style .gm-style-iw-c { border-radius: var(--r-lg) !important; padding: 0 !important; box-shadow: 0 4px 20px rgba(0,0,0,0.15) !important; }
+.gm-style .gm-style-iw-d { overflow: hidden !important; }
+.gm-style .gm-style-iw-tc::after { background: #fff !important; }
+.iw-body { padding: 0.9rem 1rem 0.8rem; min-width: 190px; font-family: var(--font-sans); }
+.iw-ref { font-size: 0.7rem; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.2rem; font-family: var(--font-mono); }
+.iw-name { font-size: 0.92rem; font-weight: 600; color: var(--ink); line-height: 1.3; margin-bottom: 0.4rem; }
+.iw-points { font-size: 0.78rem; color: var(--ink-3); margin-bottom: 0.55rem; }
+.iw-link { display: inline-flex; align-items: center; height: 26px; padding: 0 0.6rem; border-radius: var(--r-md); font-size: 0.75rem; font-weight: 500; text-decoration: none; background: var(--bg-2); color: var(--ink-2); border: 1px solid var(--border); }
+.iw-link:hover { background: var(--bg-3); color: var(--ink); }
+
+/* Chart */
+.chart-wrap { position: relative; }
+#chart-svg { width: 100%; height: 280px; display: block; overflow: visible; }
+.chart-grid line { stroke: var(--border); stroke-width: 1; shape-rendering: crispEdges; }
+.chart-axis-label { font-size: 0.7rem; fill: var(--ink-3); font-family: var(--font-sans); }
+.chart-area { fill: var(--accent-bg); }
+.chart-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-end-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.chart-end-label { font-size: 0.78rem; font-weight: 600; fill: var(--ink); font-family: var(--font-sans); }
+.chart-crosshair { stroke: var(--ink-4); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0; pointer-events: none; }
+.chart-annotation-line { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 4 3; }
+.chart-annotation-dot { fill: var(--surface); stroke: var(--ink-2); stroke-width: 2; }
+.chart-annotation-label { font-size: 0.7rem; font-weight: 600; fill: var(--ink-2); font-family: var(--font-sans); }
+.chart-annotation-hit { fill: transparent; cursor: help; }
+.chart-hover-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; opacity: 0; pointer-events: none; }
+.chart-hit-area { fill: transparent; cursor: crosshair; }
+
+.tooltip {
+  position: absolute; pointer-events: none; opacity: 0; transition: opacity 0.1s;
+  background: var(--ink); color: #fff; border-radius: var(--r-md);
+  padding: 0.45rem 0.7rem; font-size: 0.78rem; white-space: nowrap;
+  transform: translate(-50%, calc(-100% - 10px)); z-index: 20;
+}
+.tooltip-val { font-weight: 700; }
+.tooltip-lbl { color: rgba(255,255,255,0.7); margin-top: 0.1rem; }
+
+.growth-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.growth-table th, .growth-table td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); }
+.growth-table th { color: var(--ink-3); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.growth-table td.num, .growth-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.growth-note-badge {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    font-size: 0.72rem; font-weight: 600; color: var(--ink-2);
+    background: var(--bg-2); border: 1px solid var(--border-2);
+    border-radius: 100px; padding: 0.15rem 0.65rem;
+}
+.growth-note-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); flex-shrink: 0; }
+
+.empty-note { padding: var(--sp-6); text-align: center; color: var(--ink-3); font-size: 0.9rem; }
+</style>
+</head>
+<body>
+
+<nav class="topbar">
+    <a href="index.php" class="topbar-logo">
+        <span class="logo-mark"><img src="sota-planner-logo.svg" width="32" height="32" alt=""></span>
+        <span>SOTAplanner</span>
+    </a>
+    <div class="topbar-divider"></div>
+    <div class="topbar-nav">
+        <a href="index.php">Dashboard</a>
+        <a href="planning_groups.php">Manage Dashboards</a>
+        <a href="community_growth.php" class="active">Community Growth</a>
+    </div>
+    <div class="topbar-right">
+        <span style="font-size:0.8rem; color:var(--ink-3);"><?= htmlspecialchars($_SESSION['sota_callsign'] ?? '') ?></span>
+    </div>
+</nav>
+
+<div class="page">
+    <div class="page-header">
+        <h1>Community Growth</h1>
+        <p>Every summit with community trail data — a GPS route, a starting point, real hike times — pulled from the SOTA Mapping Project, OpenStreetMap, and dashboard research across the whole site. The same number shown on the login page, tracked here over time.</p>
+    </div>
+
+    <div class="stat-hero">
+        <span class="stat-hero-num"><?= number_format($total_ready) ?></span>
+        <span class="stat-hero-label">summits with community trail data, site-wide</span>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <div>
+                <h2>Where they are</h2>
+                <p>Every summit with trail data, plotted by location.</p>
+            </div>
+        </div>
+        <div id="map-wrap">
+            <div id="map-loading">
+                <div class="spinner"></div>
+                <div style="font-size:0.85rem; color:var(--ink-3);">Loading map&hellip;</div>
+            </div>
+            <div id="map"></div>
+            <div id="map-hint"></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <div>
+                <h2>Growth over time</h2>
+                <p>Running total of summits with community trail data, by month.</p>
+            </div>
+            <button class="btn-ghost" id="toggle-table-btn" type="button">View as table</button>
+        </div>
+        <div class="card-body">
+            <?php if (empty($growth)): ?>
+                <div class="empty-note">No trail data recorded yet.</div>
+            <?php else: ?>
+                <div class="chart-wrap" id="chart-wrap">
+                    <svg id="chart-svg" viewBox="0 0 900 280" preserveAspectRatio="none"></svg>
+                    <div class="tooltip" id="chart-tooltip">
+                        <div class="tooltip-val" id="tooltip-val"></div>
+                        <div class="tooltip-lbl" id="tooltip-lbl"></div>
+                    </div>
+                </div>
+                <div id="table-wrap" style="display:none; overflow-x:auto;">
+                    <table class="growth-table">
+                        <thead><tr><th>Month</th><th class="num">Total summits</th><th>Note</th></tr></thead>
+                        <tbody>
+                            <?php foreach (array_reverse($growth) as $g): ?>
+                            <tr>
+                                <td><?= date('F Y', strtotime($g['month'])) ?></td>
+                                <td class="num"><?= number_format($g['total']) ?></td>
+                                <td>
+                                    <?php if ($g['month'] === '2026-06-01'): ?>
+                                    <span class="growth-note-badge">SOTA Mapping Project mass import (+<?= number_format($g['added']) ?>)</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('toggle-table-btn')?.addEventListener('click', function () {
+    var chart = document.getElementById('chart-wrap');
+    var table = document.getElementById('table-wrap');
+    var showingTable = table.style.display !== 'none';
+    table.style.display = showingTable ? 'none' : 'block';
+    chart.style.display = showingTable ? 'block' : 'none';
+    this.textContent = showingTable ? 'View as table' : 'View as chart';
+});
+</script>
+
+<?php if (!empty($growth)): ?>
+<script>
+(function () {
+    var data = <?= json_encode(array_map(function ($g) {
+        return ['month' => $g['month'], 'total' => $g['total']];
+    }, $growth)) ?>;
+
+    var svg = document.getElementById('chart-svg');
+    var W = 900, H = 280;
+    var padL = 44, padR = 16, padT = 16, padB = 28;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+
+    var maxVal = Math.max.apply(null, data.map(function (d) { return d.total; }));
+    // Round the axis ceiling to a clean number
+    var niceMax = maxVal <= 5 ? 5 : Math.ceil(maxVal / Math.pow(10, Math.floor(Math.log10(maxVal)))) * Math.pow(10, Math.floor(Math.log10(maxVal)));
+    if (niceMax < maxVal) niceMax = maxVal;
+
+    function xFor(i) { return padL + (data.length === 1 ? plotW / 2 : (i / (data.length - 1)) * plotW); }
+    function yFor(v) { return padT + plotH - (v / niceMax) * plotH; }
+
+    var ns = 'http://www.w3.org/2000/svg';
+    function el(tag, attrs) {
+        var e = document.createElementNS(ns, tag);
+        for (var k in attrs) e.setAttribute(k, attrs[k]);
+        return e;
+    }
+
+    // Gridlines + y-axis labels (0, 1/2, max)
+    var gridGroup = el('g', { class: 'chart-grid' });
+    [0, 0.5, 1].forEach(function (frac) {
+        var y = padT + plotH - frac * plotH;
+        gridGroup.appendChild(el('line', { x1: padL, x2: W - padR, y1: y, y2: y }));
+        var label = el('text', { class: 'chart-axis-label', x: padL - 8, y: y + 4, 'text-anchor': 'end' });
+        label.textContent = Math.round(niceMax * frac).toLocaleString();
+        gridGroup.appendChild(label);
+    });
+    svg.appendChild(gridGroup);
+
+    // X-axis labels — thin out so they don't collide
+    var maxLabels = 7;
+    var step = Math.max(1, Math.ceil(data.length / maxLabels));
+    data.forEach(function (d, i) {
+        if (i % step !== 0 && i !== data.length - 1) return;
+        var label = el('text', { class: 'chart-axis-label', x: xFor(i), y: H - 6, 'text-anchor': 'middle' });
+        var dt = new Date(d.month + 'T00:00:00');
+        label.textContent = dt.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+        svg.appendChild(label);
+    });
+
+    // Area + line paths
+    var linePoints = data.map(function (d, i) { return xFor(i) + ',' + yFor(d.total); }).join(' L ');
+    var areaPath = 'M ' + xFor(0) + ',' + yFor(0) + ' L ' + linePoints + ' L ' + xFor(data.length - 1) + ',' + (padT + plotH) + ' L ' + xFor(0) + ',' + (padT + plotH) + ' Z';
+    svg.appendChild(el('path', { class: 'chart-area', d: areaPath }));
+    svg.appendChild(el('path', { class: 'chart-line', d: 'M ' + linePoints }));
+
+    // Annotation: the June 2026 mass import from the SOTA Mapping Project, which
+    // explains the large one-time jump in the line — a one-off historical event,
+    // not a recurring feature, so it's fine to key off the literal month.
+    var importIdx = -1;
+    data.forEach(function (d, i) { if (d.month === '2026-06-01') importIdx = i; });
+    if (importIdx > 0) {
+        var ix = xFor(importIdx), iy = yFor(data[importIdx].total);
+        var delta = data[importIdx].total - data[importIdx - 1].total;
+        var annoGroup = el('g', {});
+
+        annoGroup.appendChild(el('line', {
+            class: 'chart-annotation-line', x1: ix, x2: ix, y1: padT, y2: padT + plotH
+        }));
+
+        var labelAnchor = ix > W * 0.6 ? 'end' : (ix < W * 0.25 ? 'start' : 'middle');
+        var labelX = labelAnchor === 'end' ? ix - 6 : (labelAnchor === 'start' ? ix + 6 : ix);
+        var label = el('text', {
+            class: 'chart-annotation-label', x: labelX, y: padT + 11, 'text-anchor': labelAnchor
+        });
+        label.textContent = 'SOTA Mapping Project mass import';
+        annoGroup.appendChild(label);
+
+        var dot = el('circle', { class: 'chart-annotation-dot', cx: ix, cy: iy, r: 4 });
+        var titleEl = document.createElementNS(ns, 'title');
+        titleEl.textContent = 'June 2026: +' + delta.toLocaleString() + ' summits added in a single mass import from the SOTA Mapping Project';
+        dot.appendChild(titleEl);
+        annoGroup.appendChild(dot);
+
+        // Generous invisible hit area so the tooltip is easy to trigger, not just the 4px dot
+        var hit = el('circle', { class: 'chart-annotation-hit', cx: ix, cy: padT + 11, r: 10 });
+        var hitTitle = document.createElementNS(ns, 'title');
+        hitTitle.textContent = titleEl.textContent;
+        hit.appendChild(hitTitle);
+        annoGroup.appendChild(hit);
+
+        svg.appendChild(annoGroup);
+    }
+
+    // End marker + direct label (value at the end, per spec)
+    var lastX = xFor(data.length - 1), lastY = yFor(data[data.length - 1].total);
+    svg.appendChild(el('circle', { class: 'chart-end-dot', cx: lastX, cy: lastY, r: 4 }));
+    var endLabel = el('text', {
+        class: 'chart-end-label', x: Math.min(lastX, W - padR - 4), y: lastY - 12,
+        'text-anchor': data.length > 3 ? 'end' : 'middle'
+    });
+    endLabel.textContent = data[data.length - 1].total.toLocaleString();
+    svg.appendChild(endLabel);
+
+    // Hover layer: crosshair + snapping dot + tooltip
+    var crosshair = el('line', { class: 'chart-crosshair', x1: 0, x2: 0, y1: padT, y2: padT + plotH });
+    svg.appendChild(crosshair);
+    var hoverDot = el('circle', { class: 'chart-hover-dot', r: 4 });
+    svg.appendChild(hoverDot);
+    var hitArea = el('rect', { class: 'chart-hit-area', x: padL, y: padT, width: plotW, height: plotH });
+    svg.appendChild(hitArea);
+
+    var tooltip = document.getElementById('chart-tooltip');
+    var tooltipVal = document.getElementById('tooltip-val');
+    var tooltipLbl = document.getElementById('tooltip-lbl');
+    var wrap = document.getElementById('chart-wrap');
+
+    function showAt(i) {
+        var x = xFor(i), y = yFor(data[i].total);
+        crosshair.setAttribute('x1', x); crosshair.setAttribute('x2', x);
+        crosshair.style.opacity = 1;
+        hoverDot.setAttribute('cx', x); hoverDot.setAttribute('cy', y);
+        hoverDot.style.opacity = 1;
+
+        var dt = new Date(data[i].month + 'T00:00:00');
+        tooltipVal.textContent = data[i].total.toLocaleString() + ' summits with trail data';
+        tooltipLbl.textContent = dt.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+        var pct = x / W;
+        tooltip.style.left = (pct * 100) + '%';
+        tooltip.style.top = ((y / H) * 100) + '%';
+        tooltip.style.opacity = 1;
+    }
+    function hideTooltip() {
+        crosshair.style.opacity = 0;
+        hoverDot.style.opacity = 0;
+        tooltip.style.opacity = 0;
+    }
+
+    hitArea.addEventListener('pointermove', function (e) {
+        var rect = svg.getBoundingClientRect();
+        var svgX = ((e.clientX - rect.left) / rect.width) * W;
+        var idx = 0, best = Infinity;
+        data.forEach(function (d, i) {
+            var dist = Math.abs(xFor(i) - svgX);
+            if (dist < best) { best = dist; idx = i; }
+        });
+        showAt(idx);
+    });
+    hitArea.addEventListener('pointerleave', hideTooltip);
+})();
+</script>
+<?php endif; ?>
+
+<script src="https://unpkg.com/@googlemaps/markerclusterer/dist/index.min.js"></script>
+<script>
+let allSummits = [];
+let map, clusterer, infoWindow;
+
+function initMap() {
+    map = new google.maps.Map(document.getElementById('map'), {
+        zoom: 2,
+        center: { lat: 25, lng: 10 },
+        mapTypeId: 'terrain',
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: true,
+        gestureHandling: 'greedy',
+        styles: [{ featureType: 'poi', stylers: [{ visibility: 'off' }] }]
+    });
+    infoWindow = new google.maps.InfoWindow({ maxWidth: 260 });
+    loadData();
+}
+
+async function loadData() {
+    try {
+        const res = await fetch('api_trail_data_map.php');
+        allSummits = await res.json();
+        document.getElementById('map-loading').style.display = 'none';
+        document.getElementById('map-hint').textContent = `${allSummits.length.toLocaleString()} summits — zoom or pan to explore`;
+
+        // Build every marker once — SuperCluster handles aggregation at any zoom,
+        // so there's no need to rebuild/filter per viewport like a smaller dataset would.
+        const markers = allSummits.map(m => {
+            const marker = new google.maps.Marker({
+                position: { lat: m.a, lng: m.o },
+                title: m.n || m.r,
+                icon: {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 5,
+                    fillColor: '#c2571a',
+                    fillOpacity: 0.85,
+                    strokeColor: '#fff',
+                    strokeWeight: 1.5,
+                },
+                optimized: true,
+            });
+            marker.addListener('click', () => showInfo(marker, m));
+            return marker;
+        });
+
+        clusterer = new markerClusterer.MarkerClusterer({
+            map,
+            markers,
+            algorithm: new markerClusterer.SuperClusterAlgorithm({ radius: 60, maxZoom: 13 }),
+        });
+    } catch (e) {
+        document.getElementById('map-loading').innerHTML = '<div style="font-size:0.85rem; color:var(--ink-3);">Failed to load map data.</div>';
+    }
+}
+
+function showInfo(marker, m) {
+    const sotaRef = m.r;
+    const name = m.n || sotaRef;
+    const sotlasUrl = `https://sotlas.com/summit/${encodeURIComponent(sotaRef)}`;
+    infoWindow.setContent(`
+        <div class="iw-body">
+            <div class="iw-ref">${sotaRef}</div>
+            <div class="iw-name">${escHtml(name)}</div>
+            ${m.p ? `<div class="iw-points">${m.p} point${m.p === 1 ? '' : 's'}</div>` : ''}
+            <a class="iw-link" href="${sotlasUrl}" target="_blank">View on SOTLAS ↗</a>
+        </div>
+    `);
+    infoWindow.open(map, marker);
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+<script src="https://maps.googleapis.com/maps/api/js?key=<?= htmlspecialchars($bkey) ?>&callback=initMap&loading=async" async defer></script>
+
+</body>
+</html>

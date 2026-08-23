@@ -1,5 +1,5 @@
 <?php
-define('APP_VERSION', '1.6.0');
+define('APP_VERSION', '1.7.0');
 
 // Enable error reporting for debugging
 error_reporting(E_ALL);
@@ -773,6 +773,53 @@ function logActivity($db, $event_type, $subject = '', $detail = '', $group_name 
         implode("\t", [date('Y-m-d H:i:s'), $callsign, $login_type, $event_type, $subject, $detail, $group_name, $ip]) . "\n",
         FILE_APPEND | LOCK_EX
     );
+}
+
+// Keeps trail_data_growth_log in sync with the same 3-bucket "community trail
+// data" definition login.php uses for its stat: GPX library tracks with a
+// trailhead, drive-up summits, and manually-researched summits. Re-running this
+// is cheap and idempotent (INSERT IGNORE + UNIQUE sota_ref), so no hooks are
+// needed elsewhere — new data from any source (cron imports, nominations, manual
+// edits) gets picked up the next time this runs. Gated to once/24h via app_settings.
+function reconcileTrailDataGrowthLog($db) {
+    $row = $db->query("SELECT updated_at FROM app_settings WHERE setting_key = 'trail_data_log_reconciled_at'")->fetch();
+    if ($row && strtotime($row['updated_at']) > time() - 86400) return;
+
+    try {
+        $db->exec("
+            INSERT IGNORE INTO trail_data_growth_log (sota_ref, name, points, latitude, longitude, source, first_seen_date)
+            SELECT g.sota_ref, MAX(s.name), MAX(s.points), MAX(g.summit_lat), MAX(g.summit_lon), 'gpx_track', MIN(g.imported_at)
+            FROM global_gpx_tracks g
+            LEFT JOIN summits s ON s.sota_ref = g.sota_ref
+            WHERE g.trailhead_lat IS NOT NULL AND g.trailhead_lon IS NOT NULL
+            GROUP BY g.sota_ref
+        ");
+        $db->exec("
+            INSERT IGNORE INTO trail_data_growth_log (sota_ref, name, points, latitude, longitude, source, first_seen_date)
+            SELECT sota_ref, MAX(name), MAX(points), MAX(latitude), MAX(longitude), 'drive_up', COALESCE(MIN(nominated_date), NOW())
+            FROM summits
+            WHERE difficulty = 'drive-up' AND sota_ref IS NOT NULL AND sota_ref != ''
+              AND CONVERT(sota_ref USING utf8mb4) COLLATE utf8mb4_general_ci NOT IN
+                  (SELECT CONVERT(sota_ref USING utf8mb4) COLLATE utf8mb4_general_ci FROM trail_data_growth_log)
+            GROUP BY sota_ref
+        ");
+        $db->exec("
+            INSERT IGNORE INTO trail_data_growth_log (sota_ref, name, points, latitude, longitude, source, first_seen_date)
+            SELECT sota_ref, MAX(name), MAX(points), MAX(latitude), MAX(longitude), 'manual_research', COALESCE(MIN(nominated_date), NOW())
+            FROM summits
+            WHERE sota_ref IS NOT NULL AND sota_ref != ''
+              AND trailhead_lat IS NOT NULL AND trailhead_lng IS NOT NULL
+              AND (hike_distance_mi IS NOT NULL OR hike_time_up_min IS NOT NULL OR hike_elevation_gain_ft IS NOT NULL)
+              AND difficulty != 'drive-up'
+              AND CONVERT(sota_ref USING utf8mb4) COLLATE utf8mb4_general_ci NOT IN
+                  (SELECT CONVERT(sota_ref USING utf8mb4) COLLATE utf8mb4_general_ci FROM trail_data_growth_log)
+            GROUP BY sota_ref
+        ");
+        $db->prepare("
+            INSERT INTO app_settings (setting_key, setting_value, updated_at) VALUES ('trail_data_log_reconciled_at', '1', NOW())
+            ON DUPLICATE KEY UPDATE setting_value = '1', updated_at = NOW()
+        ")->execute();
+    } catch (PDOException $e) { /* table may not exist yet — run db_migrate.php */ }
 }
 
 function format_time_duration($seconds) {

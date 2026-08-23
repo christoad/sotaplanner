@@ -437,20 +437,21 @@ try {
             .feature { padding: 1rem 0.75rem; }
         }
     </style>
+    <noscript><style>.hero-reveal, .feature, .how-step { opacity: 1 !important; transform: none !important; }</style></noscript>
 </head>
 <body>
 
 <!-- Hero -->
 <div class="hero">
     <div class="hero-logo-wrap">
-        <img src="sota-planner-logo-font.svg" width="280" height="280" alt="SOTA Planner">
+        <img src="sota-planner-logo-font.svg" width="280" height="280" alt="SOTA Planner" class="hero-reveal" style="opacity:0;">
     </div>
-    <p class="tagline">SOTA activators everywhere are researching trails and hikes for the summits they climb. SOTA Planner lets you share and leverage each other's work — so you can get on the trail faster, with less effort.</p>
+    <p class="tagline hero-reveal" style="opacity:0;">SOTA activators everywhere are researching trails and hikes for the summits they climb. SOTA Planner lets you share and leverage each other's work — so you can get on the trail faster, with less effort.</p>
     <?php if ($ready_count > 0): ?>
-    <div>
+    <div class="hero-reveal" style="opacity:0;">
         <span class="hero-stat-pill">
             <span class="hero-stat-dot"></span>
-            <span class="hero-stat-num"><?= number_format($ready_count) ?></span> summits with community trail data
+            <span class="hero-stat-num" data-target="<?= $ready_count ?>"><?= number_format($ready_count) ?></span> summits with community trail data
         </span>
     </div>
     <?php endif; ?>
@@ -458,17 +459,17 @@ try {
 
 <!-- Feature highlights -->
 <div class="features">
-    <div class="feature">
+    <div class="feature" style="opacity:0; transform:translateY(20px);">
         <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="16" r="11"/><path d="M8 20 Q12 8 16 14 Q20 20 24 10"/><circle cx="8" cy="20" r="2" fill="#1E3A5F"/><circle cx="24" cy="10" r="2" fill="#1E3A5F"/></svg></span>
         <h3>Community Trail Data</h3>
         <p>Routes, starting points, and real-world hiking times contributed by hams who've already activated these summits — preloaded for thousands of peaks. No research required.</p>
     </div>
-    <div class="feature">
+    <div class="feature" style="opacity:0; transform:translateY(20px);">
         <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="17" r="12"/><polyline points="16,10 16,17 21,17"/><path d="M16,5 L16,3"/><path d="M14,3 L18,3"/></svg></span>
         <h3>Total Day Estimate</h3>
         <p>Travel time + hiking time + radio time = one number. Know exactly what a summit requires — even one you've never visited — before you commit to the day.</p>
     </div>
-    <div class="feature">
+    <div class="feature" style="opacity:0; transform:translateY(20px);">
         <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="13" r="5"/><path d="M16 18 C10 18 5 24 5 28 L27 28 C27 24 22 18 16 18"/><path d="M22 8 C24 6 28 8 26 12"/><path d="M10 8 C8 6 4 8 6 12"/></svg></span>
         <h3>Plan From Anywhere</h3>
         <p>Traveling somewhere new? Search summits near any location — a destination city, a vacation spot — and instantly see what the community knows about each hike.</p>
@@ -478,21 +479,21 @@ try {
 <!-- How it works steps -->
 <div class="how-strip">
     <div class="how-strip-inner">
-        <div class="how-step">
+        <div class="how-step" style="opacity:0; transform:translateY(20px);">
             <div class="step-num">1</div>
             <div>
                 <strong>Sign in</strong>
                 <p>Log in with your SOTA callsign. Your dashboards are private to you and your invited partners.</p>
             </div>
         </div>
-        <div class="how-step">
+        <div class="how-step" style="opacity:0; transform:translateY(20px);">
             <div class="step-num">2</div>
             <div>
                 <strong>Search near any location</strong>
                 <p>Enter your home, a city you're visiting, or anywhere you'll be. SOTA Planner finds nearby summits and pulls in community trail data for each one.</p>
             </div>
         </div>
-        <div class="how-step">
+        <div class="how-step" style="opacity:0; transform:translateY(20px);">
             <div class="step-num">3</div>
             <div>
                 <strong>Plan and activate</strong>
@@ -570,6 +571,77 @@ document.getElementById('dev-toggle').addEventListener('click', function() {
     var d = document.getElementById('dev-access');
     d.style.display = d.style.display === 'none' ? 'block' : 'none';
 });
+</script>
+
+<!-- Sleek entrance / scroll animations, powered by motion.dev's vanilla-JS library -->
+<script type="module">
+(function () {
+    var revealSelector = '.hero-reveal, .feature, .how-step';
+
+    function showAllInstantly() {
+        document.querySelectorAll(revealSelector).forEach(function (el) {
+            el.style.opacity = '1';
+            el.style.transform = 'none';
+        });
+    }
+
+    // Respect reduced-motion preference — just show everything, no movement
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        showAllInstantly();
+        return;
+    }
+
+    function withTimeout(promise, ms) {
+        return Promise.race([
+            promise,
+            new Promise(function (_, reject) {
+                setTimeout(function () { reject(new Error('motion load timeout')); }, ms);
+            })
+        ]);
+    }
+
+    withTimeout(import('https://cdn.jsdelivr.net/npm/motion@11/+esm'), 2000).then(function (motion) {
+        var animate = motion.animate;
+        var stagger = motion.stagger;
+        var inView = motion.inView;
+        var ease = [0.16, 1, 0.3, 1];
+
+        // 1. Hero entrance — logo, tagline, stat pill fade + rise in with a stagger
+        animate('.hero-reveal', { opacity: [0, 1], transform: ['translateY(16px)', 'translateY(0)'] },
+            { duration: 0.7, delay: stagger(0.12), easing: ease });
+
+        // 2. Stat pill: count up to the real number, plus a soft "live" pulse on the dot
+        var statEl = document.querySelector('.hero-stat-num');
+        if (statEl) {
+            var target = parseInt(statEl.dataset.target, 10) || 0;
+            statEl.textContent = '0';
+            animate(0, target, {
+                duration: 1.3,
+                delay: 0.5,
+                easing: ease,
+                onUpdate: function (v) { statEl.textContent = Math.round(v).toLocaleString(); }
+            });
+        }
+        animate('.hero-stat-dot', { opacity: [1, 0.5, 1], scale: [1, 1.2, 1] },
+            { duration: 1.8, repeat: Infinity, easing: 'ease-in-out' });
+
+        // 3. Scroll-reveal for feature cards and how-it-works steps (fires once)
+        var stopFeatures = inView('.features', function () {
+            animate('.feature', { opacity: [0, 1], transform: ['translateY(20px)', 'translateY(0)'] },
+                { duration: 0.5, delay: stagger(0.1), easing: ease });
+            stopFeatures();
+        }, { amount: 0.3 });
+
+        var stopSteps = inView('.how-strip', function () {
+            animate('.how-step', { opacity: [0, 1], transform: ['translateY(20px)', 'translateY(0)'] },
+                { duration: 0.5, delay: stagger(0.1), easing: ease });
+            stopSteps();
+        }, { amount: 0.3 });
+    }).catch(function () {
+        // CDN blocked/slow — fail safe to a fully visible, static page
+        showAllInstantly();
+    });
+})();
 </script>
 
 </body>
