@@ -108,6 +108,14 @@ try {
             color: white;
             padding: 3rem 1.5rem 2.5rem;
             text-align: center;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
         }
 
         .hero-logo-wrap {
@@ -118,7 +126,8 @@ try {
         }
 
         .hero img {
-            height: 280px;
+            height: 460px;
+            width: auto;
             filter: brightness(0) invert(1);
             drop-shadow: 0 2px 12px rgba(255,255,255,0.15);
         }
@@ -140,6 +149,18 @@ try {
         }
 
         /* ── Feature strip ── */
+        /* Full-bleed opaque panel holding just the tiles. It parks (sticks) at the top of the
+           viewport once scrolled into place, instead of continuing to scroll off-screen — the
+           login card below is a normal-flow sibling that scrolls up underneath it. Covering the
+           hero is handled by fading the hero's own background out (see the scroll-scrub JS), not
+           by this panel's opacity/size, so there's no dependency on exact pixel coverage. */
+        .features-panel {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: #f5f5f0;
+        }
+
         .features {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -240,19 +261,6 @@ try {
             box-shadow: 0 4px 24px rgba(0,0,0,0.1);
         }
 
-        .login-card h2 {
-            font-size: 1.2rem;
-            font-weight: 800;
-            color: #1E3A5F;
-            margin-bottom: 0.25rem;
-        }
-
-        .login-card .sub {
-            font-size: 0.82rem;
-            color: #888;
-            margin-bottom: 1.5rem;
-        }
-
         .sota-btn {
             display: flex;
             align-items: center;
@@ -265,6 +273,8 @@ try {
             font-family: 'Overpass', sans-serif;
             font-size: 1rem;
             font-weight: 700;
+            line-height: 1.3;
+            text-align: center;
             cursor: pointer;
             text-decoration: none;
             transition: all 0.2s;
@@ -432,21 +442,25 @@ try {
         }
 
         @media (max-width: 600px) {
+            .hero img { height: 280px; }
             .hero h1 { font-size: 1.8rem; }
-            .features { padding: 1.25rem 0.75rem 0; }
+            .features { grid-template-columns: 1fr; padding: 1.25rem 0.75rem 0; }
             .feature { padding: 1rem 0.75rem; }
+            .login-card { padding: 1.5rem 1.25rem; }
+            .sota-btn { font-size: 0.9rem; padding: 0.85rem 0.75rem; gap: 0.45rem; }
+            .hero-stat-pill { font-size: 0.85rem; padding: 0.5rem 1rem 0.5rem 0.75rem; text-align: left; }
         }
     </style>
-    <noscript><style>.hero-reveal, .feature, .how-step { opacity: 1 !important; transform: none !important; }</style></noscript>
+    <noscript><style>.hero-logo, .hero-reveal, .feature, .how-step, .login-card-item { opacity: 1 !important; transform: none !important; }</style></noscript>
 </head>
 <body>
 
 <!-- Hero -->
 <div class="hero">
     <div class="hero-logo-wrap">
-        <img src="sota-planner-logo-font.svg" width="280" height="280" alt="SOTA Planner" class="hero-reveal" style="opacity:0;">
+        <img src="sota-planner-logo-font.svg" width="460" height="460" alt="SOTA Planner" class="hero-logo" style="opacity:0;">
     </div>
-    <p class="tagline hero-reveal" style="opacity:0;">SOTA activators everywhere are researching trails and hikes for the summits they climb. SOTA Planner lets you share and leverage each other's work — so you can get on the trail faster, with less effort.</p>
+    <p class="tagline hero-reveal" style="opacity:0;">Trail research from activators who've already been there — get to the summit faster, with less research effort.</p>
     <?php if ($ready_count > 0): ?>
     <div class="hero-reveal" style="opacity:0;">
         <span class="hero-stat-pill">
@@ -457,26 +471,59 @@ try {
     <?php endif; ?>
 </div>
 
-<!-- Feature highlights -->
+<!-- Feature highlights + login card — both park together at the top of the viewport once
+     scrolled into place, as one combined sticky unit, so the SSO button never gets covered
+     by the tiles as you keep scrolling -->
+<div class="features-panel">
 <div class="features">
-    <div class="feature" style="opacity:0; transform:translateY(20px);">
+    <div class="feature" style="opacity:0; transform:translateX(-140px);">
         <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="16" r="11"/><path d="M8 20 Q12 8 16 14 Q20 20 24 10"/><circle cx="8" cy="20" r="2" fill="#1E3A5F"/><circle cx="24" cy="10" r="2" fill="#1E3A5F"/></svg></span>
         <h3>Community Trail Data</h3>
         <p>Routes, starting points, and real-world hiking times contributed by hams who've already activated these summits — preloaded for thousands of peaks. No research required.</p>
     </div>
-    <div class="feature" style="opacity:0; transform:translateY(20px);">
+    <div class="feature" style="opacity:0; transform:translateY(90px);">
         <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="17" r="12"/><polyline points="16,10 16,17 21,17"/><path d="M16,5 L16,3"/><path d="M14,3 L18,3"/></svg></span>
         <h3>Total Day Estimate</h3>
         <p>Travel time + hiking time + radio time = one number. Know exactly what a summit requires — even one you've never visited — before you commit to the day.</p>
     </div>
-    <div class="feature" style="opacity:0; transform:translateY(20px);">
+    <div class="feature" style="opacity:0; transform:translateX(140px);">
         <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="13" r="5"/><path d="M16 18 C10 18 5 24 5 28 L27 28 C27 24 22 18 16 18"/><path d="M22 8 C24 6 28 8 26 12"/><path d="M10 8 C8 6 4 8 6 12"/></svg></span>
         <h3>Plan From Anywhere</h3>
         <p>Traveling somewhere new? Search summits near any location — a destination city, a vacation spot — and instantly see what the community knows about each hike.</p>
     </div>
 </div>
 
-<!-- How it works steps -->
+<div class="login-wrap">
+    <div class="login-card">
+        <?php if ($error): ?>
+            <div class="error-msg"><?= htmlspecialchars($error) ?></div>
+        <?php endif; ?>
+
+        <!-- SOTA SSO -->
+        <?php if ($sota_oauth_enabled): ?>
+            <a href="oauth_callback.php?action=login" class="sota-btn sota-btn-main login-card-item" style="opacity:0; transform:translateY(24px);">
+                ⛰️ Continue with SOTA Login (SSO)
+            </a>
+        <?php else: ?>
+            <button class="sota-btn sota-btn-disabled login-card-item" style="opacity:0; transform:translateY(24px);" disabled>
+                ⛰️ SOTA SSO — Coming Soon
+            </button>
+            <p class="coming-soon-note">OAuth client registration pending with SOTA team</p>
+        <?php endif; ?>
+
+        <!-- No-registration callout -->
+        <div class="login-card-item" style="opacity:0; transform:translateY(24px); background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:0.85rem 1rem; margin-top:1.25rem; display:flex; gap:0.6rem; align-items:flex-start;">
+            <span style="font-size:1.1rem; line-height:1.3; flex-shrink:0; color:#16a34a;">✓</span>
+            <div>
+                <strong style="font-size:0.88rem; color:#166534; display:block; margin-bottom:0.15rem;">No new account to create</strong>
+                <p style="font-size:0.8rem; color:#166534; line-height:1.45; margin:0;">Use your official SOTA account — the same login you use on sotadata.org.uk. Already registered? You're all set — click above to sign in with your existing SOTA credentials.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- How it works steps — part of the same combined sticky unit as the tiles + login card
+     above, so all three sections park and settle together with nothing hidden behind another -->
 <div class="how-strip">
     <div class="how-strip-inner">
         <div class="how-step" style="opacity:0; transform:translateY(20px);">
@@ -502,39 +549,6 @@ try {
         </div>
     </div>
 </div>
-
-<!-- Login card -->
-<div class="login-wrap">
-    <div class="login-card">
-        <h2 style="text-align:center;">Sign in to get started</h2>
-        <p class="sub">Use your official SOTA account — the same login you use on sotadata.org.uk.</p>
-
-        <?php if ($error): ?>
-            <div class="error-msg"><?= htmlspecialchars($error) ?></div>
-        <?php endif; ?>
-
-        <!-- No-registration callout -->
-        <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:0.85rem 1rem; margin-bottom:1.25rem; display:flex; gap:0.6rem; align-items:flex-start;">
-            <span style="font-size:1.1rem; line-height:1.3; flex-shrink:0; color:#16a34a;">✓</span>
-            <div>
-                <strong style="font-size:0.88rem; color:#166534; display:block; margin-bottom:0.15rem;">No new account to create</strong>
-                <p style="font-size:0.8rem; color:#166534; line-height:1.45; margin:0;">Already registered on the SOTA database? You're all set. Click the button below to sign in with your existing SOTA credentials.</p>
-            </div>
-        </div>
-
-        <!-- SOTA SSO -->
-        <?php if ($sota_oauth_enabled): ?>
-            <a href="oauth_callback.php?action=login" class="sota-btn sota-btn-main">
-                ⛰️ Continue with SOTA Login (SSO)
-            </a>
-        <?php else: ?>
-            <button class="sota-btn sota-btn-disabled" disabled>
-                ⛰️ SOTA SSO — Coming Soon
-            </button>
-            <p class="coming-soon-note">OAuth client registration pending with SOTA team</p>
-        <?php endif; ?>
-
-    </div>
 </div>
 
 <footer>
@@ -576,7 +590,18 @@ document.getElementById('dev-toggle').addEventListener('click', function() {
 <!-- Sleek entrance / scroll animations, powered by motion.dev's vanilla-JS library -->
 <script type="module">
 (function () {
-    var revealSelector = '.hero-reveal, .feature, .how-step';
+    // Safari (especially with its collapsing toolbar) can resolve CSS `100vh` to a
+    // different pixel value than JS `window.innerHeight` at any given moment. Size the hero
+    // from the same JS-measured value instead of trusting CSS vh, so the scroll-scrub math
+    // (which reads window.innerHeight directly) always lines up with what's actually on screen.
+    function setViewportHeights() {
+        var hero = document.querySelector('.hero');
+        if (hero) hero.style.minHeight = window.innerHeight + 'px';
+    }
+    setViewportHeights();
+    window.addEventListener('resize', setViewportHeights);
+
+    var revealSelector = '.hero-logo, .hero-reveal, .feature, .how-step, .login-card-item';
 
     function showAllInstantly() {
         document.querySelectorAll(revealSelector).forEach(function (el) {
@@ -605,32 +630,110 @@ document.getElementById('dev-toggle').addEventListener('click', function() {
         var stagger = motion.stagger;
         var inView = motion.inView;
         var ease = [0.16, 1, 0.3, 1];
+        var pop = [0.34, 1.56, 0.64, 1]; // bouncy "overshoot" ease for a dramatic entrance
 
-        // 1. Hero entrance — logo, tagline, stat pill fade + rise in with a stagger
-        animate('.hero-reveal', { opacity: [0, 1], transform: ['translateY(16px)', 'translateY(0)'] },
-            { duration: 0.7, delay: stagger(0.12), easing: ease });
+        // 1. Hero logo: big dramatic drop-and-pop — falls, scales up, and fades in
+        var logoLanded = false;
+        var logoAnim = animate('.hero-logo', { opacity: [0, 1], scale: [0.55, 1], y: [-70, 0] },
+            { duration: 0.75, easing: pop });
 
-        // 2. Stat pill: count up to the real number, plus a soft "live" pulse on the dot
-        var statEl = document.querySelector('.hero-stat-num');
-        if (statEl) {
-            var target = parseInt(statEl.dataset.target, 10) || 0;
-            statEl.textContent = '0';
-            animate(0, target, {
-                duration: 1.3,
-                delay: 0.5,
-                easing: ease,
-                onUpdate: function (v) { statEl.textContent = Math.round(v).toLocaleString(); }
-            });
+        // 2. Once the logo lands, tagline + stat pill fade/rise in with a stagger
+        logoAnim.finished.then(function () {
+            logoLanded = true; // hand off logo opacity control to the scroll-scrub below
+
+            animate('.hero-reveal', { opacity: [0, 1], transform: ['translateY(16px)', 'translateY(0)'] },
+                { duration: 0.7, delay: stagger(0.12), easing: ease });
+
+            // Stat pill: count up to the real number, plus a soft "live" pulse on the dot
+            var statEl = document.querySelector('.hero-stat-num');
+            if (statEl) {
+                var target = parseInt(statEl.dataset.target, 10) || 0;
+                statEl.textContent = '0';
+                animate(0, target, {
+                    duration: 1.3,
+                    delay: 0.4,
+                    easing: ease,
+                    onUpdate: function (v) { statEl.textContent = Math.round(v).toLocaleString(); }
+                });
+            }
+            animate('.hero-stat-dot', { opacity: [1, 0.5, 1], scale: [1, 1.2, 1] },
+                { duration: 1.8, repeat: Infinity, easing: 'ease-in-out' });
+        });
+
+        // 3. Feature tiles + SSO login card: all scroll-linked, scrubbed directly to
+        //    scroll position (advances as you scroll down, reverses as you scroll back
+        //    up) so everything arrives together as the tiles panel scrolls up and parks
+        //    at the top of the viewport — and the hero (background gradient included, not
+        //    just its logo/text) fades OUT in the same motion, once the initial pop-in has
+        //    landed. Fading the hero's own background — rather than relying on the tiles
+        //    panel to physically occlude it — is what guarantees no gradient ever bleeds
+        //    through underneath, in any browser (this is the fix for the Safari gap).
+        //    Hand-rolled against raw scroll position (rather than a scroll-timeline helper)
+        //    so it behaves identically in every browser, including Safari.
+        var featuresPanel = document.querySelector('.features-panel');
+        var featureTiles = document.querySelectorAll('.feature');
+        var loginItems = document.querySelectorAll('.login-card-item');
+        var heroEl = document.querySelector('.hero');
+        if (featuresPanel && featureTiles.length === 3) {
+            var tileConfig = [];
+            var ticking = false;
+
+            function smoothstep(p) { return p * p * (3 - 2 * p); }
+
+            // On narrow screens the tiles stack in a single column, so sliding tiles 1 and 3
+            // in from way off to the sides just pushes them (and the page) off-screen. Below
+            // the mobile breakpoint, all three simply rise up together instead.
+            function buildTileConfig() {
+                var cfg = window.innerWidth < 600 ? [
+                    { el: featureTiles[0], axis: 'Y', from: 60 },
+                    { el: featureTiles[1], axis: 'Y', from: 60 },
+                    { el: featureTiles[2], axis: 'Y', from: 60 }
+                ] : [
+                    { el: featureTiles[0], axis: 'X', from: -140 },
+                    { el: featureTiles[1], axis: 'Y', from: 90 },
+                    { el: featureTiles[2], axis: 'X', from: 140 }
+                ];
+                loginItems.forEach(function (el) {
+                    cfg.push({ el: el, axis: 'Y', from: 24 });
+                });
+                return cfg;
+            }
+
+            function applyScrub() {
+                var rect = featuresPanel.getBoundingClientRect();
+                var vh = window.innerHeight;
+                var startY = vh;        // progress 0: panel top at bottom of viewport
+                var endY = vh * 0.2;    // progress 1: panel top near 20% down the viewport
+                var raw = (startY - rect.top) / (startY - endY);
+                var p = smoothstep(Math.min(1, Math.max(0, raw)));
+                tileConfig.forEach(function (t) {
+                    t.el.style.opacity = p;
+                    t.el.style.transform = 'translate' + t.axis + '(' + (t.from * (1 - p)) + 'px)';
+                });
+                if (logoLanded) {
+                    heroEl.style.opacity = 1 - p;
+                }
+                ticking = false;
+            }
+
+            function onScroll() {
+                if (!ticking) {
+                    requestAnimationFrame(applyScrub);
+                    ticking = true;
+                }
+            }
+
+            function onResize() {
+                setViewportHeights();
+                tileConfig = buildTileConfig();
+                applyScrub();
+            }
+
+            tileConfig = buildTileConfig();
+            window.addEventListener('scroll', onScroll, { passive: true });
+            window.addEventListener('resize', onResize);
+            applyScrub();
         }
-        animate('.hero-stat-dot', { opacity: [1, 0.5, 1], scale: [1, 1.2, 1] },
-            { duration: 1.8, repeat: Infinity, easing: 'ease-in-out' });
-
-        // 3. Scroll-reveal for feature cards and how-it-works steps (fires once)
-        var stopFeatures = inView('.features', function () {
-            animate('.feature', { opacity: [0, 1], transform: ['translateY(20px)', 'translateY(0)'] },
-                { duration: 0.5, delay: stagger(0.1), easing: ease });
-            stopFeatures();
-        }, { amount: 0.3 });
 
         var stopSteps = inView('.how-strip', function () {
             animate('.how-step', { opacity: [0, 1], transform: ['translateY(20px)', 'translateY(0)'] },

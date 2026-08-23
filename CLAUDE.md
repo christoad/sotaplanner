@@ -55,6 +55,19 @@ All 181,126 summits have been checked against SOTAmaps. Steady-state cron jobs a
 **Track 3 — SOTAwatch write API (post/delete spots and alerts):**
 Research complete and tested 2026-05-28. All endpoints and auth headers are fully understood (see "SOTAwatch Write API" section below). `test_sotawatch_write.php` exists on dev for testing. oauth_callback.php updated to store `id_token`. **Blocked on VK3ARR** — our `sotaplanner` client returns HTTP 403 on the write API despite valid tokens. Chris has messaged VK3ARR requesting write access. Once granted, re-run the test page to confirm, then build the real UI (spot/alert buttons on summit_detail.php).
 
+**Visual sophistication backlog (started 2026-08-23):**
+Chris asked for design inspiration from anime.js, motion.dev, Kokonut UI, Bklit UI, and Manus.im, wanting to make the site feel more polished/animated without changing the Alpine Precision visual language. Takeaways: motion.dev (Framer Motion) is the animation engine of choice — spring hovers, layout animation, scroll-linked reveals; Kokonut UI shows that pattern applied to ordinary cards/buttons; Bklit UI is a charts/data-viz kit (D3 + Motion) relevant to the Community Growth page; Manus.im is an aesthetic reference for hero gradients and staged scroll reveals rather than everything visible on load.
+
+**Done:** `login.php` hero (logo/tagline/stat pill) and the feature cards / "how it works" steps already fade+rise in via motion.dev, loaded from `https://cdn.jsdelivr.net/npm/motion@11/+esm` with a `<noscript>` and reduced-motion fallback, plus a CDN-load timeout fallback so the page never breaks if the CDN is slow/blocked. 2026-08-23: enlarged the hero logo (280px → 340px, 220px on mobile) and extended the same reveal pattern to the login card — the SSO button and the "no account to create" callout now stagger in via `inView('.login-wrap', ...)` when scrolled into view (see the `<script type="module">` block at the bottom of `login.php` for the pattern to copy elsewhere).
+
+**Still to do (menu — pick one at a time, in this rough priority order):**
+1. **Dashboard card/row micro-interactions** (`index.php`) — Kokonut-style hover lift on summit rows/cards, smoother filter-pill and status-badge transitions, animated reordering when sorting.
+2. **Community Growth page chart polish** (Bklit-style) — animated draw-in for the growth chart, consistent tooltip styling on the world map, smooth transitions when data updates.
+3. **Scroll-reveal on other content pages** — About and Changelog could use the same stagger-fade-on-scroll pattern already proven on `login.php`.
+4. **Login hero gradient refinement** (Manus-style) — a more custom/considered gradient and type hierarchy on the hero background, since it's the first-impression page.
+
+When picking one of these up, reuse the existing motion.dev-via-CDN pattern from `login.php` rather than introducing a different animation library or a build-step dependency.
+
 ---
 
 ## Development Workflow
@@ -66,7 +79,7 @@ Always save Playwright screenshots to the `playwright/` folder in the project ro
 The staging login page shows a hero section by default. To log in, click the small **"Developer access"** link in the bottom-left corner of the page — this reveals the callsign input. Enter `KI6CR` and click **Go**.
 
 ### Branches
-**Work happens directly on `main`.** The repo also has a `dev` branch, but it's stale (abandoned since 2026-05-30, ~55 commits behind) — everything since the global GPX library work has been committed straight to `main`. Don't use `dev` for new work; it's not part of the active workflow. (Noted 2026-08-23.)
+**Work happens directly on `main`.** There is no `dev` branch — it was deleted 2026-08-23 (it had gone stale, ~55 commits behind, since everything since the global GPX library work had already been committed straight to `main`). Don't recreate a `dev`/staging-merge workflow unless Chris asks for it; commit and deploy straight from `main`.
 
 ### Before Committing a Feature
 1. Bump `APP_VERSION` in `config.php`
