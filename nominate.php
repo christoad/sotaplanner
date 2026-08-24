@@ -1007,13 +1007,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
   <div class="card" style="padding:0; overflow:hidden;">
 
     <div class="nom-tabs">
-      <button class="nom-tab active" id="tab-search" onclick="switchTab('search')">
+      <button class="nom-tab active" id="tab-area" onclick="switchTab('area')">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="5.5" r="3" stroke="currentColor" stroke-width="1.4"/><path d="M6.5 12C6.5 12 2 7.5 2 5.5a4.5 4.5 0 019 0C11 7.5 6.5 12 6.5 12z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        Bulk Search by Area
+      </button>
+      <button class="nom-tab" id="tab-search" onclick="switchTab('search')">
         <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="5.5" cy="5.5" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M9 9l2.5 2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
         Name / Reference
-      </button>
-      <button class="nom-tab" id="tab-area" onclick="switchTab('area')">
-        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="5.5" r="3" stroke="currentColor" stroke-width="1.4"/><path d="M6.5 12C6.5 12 2 7.5 2 5.5a4.5 4.5 0 019 0C11 7.5 6.5 12 6.5 12z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
-        Search by Area
       </button>
     </div>
 
@@ -1024,7 +1024,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
       <input type="hidden" id="form_mode"    name="form_mode"  value="single">
 
       <!-- ── Tab 1: Name / Reference / Multi ───────────────────────── -->
-      <div class="nom-panel active" id="panel-search">
+      <div class="nom-panel" id="panel-search">
         <div class="nom-search-inner">
           <div class="search-hint-strip">Search by name · paste a reference like <code>W7O/NC-001</code> · or paste multiple refs separated by commas</div>
 
@@ -1036,7 +1036,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
               id="summit_search"
               placeholder="Mount Adams — or W7O/NC-001 — or W7O/NC-001, W7O/NC-002"
               autocomplete="off"
-              autofocus
             >
             <div class="form-hint" id="search-hint">Type a name to search, or paste a SOTA reference. Separate multiple references with commas.</div>
           </div>
@@ -1059,13 +1058,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
       </div>
 
       <!-- ── Tab 2: Area Search ─────────────────────────────────────── -->
-      <div class="nom-panel" id="panel-area">
+      <div class="nom-panel active" id="panel-area">
 
         <!-- Controls row — always above the two-column body -->
         <div style="display:flex; gap:0.75rem; margin-bottom:0.875rem; align-items:flex-end; flex-wrap:wrap;">
           <div style="flex:1; min-width:180px;">
             <label class="form-label" for="area_location">Location</label>
-            <input type="text" class="form-input" id="area_location" placeholder="Bend, OR — or 97401 — or Crater Lake" autocomplete="off">
+            <input type="text" class="form-input" id="area_location" placeholder="Bend, OR — or 97401 — or Crater Lake" autocomplete="off" autofocus>
           </div>
           <div>
             <label class="form-label">Radius</label>
@@ -1641,12 +1640,15 @@ async function runBulkNominateFlow(refs) {
 // ── Area search ───────────────────────────────────────────────────────────────
 const useMetric = <?= json_encode(($current_group['units'] ?? 'imperial') === 'metric') ?>;
 
-// Preload from dashboard map link (?tab=area&lat=X&lng=Y)
+// Area tab is the default. ?tab=search opens the Name/Reference tab instead;
+// ?tab=area&lat=X&lng=Y (from a dashboard map link) preloads a location.
 (function() {
     const params = new URLSearchParams(window.location.search);
     const preloadLat = parseFloat(params.get('lat'));
     const preloadLng = parseFloat(params.get('lng'));
-    if (params.get('tab') === 'area') {
+    if (params.get('tab') === 'search') {
+        switchTab('search');
+    } else {
         switchTab('area');
         if (!isNaN(preloadLat) && !isNaN(preloadLng)) {
             // Store coords for initAreaMap to pick up after Maps API loads
