@@ -118,18 +118,59 @@ try {
             justify-content: center;
         }
 
-        .hero-logo-wrap {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 1.25rem;
+        .hero-illustration-wrap {
+            width: 100%;
+            max-width: 880px;
+            margin: 0 auto 1.5rem;
         }
 
-        .hero img {
-            height: 460px;
-            width: auto;
-            filter: brightness(0) invert(1);
-            drop-shadow: 0 2px 12px rgba(255,255,255,0.15);
+        .hero-illustration-wrap svg {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+
+        /* Bouncing "scroll" cues, flanking the stat pill left/right so they never sit on
+           top of it (previously a single centered cue overlapped the pill below it). */
+        .hero-stat-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+        }
+
+        .scroll-cue-arrow {
+            flex-shrink: 0;
+            color: rgba(255,255,255,0.65);
+            opacity: 0;
+            animation: scroll-cue-in 0.6s ease forwards, scroll-cue-bounce 1.6s ease-in-out infinite;
+            animation-delay: 1.5s, 1.5s;
+            pointer-events: none;
+        }
+        @keyframes scroll-cue-in { to { opacity: 1; } }
+
+        @keyframes scroll-cue-bounce {
+            0%, 100% { transform: translateY(0); }
+            50%      { transform: translateY(5px); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .scroll-cue-arrow { animation: scroll-cue-in 0.6s ease forwards; animation-delay: 1.5s; }
+        }
+
+        .scroll-cue-label {
+            display: block;
+            text-align: center;
+            margin-top: 0.6rem;
+            font-size: 0.68rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            color: rgba(255,255,255,0.55);
+            opacity: 0;
+            animation: scroll-cue-in 0.6s ease forwards;
+            animation-delay: 1.5s;
+            pointer-events: none;
         }
 
         .hero h1 {
@@ -442,7 +483,7 @@ try {
         }
 
         @media (max-width: 600px) {
-            .hero img { height: 280px; }
+            .hero-illustration-wrap { max-width: 460px; }
             .hero h1 { font-size: 1.8rem; }
             .features { grid-template-columns: 1fr; padding: 1.25rem 0.75rem 0; }
             .feature { padding: 1rem 0.75rem; }
@@ -451,23 +492,133 @@ try {
             .hero-stat-pill { font-size: 0.85rem; padding: 0.5rem 1rem 0.5rem 0.75rem; text-align: left; }
         }
     </style>
-    <noscript><style>.hero-logo, .hero-reveal, .feature, .how-step, .login-card-item { opacity: 1 !important; transform: none !important; }</style></noscript>
+    <noscript><style>.hero-illustration, .hero-reveal, .feature, .how-step, .login-card-item { opacity: 1 !important; transform: none !important; }</style></noscript>
 </head>
 <body>
 
 <!-- Hero -->
 <div class="hero">
-    <div class="hero-logo-wrap">
-        <img src="sota-planner-logo-font.svg" width="460" height="460" alt="SOTA Planner" class="hero-logo" style="opacity:0;">
+    <!-- Data-source bubbles converging into the SOTAplanner mark as the user scrolls — same
+         illustration/technique as about.php's "converge-section" (see the vanilla scroll-scrub
+         script near the bottom of this file), floating directly on the hero's dark gradient
+         (glass-style bubbles, no background card) rather than about.php's light card version. -->
+    <div class="hero-illustration-wrap hero-illustration" style="opacity:0;" id="hero-converge">
+        <svg viewBox="0 0 800 520" xmlns="http://www.w3.org/2000/svg" aria-label="Summit, Trail Info, Travel Time, Cell Coverage, Hike Time, and Activation Time all combine into one SOTAplanner estimate">
+          <defs>
+            <marker id="arr" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto">
+              <path d="M1.5,1.5 L7.5,4.5 L1.5,7.5" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </marker>
+            <!-- Forces the logo image to pure white, same effect as the hero's old
+                 filter:brightness(0) invert(1) treatment on <img>, so the hub shows the
+                 exact production logo mark/wordmark rather than a hand-redrawn copy. -->
+            <filter id="toWhite" color-interpolation-filters="sRGB">
+              <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1 0"/>
+            </filter>
+          </defs>
+
+          <!-- Arrows stop well short of the (large) logo — a deliberate hover gap, not a
+               tangent — same distance the nodes converge to on scroll. Coordinates computed
+               against the hub's 340x340 bounding box plus a 32-unit clearance. -->
+          <g class="conv-arrows">
+          <line x1="111.7" y1="105"  x2="217.7" y2="162"   stroke="rgba(255,255,255,0.16)" stroke-width="1.5" marker-end="url(#arr)"/>
+          <line x1="186"   y1="260"  x2="216"   y2="260"   stroke="rgba(255,255,255,0.16)" stroke-width="1.5" marker-end="url(#arr)"/>
+          <line x1="111.7" y1="415"  x2="217.7" y2="358"   stroke="rgba(255,255,255,0.16)" stroke-width="1.5" marker-end="url(#arr)"/>
+          <line x1="688.3" y1="105"  x2="582.3" y2="162"   stroke="rgba(255,255,255,0.16)" stroke-width="1.5" marker-end="url(#arr)"/>
+          <line x1="614"   y1="260"  x2="584"   y2="260"   stroke="rgba(255,255,255,0.16)" stroke-width="1.5" marker-end="url(#arr)"/>
+          <line x1="688.3" y1="415"  x2="582.3" y2="358"   stroke="rgba(255,255,255,0.16)" stroke-width="1.5" marker-end="url(#arr)"/>
+          </g>
+
+          <!-- Large and in charge — same proportions as the production logo, just scaled up
+               to be the clear focal point of the diagram. -->
+          <g class="hub-group">
+          <image href="sota-planner-logo-font.svg" x="230" y="90" width="340" height="340" filter="url(#toWhite)"/>
+          </g>
+
+          <g class="conv-node" data-cx="80" data-cy="88">
+          <circle cx="80" cy="88" r="30" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.28)" stroke-width="1.5"/>
+          <g transform="translate(80,88) scale(1.8) translate(-12,-12)" fill="none" stroke="#ffffff" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 20L12 4L21 20H3Z"/>
+            <path d="M9 20L12 13L15 17"/>
+          </g>
+          <text x="80" y="131" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#ffffff">Summit</text>
+          </g>
+
+          <g class="conv-node" data-cx="150" data-cy="260">
+          <circle cx="150" cy="260" r="30" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.28)" stroke-width="1.5"/>
+          <g transform="translate(150,260) scale(1.8) translate(-12,-12)" fill="none" stroke="#ffffff" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 1 1 18 0z"/>
+            <circle cx="12" cy="10" r="3"/>
+          </g>
+          <text x="150" y="303" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#ffffff">Travel Time</text>
+          </g>
+
+          <g class="conv-node" data-cx="80" data-cy="432">
+          <circle cx="80" cy="432" r="30" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.28)" stroke-width="1.5"/>
+          <g transform="translate(80,432) scale(1.8) translate(-12,-12)" fill="none" stroke="#ffffff" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="4" r="1.5" fill="#ffffff" stroke="none"/>
+            <line x1="12" y1="5.5" x2="11" y2="13"/>
+            <rect x="8" y="5.5" width="3.5" height="5.5" rx="1"/>
+            <line x1="16" y1="7" x2="18" y2="22"/>
+            <line x1="11" y1="9" x2="16" y2="8"/>
+            <line x1="11" y1="13" x2="8" y2="22"/>
+            <line x1="11" y1="13" x2="14" y2="22"/>
+          </g>
+          <text x="80" y="475" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#ffffff">Hike Time</text>
+          </g>
+
+          <g class="conv-node" data-cx="720" data-cy="88">
+          <circle cx="720" cy="88" r="30" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.28)" stroke-width="1.5"/>
+          <g transform="translate(720,88) scale(1.8) translate(-12,-12)" fill="none" stroke="#ffffff" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="1,6 1,22 8,18 16,22 23,18 23,2 16,6 8,2"/>
+            <line x1="8" y1="2" x2="8" y2="18"/>
+            <line x1="16" y1="6" x2="16" y2="22"/>
+          </g>
+          <text x="720" y="131" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#ffffff">Trail Info</text>
+          </g>
+
+          <g class="conv-node" data-cx="650" data-cy="260">
+          <circle cx="650" cy="260" r="30" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.28)" stroke-width="1.5"/>
+          <g transform="translate(650,260) scale(1.8) translate(-12,-12)" fill="#ffffff" stroke="none">
+            <rect x="2" y="16" width="3.5" height="5" rx="0.5"/>
+            <rect x="8" y="12" width="3.5" height="9" rx="0.5"/>
+            <rect x="14" y="7" width="3.5" height="14" rx="0.5"/>
+            <rect x="20" y="2" width="3.5" height="19" rx="0.5"/>
+          </g>
+          <text x="650" y="303" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#ffffff">Cell Coverage</text>
+          </g>
+
+          <g class="conv-node" data-cx="720" data-cy="432">
+          <circle cx="720" cy="432" r="30" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.28)" stroke-width="1.5"/>
+          <g transform="translate(720,432) scale(1.8) translate(-12,-12)" fill="none" stroke="#ffffff" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="7" y="8" width="8" height="13" rx="2"/>
+            <line x1="12" y1="8" x2="12" y2="3"/>
+            <rect x="9" y="10" width="4" height="3" rx="0.5"/>
+            <circle cx="11" cy="17" r="1.5" fill="#ffffff" stroke="none"/>
+          </g>
+          <text x="720" y="475" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#ffffff">Activation time</text>
+          </g>
+        </svg>
     </div>
     <p class="tagline hero-reveal" style="opacity:0;">Trail research from activators who've already been there — get to the summit faster, with less research effort.</p>
     <?php if ($ready_count > 0): ?>
-    <div class="hero-reveal" style="opacity:0;">
+    <div class="hero-reveal hero-stat-row" style="opacity:0;">
+        <svg class="scroll-cue-arrow" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="5 8 10 13 15 8"/>
+        </svg>
         <span class="hero-stat-pill">
             <span class="hero-stat-dot"></span>
             <span class="hero-stat-num" data-target="<?= $ready_count ?>"><?= number_format($ready_count) ?></span> summits with community trail data
         </span>
+        <svg class="scroll-cue-arrow" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="5 8 10 13 15 8"/>
+        </svg>
     </div>
+    <span class="scroll-cue-label" aria-hidden="true">Scroll</span>
+    <?php else: ?>
+    <svg class="scroll-cue-arrow" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="5 8 10 13 15 8"/>
+    </svg>
+    <span class="scroll-cue-label" aria-hidden="true">Scroll</span>
     <?php endif; ?>
 </div>
 
@@ -483,7 +634,7 @@ try {
     </div>
     <div class="feature" style="opacity:0; transform:translateY(90px);">
         <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="17" r="12"/><polyline points="16,10 16,17 21,17"/><path d="M16,5 L16,3"/><path d="M14,3 L18,3"/></svg></span>
-        <h3>Total Day Estimate</h3>
+        <h3>Total Activation Time Estimates</h3>
         <p>Travel time + hiking time + radio time = one number. Know exactly what a summit requires — even one you've never visited — before you commit to the day.</p>
     </div>
     <div class="feature" style="opacity:0; transform:translateX(140px);">
@@ -587,6 +738,78 @@ document.getElementById('dev-toggle').addEventListener('click', function() {
 });
 </script>
 
+<!-- Bubble-to-logo convergence, ported from about.php's "converge-section" scrub. Pure
+     vanilla scroll-position math (no motion.dev dependency), so it works even if the CDN
+     import below fails. Runs fast (finishes by ~35% of a viewport height of scrolling) so
+     the bubbles visibly crash into the hub before the feature cards below have revealed much,
+     giving the two effects a sequenced feel even though the card scrub (in the module script)
+     starts progressing from scroll position 0 same as this does. -->
+<script>
+(function () {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    var section = document.getElementById('hero-converge');
+    var nodes = section ? section.querySelectorAll('.conv-node') : [];
+    var arrows = section ? section.querySelector('.conv-arrows') : null;
+    var hubGroup = section ? section.querySelector('.hub-group') : null;
+    var hubRing = section ? section.querySelector('.hub-ring') : null;
+    var scrollCues = document.querySelectorAll('.scroll-cue-arrow, .scroll-cue-label');
+    if (!section || !nodes.length || !hubGroup) return;
+
+    var hub = { x: 400, y: 260 };
+    var ticking = false;
+
+    function smoothstep(p) { return p * p * (3 - 2 * p); }
+
+    function applyScrub() {
+        var scrollY = window.scrollY || window.pageYOffset;
+        var vh = window.innerHeight;
+        var triggerDistance = vh * 0.35;
+        var p = Math.min(1, Math.max(0, scrollY / triggerDistance));
+        var t = smoothstep(p);
+
+        nodes.forEach(function (n) {
+            var cx = parseFloat(n.dataset.cx);
+            var cy = parseFloat(n.dataset.cy);
+            var dx = (hub.x - cx) * t;
+            var dy = (hub.y - cy) * t;
+            var s = 1 - 0.55 * t;
+            n.setAttribute('transform',
+                'translate(' + dx + ',' + dy + ') translate(' + cx + ',' + cy + ') scale(' + s + ') translate(' + (-cx) + ',' + (-cy) + ')');
+            n.style.opacity = Math.max(0, 1 - t * 1.15);
+        });
+
+        if (arrows) arrows.style.opacity = 1 - t;
+
+        hubGroup.setAttribute('transform',
+            'translate(' + hub.x + ',' + hub.y + ') scale(' + (1 + 0.08 * t) + ') translate(' + (-hub.x) + ',' + (-hub.y) + ')');
+        if (hubRing) hubRing.setAttribute('stroke-width', 2 + 3 * t);
+
+        // Only touch the scroll cues once the user has actually scrolled — leave them alone at
+        // scrollY 0 so their own CSS delayed fade-in (see .scroll-cue-in keyframe) gets to play,
+        // instead of this script's initial call stomping them to opacity:1 immediately.
+        if (scrollCues.length && scrollY > 0) {
+            var cueP = Math.min(1, scrollY / (vh * 0.08));
+            var cueOpacity = Math.max(0, 1 - cueP);
+            scrollCues.forEach(function (el) { el.style.opacity = cueOpacity; });
+        }
+
+        ticking = false;
+    }
+
+    function onScroll() {
+        if (!ticking) {
+            requestAnimationFrame(applyScrub);
+            ticking = true;
+        }
+    }
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    applyScrub();
+})();
+</script>
+
 <!-- Sleek entrance / scroll animations, powered by motion.dev's vanilla-JS library -->
 <script type="module">
 (function () {
@@ -601,7 +824,7 @@ document.getElementById('dev-toggle').addEventListener('click', function() {
     setViewportHeights();
     window.addEventListener('resize', setViewportHeights);
 
-    var revealSelector = '.hero-logo, .hero-reveal, .feature, .how-step, .login-card-item';
+    var revealSelector = '.hero-illustration, .hero-reveal, .feature, .how-step, .login-card-item';
 
     function showAllInstantly() {
         document.querySelectorAll(revealSelector).forEach(function (el) {
@@ -632,12 +855,12 @@ document.getElementById('dev-toggle').addEventListener('click', function() {
         var ease = [0.16, 1, 0.3, 1];
         var pop = [0.34, 1.56, 0.64, 1]; // bouncy "overshoot" ease for a dramatic entrance
 
-        // 1. Hero logo: big dramatic drop-and-pop — falls, scales up, and fades in
+        // 1. Hero illustration: big dramatic drop-and-pop — falls, scales up, and fades in
         var logoLanded = false;
-        var logoAnim = animate('.hero-logo', { opacity: [0, 1], scale: [0.55, 1], y: [-70, 0] },
+        var logoAnim = animate('.hero-illustration', { opacity: [0, 1], scale: [0.55, 1], y: [-70, 0] },
             { duration: 0.75, easing: pop });
 
-        // 2. Once the logo lands, tagline + stat pill fade/rise in with a stagger
+        // 2. Once the illustration lands, tagline + stat pill fade/rise in with a stagger
         logoAnim.finished.then(function () {
             logoLanded = true; // hand off logo opacity control to the scroll-scrub below
 
