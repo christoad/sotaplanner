@@ -1232,15 +1232,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
 <div id="sp-modal" style="display:none; position:fixed; inset:0; z-index:9100; background:rgba(20,19,18,0.55); align-items:center; justify-content:center;">
   <div class="nom-progress-card" style="align-items:stretch; text-align:left; gap:1rem;">
     <div style="text-align:center;">
-      <div style="font-size:1.1rem; font-weight:600; color:var(--ink);">Add a starting point?</div>
+      <div style="font-size:1.1rem; font-weight:600; color:var(--ink);">Add a travel starting point?</div>
       <div style="font-size:0.85rem; color:var(--ink-3); margin-top:0.35rem; line-height:1.4;">
-        This dashboard doesn't have an address yet, so travel time couldn't be calculated for the summits you just added.
-        Enter any address, city, or landmark Google Maps recognizes — or do this later from the dashboard.
+        This dashboard doesn't have a starting point yet, so travel time couldn't be calculated for the summits you just added.
+        It doesn't need to be a precise address — anything Google can search for works: a town, a cross-street intersection, a trailhead name, or a nearby landmark.
       </div>
     </div>
     <div>
       <label class="form-label" for="sp-input">Starting Point</label>
-      <input type="text" id="sp-input" class="form-input" placeholder="e.g. 123 Main St, Portland, OR">
+      <input type="text" id="sp-input" class="form-input" placeholder="e.g. Pasadena, CA — or Foothill &amp; Lake — or Descanso Gardens">
       <div id="sp-error" class="form-hint" style="display:none; color:var(--red);"></div>
     </div>
     <button type="button" id="sp-save-btn" class="btn btn-primary">Save &amp; Continue</button>
