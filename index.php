@@ -402,7 +402,9 @@ foreach ($summits as $sm) {
     }
     $drv = $sm['drive_time_min'] ?? 0;
     $tot = $hike_min + $drv + $activation_time;
-    $has_data = ($dist > 0 || $elev > 0);
+    $is_drive_up = ($sm['difficulty'] ?? '') === 'drive-up';
+    // Drive-up summits need no hike research — travel + activation time alone is enough to plan.
+    $has_data = ($dist > 0 || $elev > 0 || $is_drive_up);
     $act_yr = $sm['last_activated_date'] && (date('Y', strtotime($sm['last_activated_date'])) == gmdate('Y'));
     if ($act_yr) $badge = 'gray';
     elseif ($sm['status'] === 'ready' || ($sm['status'] === 'activated' && !$act_yr)) $badge = 'green';
@@ -416,7 +418,7 @@ foreach ($summits as $sm) {
         'lng'      => (float)$sm['longitude'],
         'label'    => $has_data ? formatTime($tot) : null,
         'drive'    => $drv > 0 ? formatTime($drv) : null,
-        'hike'     => $has_data ? formatTime($hike_min) : null,
+        'hike'     => $hike_min > 0 ? formatTime($hike_min) : null,
         'points'   => (int)($sm['points'] ?? 0),
         'badge'    => $badge,
         'url'      => "summit_detail.php?id={$sm['id']}&group={$current_group['id']}",
