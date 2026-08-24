@@ -333,6 +333,100 @@ if (isset($_GET['action']) && $_GET['action'] === 'nominate_one') {
     exit;
 }
 
+// ── AJAX: calculate travel time for a batch of just-nominated summits ────────
+// Only touches summits that already have a starting point (trailhead) set.
+// Returns need_address=true if the dashboard has no address to calculate from.
+if (isset($_GET['action']) && $_GET['action'] === 'bulk_drive_times') {
+    header('Content-Type: application/json');
+    $db            = getDbConnection();
+    $current_group = getCurrentPlanningGroup($db);
+    if (!$current_group) { echo json_encode(['error' => 'No active group']); exit; }
+
+    $ids = array_values(array_filter(array_map('intval', explode(',', $_GET['ids'] ?? ''))));
+    if (empty($ids)) { echo json_encode(['updated' => 0, 'skipped' => 0, 'need_address' => false]); exit; }
+
+    // Find (or auto-select, matching index.php's own fallback) an address to calculate from
+    $selected_address = getSelectedAddress($db);
+    if (!$selected_address) {
+        $stmt = $db->prepare("SELECT * FROM addresses WHERE planning_group_id = ? ORDER BY label, address");
+        $stmt->execute([$current_group['id']]);
+        $all_addresses = $stmt->fetchAll();
+
+        if (empty($all_addresses)) {
+            echo json_encode(['updated' => 0, 'skipped' => 0, 'need_address' => true]); exit;
+        }
+
+        $selected_address = $all_addresses[0];
+        $setting_key = 'selected_address_group_' . $current_group['id'];
+        $db->prepare("INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)")
+           ->execute([$setting_key, $selected_address['id']]);
+    }
+
+    if (GOOGLE_MAPS_API_KEY === 'YOUR_API_KEY_HERE') {
+        echo json_encode(['error' => 'Google Maps API key not configured', 'need_address' => false]); exit;
+    }
+
+    $pl   = implode(',', array_fill(0, count($ids), '?'));
+    $stmt = $db->prepare("SELECT id, trailhead_lat, trailhead_lng FROM summits WHERE planning_group_id = ? AND id IN ($pl)");
+    $stmt->execute(array_merge([$current_group['id']], $ids));
+    $summits = $stmt->fetchAll();
+
+    $updated = 0;
+    $skipped = 0;
+    foreach ($summits as $summit) {
+        if (empty($summit['trailhead_lat']) || (float)$summit['trailhead_lat'] == 0
+            || empty($summit['trailhead_lng']) || (float)$summit['trailhead_lng'] == 0) {
+            $skipped++;
+            continue;
+        }
+
+        $drive_time = calculateDriveTime($selected_address['address'], $summit['trailhead_lat'], $summit['trailhead_lng']);
+        if ($drive_time !== null) {
+            // Round trip, matching the manual "Calculate Drive Times" convention on index.php
+            $db->prepare("UPDATE summits SET drive_time_min = ? WHERE id = ?")->execute([$drive_time * 2, $summit['id']]);
+            $updated++;
+        } else {
+            $skipped++;
+        }
+    }
+
+    echo json_encode(['updated' => $updated, 'skipped' => $skipped, 'need_address' => false]);
+    exit;
+}
+
+// ── AJAX: add a starting point address to the current dashboard ──────────────
+// Used when a bulk nomination finds no address to calculate travel time from.
+if (isset($_GET['action']) && $_GET['action'] === 'add_starting_point') {
+    header('Content-Type: application/json');
+    $db            = getDbConnection();
+    $current_group = getCurrentPlanningGroup($db);
+    if (!$current_group) { echo json_encode(['error' => 'No active group']); exit; }
+
+    $location = trim($_GET['location'] ?? '');
+    if (strlen($location) < 2) { echo json_encode(['error' => 'Enter a starting point.']); exit; }
+    if (!defined('GOOGLE_MAPS_API_KEY')) { echo json_encode(['error' => 'Geocoding not configured.']); exit; }
+
+    // Validate the location is recognizable by Google Maps before saving it
+    $geo_url  = 'https://maps.googleapis.com/maps/api/geocode/json?address=' . urlencode($location) . '&key=' . GOOGLE_MAPS_API_KEY;
+    $geo_resp = @file_get_contents($geo_url);
+    if (!$geo_resp) { echo json_encode(['error' => 'Geocoding service unavailable.']); exit; }
+    $geo = json_decode($geo_resp, true);
+    if (!$geo || ($geo['status'] ?? '') !== 'OK' || empty($geo['results'])) {
+        echo json_encode(['error' => 'Location not found. Try a more specific address, city, or landmark.']); exit;
+    }
+
+    $stmt = $db->prepare("INSERT INTO addresses (planning_group_id, label, address) VALUES (?, ?, ?)");
+    $stmt->execute([$current_group['id'], 'Starting Point', $location]);
+    $new_address_id = (int)$db->lastInsertId();
+
+    $setting_key = 'selected_address_group_' . $current_group['id'];
+    $db->prepare("INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)")
+       ->execute([$setting_key, $new_address_id]);
+
+    echo json_encode(['success' => true, 'address_id' => $new_address_id]);
+    exit;
+}
+
 $db = getDbConnection();
 
 $message = '';
@@ -1134,6 +1228,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
   </div>
 </div>
 
+<!-- Starting point prompt (shown when a bulk nomination has no dashboard address to calculate travel time from) -->
+<div id="sp-modal" style="display:none; position:fixed; inset:0; z-index:9100; background:rgba(20,19,18,0.55); align-items:center; justify-content:center;">
+  <div class="nom-progress-card" style="align-items:stretch; text-align:left; gap:1rem;">
+    <div style="text-align:center;">
+      <div style="font-size:1.1rem; font-weight:600; color:var(--ink);">Add a starting point?</div>
+      <div style="font-size:0.85rem; color:var(--ink-3); margin-top:0.35rem; line-height:1.4;">
+        This dashboard doesn't have an address yet, so travel time couldn't be calculated for the summits you just added.
+        Enter any address, city, or landmark Google Maps recognizes — or do this later from the dashboard.
+      </div>
+    </div>
+    <div>
+      <label class="form-label" for="sp-input">Starting Point</label>
+      <input type="text" id="sp-input" class="form-input" placeholder="e.g. 123 Main St, Portland, OR">
+      <div id="sp-error" class="form-hint" style="display:none; color:var(--red);"></div>
+    </div>
+    <button type="button" id="sp-save-btn" class="btn btn-primary">Save &amp; Continue</button>
+    <button type="button" id="sp-later-btn" style="background:none; border:none; color:var(--ink-3); font-size:0.825rem; font-family:var(--font-sans); cursor:pointer; padding:0.25rem;">I'll do this later</button>
+  </div>
+</div>
+
 <footer style="text-align:center; padding:2rem 1rem 1.5rem; color:var(--ink-4); font-size:0.78rem;">
   SOTA Planner &nbsp;·&nbsp;
   <a href="changelog.php" style="color:var(--ink-4); text-decoration:none;">v<?= APP_VERSION ?></a>
@@ -1625,8 +1739,30 @@ async function runBulkNominateFlow(refs) {
         counterEl.textContent = done + ' of ' + refs.length;
     }
 
+    // ── Auto-calculate travel time for newly nominated summits with a starting point ──
+    let driveMsg = '';
+    if (newIds.length > 0) {
+        currentEl.textContent = 'Checking travel times…';
+        try {
+            const dt = await (await fetch('nominate.php?action=bulk_drive_times&ids=' + newIds.join(','))).json();
+            if (dt.need_address) {
+                overlay.style.display = 'none';
+                const saved = await promptForStartingPoint();
+                overlay.style.display = 'flex';
+                if (saved) {
+                    currentEl.textContent = 'Calculating travel times…';
+                    const dt2 = await (await fetch('nominate.php?action=bulk_drive_times&ids=' + newIds.join(','))).json();
+                    if (dt2.updated > 0) driveMsg = ' • travel time added for ' + dt2.updated + ' summit' + (dt2.updated !== 1 ? 's' : '');
+                }
+            } else if (dt.updated > 0) {
+                driveMsg = ' • travel time added for ' + dt.updated + ' summit' + (dt.updated !== 1 ? 's' : '');
+            }
+        } catch (_) { /* non-fatal — continue to dashboard either way */ }
+    }
+
     let doneMsg = done + ' summit' + (done !== 1 ? 's' : '') + ' added';
     if (activatedThisYear > 0) doneMsg += ' • ' + activatedThisYear + ' activated by your group this year';
+    doneMsg += driveMsg;
     currentEl.textContent = '✓ Done! Loading dashboard…';
     counterEl.textContent = doneMsg;
     barEl.style.width = '100%';
@@ -1635,6 +1771,64 @@ async function runBulkNominateFlow(refs) {
     setTimeout(function() {
         window.location.href = 'index.php?group=' + groupId + '&bulk_nominated=' + done + idsParam;
     }, 1000);
+}
+
+// ── Starting point prompt (used by runBulkNominateFlow when no address exists yet) ──
+function promptForStartingPoint() {
+    return new Promise(function(resolve) {
+        const modal    = document.getElementById('sp-modal');
+        const input    = document.getElementById('sp-input');
+        const errEl    = document.getElementById('sp-error');
+        const saveBtn  = document.getElementById('sp-save-btn');
+        const laterBtn = document.getElementById('sp-later-btn');
+
+        input.value = '';
+        errEl.style.display = 'none';
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save & Continue';
+        modal.style.display = 'flex';
+        input.focus();
+
+        function cleanup() {
+            modal.style.display = 'none';
+            saveBtn.onclick = null;
+            laterBtn.onclick = null;
+            input.onkeydown = null;
+        }
+
+        async function doSave() {
+            const loc = input.value.trim();
+            if (!loc) {
+                errEl.textContent = 'Please enter a starting point.';
+                errEl.style.display = 'block';
+                return;
+            }
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Checking…';
+            errEl.style.display = 'none';
+            try {
+                const data = await (await fetch('nominate.php?action=add_starting_point&location=' + encodeURIComponent(loc))).json();
+                if (data.success) {
+                    cleanup();
+                    resolve(true);
+                } else {
+                    errEl.textContent = data.error || 'Could not add that starting point.';
+                    errEl.style.display = 'block';
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Save & Continue';
+                }
+            } catch (_) {
+                errEl.textContent = 'Network error — please try again.';
+                errEl.style.display = 'block';
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save & Continue';
+            }
+        }
+
+        saveBtn.onclick = doSave;
+        laterBtn.onclick = function() { cleanup(); resolve(false); };
+        input.onkeydown = function(e) { if (e.key === 'Enter') doSave(); };
+    });
 }
 
 // ── Area search ───────────────────────────────────────────────────────────────
