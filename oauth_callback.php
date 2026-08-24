@@ -124,8 +124,9 @@ if (isset($_GET['code'])) {
         die('Login failed: no access token received.');
     }
 
-    // Decode id_token JWT payload — preferred_username is in the token, no UserInfo round-trip needed.
-    // SOTA's realm does not include a custom "callsign" claim; preferred_username is the callsign (lowercase).
+    // Decode id_token JWT payload — no UserInfo round-trip needed.
+    // The "sotaplanner" client's claim mappers were fixed 2026-08 (previously scoped to a different
+    // client) — the token now includes verified "Callsign" and "UserID" claims directly.
     $id_token_parts = explode('.', $tokens['id_token'] ?? '');
     $id_payload = [];
     if (count($id_token_parts) === 3) {
@@ -138,10 +139,11 @@ if (isset($_GET['code'])) {
         echo "<pre>ID_TOKEN PAYLOAD:\n" . htmlspecialchars(json_encode($id_payload, JSON_PRETTY_PRINT)) . "</pre>";
     }
 
-    $callsign = strtoupper(trim($id_payload['preferred_username'] ?? ''));
+    $verified_callsign = trim($id_payload['Callsign'] ?? '');
+    $callsign = strtoupper($verified_callsign !== '' ? $verified_callsign : ($id_payload['preferred_username'] ?? ''));
 
     if (empty($callsign)) {
-        error_log("SOTA id_token missing preferred_username: " . json_encode($id_payload));
+        error_log("SOTA id_token missing Callsign and preferred_username: " . json_encode($id_payload));
         if ($debug) {
             die("<pre>NO CALLSIGN IN ID_TOKEN\nDecoded payload: " . htmlspecialchars(json_encode($id_payload, JSON_PRETTY_PRINT)) . "</pre>");
         }
@@ -160,27 +162,18 @@ if (isset($_GET['code'])) {
     $_SESSION['sota_refresh_token']         = $tokens['refresh_token'] ?? null;
     $_SESSION['sota_token_expires']         = time() + ($tokens['expires_in'] ?? 300);
     $_SESSION['sota_sso_sub']               = $id_payload['sub'] ?? null;
+    $_SESSION['sota_sso_userid']            = $id_payload['UserID'] ?? null;
     $_SESSION['sota_sso_preferred_username'] = $id_payload['preferred_username'] ?? null;
 
-    // Check if this user has confirmed their callsign yet
-    $stmt = $db->prepare("SELECT callsign_confirmed FROM users WHERE callsign = ?");
-    $stmt->execute([$callsign]);
-    $user_row = $stmt->fetch();
-    if (!$user_row || !(int)$user_row['callsign_confirmed']) {
-        // If the SSO username itself looks like a valid callsign, auto-confirm silently —
-        // no need to interrupt the user with a confirmation page.
-        $sso_username = $id_payload['preferred_username'] ?? '';
-        if (preg_match('/^[A-Z0-9]{3,10}$/i', $sso_username)) {
-            $db->prepare("
-                INSERT INTO users (callsign, callsign_confirmed, sso_sub)
-                VALUES (?, 1, ?)
-                ON DUPLICATE KEY UPDATE callsign_confirmed = 1, sso_sub = VALUES(sso_sub)
-            ")->execute([$callsign, $id_payload['sub'] ?? null]);
-        } else {
-            header('Location: callsign_confirm.php');
-            exit;
-        }
-    }
+    // SOTA's "Callsign" claim is verified server-side on every login — trust it and record the
+    // user with no manual confirmation step. (Fallback to preferred_username above only applies
+    // if a future token is ever missing the claim; the empty-callsign check earlier already
+    // rejects logins with neither.)
+    $db->prepare("
+        INSERT INTO users (callsign, callsign_confirmed, sso_sub)
+        VALUES (?, 1, ?)
+        ON DUPLICATE KEY UPDATE callsign_confirmed = 1, sso_sub = VALUES(sso_sub)
+    ")->execute([$callsign, $id_payload['sub'] ?? null]);
 
     // Find user's planning groups
     $stmt = $db->prepare("
