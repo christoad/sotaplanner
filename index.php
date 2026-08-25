@@ -2022,7 +2022,7 @@ try {
     fetch('sota_refresh.php?summit_id=' + id + '&group_id=' + groupId)
       .then(r => r.json())
       .catch(() => {})
-      .finally(next);
+      .finally(() => setTimeout(next, 200));
   }
   // Start 3 concurrent workers after page is idle
   requestIdleCallback ? requestIdleCallback(() => { next(); next(); next(); })

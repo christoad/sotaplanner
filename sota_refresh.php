@@ -7,6 +7,7 @@
  * Returns JSON: { ok, updated, last_activated_date, activated_by }
  */
 require_once 'config.php';
+session_start();
 requireLogin();
 
 header('Content-Type: application/json');
@@ -98,10 +99,10 @@ foreach ($all_activations as $act) {
 // Update the summits table if we have data
 $updated = false;
 if ($most_recent_date) {
-    $db->prepare("UPDATE summits SET last_activated_date = ?, activated_by = ?, status = 'activated'
-                  WHERE id = ? AND (last_activated_date IS NULL OR last_activated_date < ?)")
-       ->execute([$most_recent_date, $most_recent_callsign, $summit_id, $most_recent_date]);
-    $updated = $db->rowCount() > 0;
+    $update_stmt = $db->prepare("UPDATE summits SET last_activated_date = ?, activated_by = ?, status = 'activated'
+                  WHERE id = ? AND (last_activated_date IS NULL OR last_activated_date < ?)");
+    $update_stmt->execute([$most_recent_date, $most_recent_callsign, $summit_id, $most_recent_date]);
+    $updated = $update_stmt->rowCount() > 0;
 }
 
 echo json_encode([
