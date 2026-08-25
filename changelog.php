@@ -266,12 +266,13 @@ session_start();
     <!-- August 2026 (v1.5.8-v1.6.0) -->
     <div class="version-block current">
         <div class="version-header">
-            <span class="version-number">v1.7.2</span>
+            <span class="version-number">v1.7.3</span>
             <span class="version-date">August 2026</span>
             <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Live activation syncing with the SOTA API, a new Community Growth page, and travel terminology that works for transit trips too.</p>
         <ul>
+            <li>Additional callsigns you list in Settings now automatically get access to your dashboards the next time they log in — no separate invite needed</li>
             <li>Bulk-nominating summits (by area or by reference list) now automatically calculates travel time for any summit with a known starting point — if your dashboard doesn't have an address yet, you'll be prompted to add one on the spot, or you can skip it and do it later</li>
             <li>Nominating summits now opens straight to Bulk Search by Area — search a location and add every summit in range at once; the name/reference search is still there as a second tab</li>
             <li>Summits marked Drive Up now show their real travel time on the dashboard map, instead of a "+ Research" flag they don't need since there's no hike to research</li>

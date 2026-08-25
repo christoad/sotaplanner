@@ -53,6 +53,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_callsigns'])) {
             VALUES (?, 1, ?)
             ON DUPLICATE KEY UPDATE additional_callsigns = VALUES(additional_callsigns)
         ")->execute([$current_user, $additional_callsigns]);
+
+        // Silently give each additional callsign the same dashboard access as the primary
+        // callsign, so those dashboards are just there whenever that callsign logs in —
+        // no invite step, nothing shown to the user beyond "Callsigns saved."
+        if ($extra_list) {
+            $stmt = $db->prepare("
+                SELECT DISTINCT pg.id
+                FROM planning_groups pg
+                LEFT JOIN planning_group_members pgm ON pg.id = pgm.planning_group_id
+                WHERE pg.owner_callsign = ? OR pgm.callsign = ?
+            ");
+            $stmt->execute([$current_user, $current_user]);
+            $owned_group_ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+            if ($owned_group_ids) {
+                $grant = $db->prepare("
+                    INSERT IGNORE INTO planning_group_members (planning_group_id, callsign, role, invited_by)
+                    VALUES (?, ?, 'member', ?)
+                ");
+                foreach ($owned_group_ids as $group_id) {
+                    foreach ($extra_list as $extra_cs) {
+                        $grant->execute([$group_id, $extra_cs, $current_user]);
+                    }
+                }
+            }
+        }
+
         $callsign_message = 'Callsigns saved.';
     }
 }
@@ -349,7 +376,7 @@ $additional_callsigns = $user_profile['additional_callsigns'] ?? '';
                    background:var(--surface); outline:none; text-transform:uppercase; letter-spacing:0.02em;"
             oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9\/,\s]/g,'')"
           >
-          <div class="hint">Separate with commas. Activations logged under any of these count toward your dashboards too.</div>
+          <div class="hint">Separate with commas. Activations logged under any of these count toward your dashboards too, and each one gets access to your dashboards automatically the next time it logs in.</div>
         </div>
       </div>
 

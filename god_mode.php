@@ -253,6 +253,8 @@ foreach ($db->query("SELECT planning_group_id, callsign, role FROM planning_grou
     $gm_map[$r['planning_group_id']][] = $r;
 }
 
+// Only callsigns that have actually completed SOTA SSO login (users.sso_sub is set on every
+// SSO callback) show up here — early-access-only callsigns are excluded.
 $users_raw = $db->query("
     SELECT cs.callsign,
            GROUP_CONCAT(DISTINCT pg.name ORDER BY pg.name SEPARATOR ', ') as group_names,
@@ -262,6 +264,7 @@ $users_raw = $db->query("
         UNION
         SELECT DISTINCT owner_callsign FROM planning_groups
     ) cs
+    INNER JOIN users u ON u.callsign = cs.callsign AND u.sso_sub IS NOT NULL
     LEFT JOIN planning_group_members pgm2 ON pgm2.callsign = cs.callsign
     LEFT JOIN planning_groups pg ON pgm2.planning_group_id = pg.id
     GROUP BY cs.callsign
@@ -631,12 +634,12 @@ select.form-input { cursor: pointer; }
         <div class="section-head">
             <div>
                 <h2>All Users</h2>
-                <p><?= count($users_raw) ?> known callsigns</p>
+                <p><?= count($users_raw) ?> callsigns signed in via SOTA SSO</p>
             </div>
         </div>
         <div class="card" style="padding:0; overflow:hidden;">
             <?php if (empty($users_raw)): ?>
-                <div class="empty">No users yet.</div>
+                <div class="empty">No SSO users yet.</div>
             <?php else: ?>
             <table class="data-table">
                 <thead>
@@ -693,7 +696,7 @@ select.form-input { cursor: pointer; }
                     <div style="font-weight:600; font-size:1rem;"><?= htmlspecialchars($g['name']) ?></div>
                     <div style="font-size:0.8rem; color:var(--ink-3); margin-top:2px;">
                         Owner: <span class="mono" style="color:var(--ink-2);"><?= htmlspecialchars($g['owner_callsign'] ?? '—') ?></span>
-                        &nbsp;·&nbsp; <?= $g['member_count'] ?> member<?= $g['member_count'] != 1 ? 's' : '' ?>
+                        &nbsp;·&nbsp; <span id="member-count-<?= $g['id'] ?>"><?= $g['member_count'] ?> member<?= $g['member_count'] != 1 ? 's' : '' ?></span>
                         &nbsp;·&nbsp; <?= $g['summit_count'] ?> summit<?= $g['summit_count'] != 1 ? 's' : '' ?>
                         &nbsp;·&nbsp; <?= $g['address_count'] ?> address<?= $g['address_count'] != 1 ? 'es' : '' ?>
                         &nbsp;·&nbsp; <?= $g['units'] ?>
@@ -701,15 +704,13 @@ select.form-input { cursor: pointer; }
                             &nbsp;·&nbsp; Created <?= date('M j, Y', strtotime($g['created_at'])) ?>
                         <?php endif; ?>
                     </div>
-                    <?php if (!empty($gm_map[$g['id']])): ?>
-                    <div style="margin-top:var(--sp-2); display:flex; gap:var(--sp-2); flex-wrap:wrap;">
-                        <?php foreach ($gm_map[$g['id']] as $m): ?>
+                    <div id="members-<?= $g['id'] ?>" style="margin-top:var(--sp-2); display:flex; gap:var(--sp-2); flex-wrap:wrap;">
+                        <?php foreach ($gm_map[$g['id']] ?? [] as $m): ?>
                             <span class="badge <?= $m['role'] === 'owner' ? 'badge-owner' : 'badge-member' ?>">
                                 <?= htmlspecialchars($m['callsign']) ?>
                             </span>
                         <?php endforeach; ?>
                     </div>
-                    <?php endif; ?>
                 </div>
                 <div style="display:flex; gap:var(--sp-2); flex-shrink:0; flex-wrap:wrap; justify-content:flex-end;">
                     <!-- Clear drive times -->
@@ -742,13 +743,14 @@ select.form-input { cursor: pointer; }
 
             <!-- Add member & transfer ownership -->
             <div style="display:flex; gap:var(--sp-6); flex-wrap:wrap; padding-top:var(--sp-4); border-top:1px solid var(--border);">
-                <form method="POST" style="display:flex; gap:var(--sp-2); align-items:flex-end;">
+                <form method="POST" class="js-add-member-form" data-group-id="<?= $g['id'] ?>" style="display:flex; gap:var(--sp-2); align-items:flex-end;">
                     <input type="hidden" name="group_id" value="<?= $g['id'] ?>">
                     <div class="form-group">
                         <label class="form-label">Add Member</label>
                         <input type="text" name="new_callsign" class="form-input" placeholder="Callsign" autocapitalize="characters" style="width:130px;">
                     </div>
                     <button type="submit" name="add_member_to_group" class="btn btn-sm btn-ghost">Add</button>
+                    <span class="add-member-status" style="font-size:0.8rem;"></span>
                 </form>
                 <form method="POST" style="display:flex; gap:var(--sp-2); align-items:flex-end;">
                     <input type="hidden" name="group_id" value="<?= $g['id'] ?>">
@@ -1371,5 +1373,63 @@ select.form-input { cursor: pointer; }
     SOTA Planner &nbsp;·&nbsp; <a href="changelog.php" style="color:var(--ink-4); text-decoration:none;">v<?= APP_VERSION ?></a>
     &nbsp;·&nbsp; <a href="https://sotaplanner.com" style="color:var(--ink-4); text-decoration:none;">sotaplanner.com</a>
 </footer>
+
+<script>
+document.querySelectorAll('.js-add-member-form').forEach(function(form) {
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var groupId    = form.dataset.groupId;
+        var input      = form.querySelector('input[name="new_callsign"]');
+        var button     = form.querySelector('button[name="add_member_to_group"]');
+        var statusEl   = form.querySelector('.add-member-status');
+        var callsign   = (input.value || '').trim();
+
+        if (!callsign) return;
+
+        button.disabled = true;
+        statusEl.textContent = '';
+        statusEl.style.color = '';
+
+        fetch('god_mode_add_member.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'group_id=' + encodeURIComponent(groupId) + '&new_callsign=' + encodeURIComponent(callsign)
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            button.disabled = false;
+            if (!data.ok) {
+                statusEl.textContent = data.error || 'Error adding member.';
+                statusEl.style.color = 'var(--red)';
+                return;
+            }
+            statusEl.textContent = data.already_member ? 'Already a member' : 'Added';
+            statusEl.style.color = 'var(--green)';
+            input.value = '';
+
+            if (!data.already_member) {
+                var badges = document.getElementById('members-' + groupId);
+                if (badges) {
+                    var span = document.createElement('span');
+                    span.className = 'badge badge-member';
+                    span.textContent = data.callsign;
+                    badges.appendChild(span);
+                }
+                var countEl = document.getElementById('member-count-' + groupId);
+                if (countEl) {
+                    countEl.textContent = data.member_count + ' member' + (data.member_count != 1 ? 's' : '');
+                }
+            }
+
+            setTimeout(function() { statusEl.textContent = ''; }, 3000);
+        })
+        .catch(function() {
+            button.disabled = false;
+            statusEl.textContent = 'Network error.';
+            statusEl.style.color = 'var(--red)';
+        });
+    });
+});
+</script>
 </body>
 </html>
