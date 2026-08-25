@@ -253,6 +253,8 @@ foreach ($db->query("SELECT planning_group_id, callsign, role FROM planning_grou
     $gm_map[$r['planning_group_id']][] = $r;
 }
 
+// Only callsigns that have actually completed SOTA SSO login (users.sso_sub is set on every
+// SSO callback) show up here — early-access-only callsigns are excluded.
 $users_raw = $db->query("
     SELECT cs.callsign,
            GROUP_CONCAT(DISTINCT pg.name ORDER BY pg.name SEPARATOR ', ') as group_names,
@@ -262,6 +264,7 @@ $users_raw = $db->query("
         UNION
         SELECT DISTINCT owner_callsign FROM planning_groups
     ) cs
+    INNER JOIN users u ON u.callsign = cs.callsign AND u.sso_sub IS NOT NULL
     LEFT JOIN planning_group_members pgm2 ON pgm2.callsign = cs.callsign
     LEFT JOIN planning_groups pg ON pgm2.planning_group_id = pg.id
     GROUP BY cs.callsign
@@ -631,12 +634,12 @@ select.form-input { cursor: pointer; }
         <div class="section-head">
             <div>
                 <h2>All Users</h2>
-                <p><?= count($users_raw) ?> known callsigns</p>
+                <p><?= count($users_raw) ?> callsigns signed in via SOTA SSO</p>
             </div>
         </div>
         <div class="card" style="padding:0; overflow:hidden;">
             <?php if (empty($users_raw)): ?>
-                <div class="empty">No users yet.</div>
+                <div class="empty">No SSO users yet.</div>
             <?php else: ?>
             <table class="data-table">
                 <thead>
