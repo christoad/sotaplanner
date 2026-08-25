@@ -102,6 +102,9 @@ The staging login page shows a hero section by default. To log in, click the sma
 - After confirming on staging, commit on `main` and deploy to production as usual.
 - **GPX files + SOTA cache** are synced from production → staging daily at 2am via `/home/chrisr069/sync_sites.sh`. No need to manually copy GPX files when testing on staging.
 
+### Hosting & Scaling — CDN Options (researched 2026-08-25)
+DreamHost Shared Hosting (what sotaplanner.com runs on) has **no built-in CDN**. If international traffic grows and page-load latency becomes a concern, the path is a free **Cloudflare** setup (DreamHost has a direct partner integration for this): create a free Cloudflare account, then point sotaplanner.com's nameservers at Cloudflare's two assigned nameservers. This gives global edge caching for static assets (CSS/JS/images/SVGs), SSL termination closer to the user, DDoS protection, and basic analytics — DreamHost remains the origin server. Note: since most of SOTAplanner's pages are dynamic PHP (DB-backed dashboard/maps), a CDN mainly speeds up static assets and connection setup, not the PHP/DB round-trip itself — if response time becomes the bottleneck under heavy load, that requires scaling the DreamHost plan or database, not just adding a CDN. Nameserver changes affect live DNS/email routing, so treat this as a change requiring Chris's explicit go-ahead, not something to do unprompted.
+
 ---
 
 
