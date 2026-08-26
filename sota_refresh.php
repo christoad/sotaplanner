@@ -41,38 +41,8 @@ if (!$mem->fetch()) {
     exit;
 }
 
-// Check 24-hour cache
-$cache_key  = 'sota_activations_' . preg_replace('/[^a-zA-Z0-9_]/', '_', $summit['sota_ref']);
-$cache_stmt = $db->prepare("SELECT setting_value, updated_at FROM app_settings WHERE setting_key = ?");
-$cache_stmt->execute([$cache_key]);
-$cache_row  = $cache_stmt->fetch();
-
-$all_activations = null;
-if ($cache_row && (time() - strtotime($cache_row['updated_at'])) < 86400) {
-    $all_activations = json_decode($cache_row['setting_value'], true);
-} else {
-    $ref_parts = explode('/', $summit['sota_ref'], 2);
-    if (count($ref_parts) === 2) {
-        $api_url = 'https://api2.sota.org.uk/api/activations/'
-                 . urlencode($ref_parts[0]) . '/' . urlencode($ref_parts[1]);
-        $ctx = stream_context_create(['http' => [
-            'timeout'       => 8,
-            'ignore_errors' => true,
-            'header'        => "Accept: application/json\r\nUser-Agent: SOTAplanner/1.0\r\n",
-        ]]);
-        $raw = @file_get_contents($api_url, false, $ctx);
-        if ($raw !== false) {
-            $fetched = json_decode($raw, true);
-            if (is_array($fetched)) {
-                $all_activations = $fetched;
-                $db->prepare("INSERT INTO app_settings (setting_key, setting_value, updated_at)
-                              VALUES (?, ?, NOW())
-                              ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=NOW()")
-                   ->execute([$cache_key, json_encode($all_activations)]);
-            }
-        }
-    }
-}
+// 24-hour cache handled by the shared helper (also used by sync_dashboard_activations.php)
+$all_activations = fetchSotaActivations($db, $summit['sota_ref']);
 
 if (!is_array($all_activations)) {
     echo json_encode(['ok' => false, 'error' => 'api_unavailable']);
