@@ -1085,7 +1085,6 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     <div class="topbar-right">
         <nav class="topbar-nav">
             <a href="planning_groups.php">Manage Dashboards</a>
-            <a href="community_growth.php">Community Growth</a>
             <a href="about.php">About</a>
             <a href="#" onclick="document.getElementById('howModal').style.display='flex'; return false;">How It Works</a>
         </nav>

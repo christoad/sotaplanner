@@ -1,7 +1,6 @@
 <?php
 require_once 'config.php';
 session_start();
-requireLogin();
 
 $db = getDbConnection();
 reconcileTrailDataGrowthLog($db);
