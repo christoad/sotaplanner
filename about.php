@@ -105,7 +105,7 @@ $bkey = defined('GOOGLE_MAPS_BROWSER_KEY') ? GOOGLE_MAPS_BROWSER_KEY : '';
 
     /* ── Page ── */
     .page {
-      max-width: 700px;
+      max-width: 960px;
       margin: 0 auto;
       padding: var(--sp-8) var(--sp-8) 5rem;
     }
@@ -209,7 +209,7 @@ $bkey = defined('GOOGLE_MAPS_BROWSER_KEY') ? GOOGLE_MAPS_BROWSER_KEY : '';
     }
     .spinner { width: 30px; height: 30px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.75s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    #map-hint { position: absolute; bottom: var(--sp-3); right: var(--sp-3); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0.3rem 0.6rem; font-size: 0.75rem; color: var(--ink-3); z-index: 5; }
+    #map-hint { position: absolute; top: var(--sp-3); left: var(--sp-3); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0.3rem 0.6rem; font-size: 0.75rem; color: var(--ink-3); z-index: 5; box-shadow: var(--shadow-sm); }
 
     .gm-style .gm-style-iw-c { border-radius: var(--r-lg) !important; padding: 0 !important; box-shadow: 0 4px 20px rgba(0,0,0,0.15) !important; }
     .gm-style .gm-style-iw-d { overflow: hidden !important; }
