@@ -2008,11 +2008,36 @@ try {
 <script>
 // Silently refresh SOTA activation cache for all summits on the dashboard.
 // Fires after page paint, 3 at a time, so it never blocks the UI.
+// The server caches each summit's SOTA API result for 24h (see fetchSotaActivations()
+// in config.php), so hitting sota_refresh.php again is cheap — but index.php sends
+// Cache-Control: no-store (PHP's session default), which blocks the browser's
+// back/forward cache. That means every back-button return re-runs this whole
+// script from scratch. Track which summit IDs we've already refreshed today in
+// sessionStorage (per tab) and only fetch the ones not already covered, so a
+// same-day revisit (back button, reload, re-opened tab) doesn't re-fire a
+// request per summit just to hit the cache again — while a newly nominated
+// summit added later the same day still gets checked.
 (function() {
   const groupId = <?= (int)$current_group['id'] ?>;
-  const ids = Array.from(document.querySelectorAll('tr[data-summit-id]'))
-                   .map(r => r.dataset.summitId);
+  const allIds = Array.from(document.querySelectorAll('tr[data-summit-id]'))
+                      .map(r => r.dataset.summitId);
+  if (!allIds.length) return;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const storageKey = 'sota_refresh_done_' + groupId;
+  let alreadyDone = [];
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+    if (stored && stored.date === today) alreadyDone = stored.ids || [];
+  } catch (e) {}
+
+  const doneSet = new Set(alreadyDone);
+  const ids = allIds.filter(id => !doneSet.has(id));
   if (!ids.length) return;
+
+  try {
+    sessionStorage.setItem(storageKey, JSON.stringify({ date: today, ids: allIds }));
+  } catch (e) {}
 
   let i = 0;
   function next() {
