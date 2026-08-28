@@ -600,6 +600,30 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     }
     .user-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
 
+    /* ── Hamburger menu (mobile nav — topbar-nav links are hidden below 768px) ── */
+    .hamburger-menu { display: none; position: relative; }
+    .hamburger-btn {
+      display: flex; align-items: center; justify-content: center;
+      width: 34px; height: 34px; border-radius: var(--r-sm);
+      border: 1px solid var(--border); background: var(--bg);
+      color: var(--ink-2); cursor: pointer; flex-shrink: 0;
+    }
+    .hamburger-btn:hover { background: var(--bg-2); }
+    .hamburger-dropdown {
+      display: none;
+      position: absolute; top: calc(100% + 6px); right: 0;
+      background: #fff; border: 1px solid var(--border);
+      border-radius: var(--r-sm); box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+      min-width: 190px; overflow: hidden; z-index: 200;
+    }
+    .hamburger-menu.open .hamburger-dropdown { display: block; }
+    .hamburger-dropdown a {
+      display: block; padding: 0.65rem 1rem;
+      font-size: 0.85rem; font-weight: 500; color: var(--ink-2);
+      text-decoration: none;
+    }
+    .hamburger-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
+
     /* ── Select inline ── */
     .select-inline {
       appearance: none; -webkit-appearance: none;
@@ -832,9 +856,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     .hiw-list li { margin-bottom: 0.3rem; }
 
     /* ── Mobile responsive ── */
-    .dropdown-mobile-only { display: none; }
     @media (max-width: 768px) {
-      .dropdown-mobile-only { display: block; }
       .page { padding: var(--sp-4); }
       .topbar {
         height: auto;
@@ -855,6 +877,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
         padding: var(--sp-2) 0 var(--sp-1);
       }
       .topbar-nav { display: none; }
+      .hamburger-menu { display: block; }
       .topbar-context { flex-wrap: nowrap; gap: 6px; }
       .topbar-addr { display: none; }
       .select-inline { max-width: 140px; }
@@ -1088,6 +1111,16 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
             <a href="about.php">About</a>
             <a href="#" onclick="document.getElementById('howModal').style.display='flex'; return false;">How It Works</a>
         </nav>
+        <div class="hamburger-menu" id="hamburgerMenu">
+            <button type="button" class="hamburger-btn" aria-label="Menu">
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="2" y1="4.5" x2="15" y2="4.5"/><line x1="2" y1="8.5" x2="15" y2="8.5"/><line x1="2" y1="12.5" x2="15" y2="12.5"/></svg>
+            </button>
+            <div class="hamburger-dropdown">
+                <a href="planning_groups.php">Manage Dashboards</a>
+                <a href="about.php">About</a>
+                <a href="#" onclick="document.getElementById('howModal').style.display='flex'; document.getElementById('hamburgerMenu').classList.remove('open'); return false;">How It Works</a>
+            </div>
+        </div>
         <a href="nominate.php" class="btn btn-primary btn-sm">+ Nominate</a>
         <div class="topbar-divider"></div>
         <div class="user-chip" id="userChip">
@@ -1100,7 +1133,6 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                 <?php if (($_SESSION['sota_callsign'] ?? '') === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
                     <a href="god_mode.php">God Mode</a>
                 <?php endif; ?>
-                <a href="planning_groups.php" class="dropdown-mobile-only">Manage Dashboards</a>
                 <a href="user_settings.php">Settings</a>
                 <a href="logout.php">Sign Out</a>
             </div>
@@ -1533,6 +1565,15 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
         if (!chip) return;
         chip.addEventListener('click', function(e) { e.stopPropagation(); this.classList.toggle('open'); });
         document.addEventListener('click', function() { chip.classList.remove('open'); });
+    })();
+
+    // Mobile hamburger nav menu
+    (function() {
+        const menu = document.getElementById('hamburgerMenu');
+        if (!menu) return;
+        const btn = menu.querySelector('.hamburger-btn');
+        btn.addEventListener('click', function(e) { e.stopPropagation(); menu.classList.toggle('open'); });
+        document.addEventListener('click', function() { menu.classList.remove('open'); });
     })();
 </script>
 
