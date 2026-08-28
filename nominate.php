@@ -827,6 +827,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
     }
     .user-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
 
+    /* ── Hamburger menu (mobile nav — topbar-nav links are hidden below 640px) ── */
+    .hamburger-menu { display: none; position: relative; }
+    .hamburger-btn {
+      display: flex; align-items: center; justify-content: center;
+      width: 34px; height: 34px; border-radius: var(--r-sm);
+      border: 1px solid var(--border); background: var(--bg);
+      color: var(--ink-2); cursor: pointer; flex-shrink: 0;
+    }
+    .hamburger-btn:hover { background: var(--bg-2); }
+    .hamburger-dropdown {
+      display: none;
+      position: absolute; top: calc(100% + 6px); right: 0;
+      background: #fff; border: 1px solid var(--border);
+      border-radius: var(--r-sm); box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+      min-width: 190px; overflow: hidden; z-index: 200;
+    }
+    .hamburger-menu.open .hamburger-dropdown { display: block; }
+    .hamburger-dropdown a {
+      display: block; padding: 0.65rem 1rem;
+      font-size: 0.85rem; font-weight: 500; color: var(--ink-2);
+      text-decoration: none;
+    }
+    .hamburger-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
+
     /* Page layout */
     .page { padding: 2rem; max-width: 1100px; margin: 0 auto; }
     .nom-search-inner { max-width: 580px; margin: 0 auto; }
@@ -978,6 +1002,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
     @media (max-width: 640px) {
       .topbar { padding: 0 1rem; }
       .topbar-nav { display: none; }
+      .hamburger-menu { display: block; }
       .page { padding: 1rem; }
     }
 
@@ -1062,6 +1087,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
     <a href="planning_groups.php">Manage Dashboards</a>
   </div>
   <div class="topbar-right">
+    <div class="hamburger-menu" id="hamburgerMenu">
+      <button type="button" class="hamburger-btn" onclick="this.parentElement.classList.toggle('open')" aria-label="Menu">
+        <svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="2" y1="4.5" x2="15" y2="4.5"/><line x1="2" y1="8.5" x2="15" y2="8.5"/><line x1="2" y1="12.5" x2="15" y2="12.5"/></svg>
+      </button>
+      <div class="hamburger-dropdown">
+        <a href="index.php">Dashboard</a>
+        <a href="planning_groups.php">Manage Dashboards</a>
+      </div>
+    </div>
     <div class="user-chip" onclick="this.classList.toggle('open')" id="userChip">
       <span><?= htmlspecialchars($_SESSION['sota_callsign'] ?? '') ?></span>
       <svg class="user-chip-chevron" width="10" height="6" viewBox="0 0 10 6" fill="none">
@@ -1259,6 +1293,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
 document.addEventListener('click', function(e) {
   var chip = document.getElementById('userChip');
   if (chip && !chip.contains(e.target)) chip.classList.remove('open');
+  var menu = document.getElementById('hamburgerMenu');
+  if (menu && !menu.contains(e.target)) menu.classList.remove('open');
 });
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────

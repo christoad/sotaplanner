@@ -525,6 +525,30 @@ a:hover { text-decoration: underline; }
 }
 .user-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
 
+/* Hamburger menu (mobile nav — topbar-nav links are hidden below 640px) */
+.hamburger-menu { display: none; position: relative; }
+.hamburger-btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; border-radius: var(--r-sm);
+    border: 1px solid var(--border); background: var(--bg);
+    color: var(--ink-2); cursor: pointer; flex-shrink: 0;
+}
+.hamburger-btn:hover { background: var(--bg-2); }
+.hamburger-dropdown {
+    display: none;
+    position: absolute; top: calc(100% + 6px); right: 0;
+    background: #fff; border: 1px solid var(--border);
+    border-radius: var(--r-sm); box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    min-width: 190px; overflow: hidden; z-index: 200;
+}
+.hamburger-menu.open .hamburger-dropdown { display: block; }
+.hamburger-dropdown a {
+    display: block; padding: 0.65rem 1rem;
+    font-size: 0.85rem; font-weight: 500; color: var(--ink-2);
+    text-decoration: none;
+}
+.hamburger-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
+
 /* Messages */
 .msg {
     display: flex;
@@ -714,6 +738,7 @@ a:hover { text-decoration: underline; }
 @media (max-width: 640px) {
     .topbar { padding: 0 1rem; }
     .topbar-nav { display: none; }
+    .hamburger-menu { display: block; }
     .page { padding: 1rem; }
     .groups-grid { grid-template-columns: 1fr; }
     .addr-actions { flex-direction: column; align-items: flex-end; gap: 0.25rem; }
@@ -733,6 +758,15 @@ a:hover { text-decoration: underline; }
         <a href="planning_groups.php" class="active">Manage Dashboards</a>
     </div>
     <div class="topbar-right">
+        <div class="hamburger-menu" id="hamburgerMenu">
+            <button type="button" class="hamburger-btn" aria-label="Menu">
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="2" y1="4.5" x2="15" y2="4.5"/><line x1="2" y1="8.5" x2="15" y2="8.5"/><line x1="2" y1="12.5" x2="15" y2="12.5"/></svg>
+            </button>
+            <div class="hamburger-dropdown">
+                <a href="index.php">Dashboard</a>
+                <a href="planning_groups.php">Manage Dashboards</a>
+            </div>
+        </div>
         <div class="user-chip" id="userChip">
             <?= htmlspecialchars($current_callsign) ?>
             <svg class="user-chip-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="2,3.5 5,6.5 8,3.5"/></svg>
@@ -1190,6 +1224,13 @@ a:hover { text-decoration: underline; }
     if (!chip) return;
     chip.addEventListener('click', function(e) { e.stopPropagation(); this.classList.toggle('open'); });
     document.addEventListener('click', function() { chip.classList.remove('open'); });
+})();
+(function() {
+    var menu = document.getElementById('hamburgerMenu');
+    if (!menu) return;
+    var btn = menu.querySelector('.hamburger-btn');
+    btn.addEventListener('click', function(e) { e.stopPropagation(); menu.classList.toggle('open'); });
+    document.addEventListener('click', function() { menu.classList.remove('open'); });
 })();
 
 function openRenameModal() {

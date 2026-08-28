@@ -954,6 +954,30 @@ if ($tl_show) {
         font-size: 0.82rem; font-weight: 500; color: var(--ink-2); text-decoration: none;
     }
     .user-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
+
+    /* Hamburger menu (mobile nav — topbar-nav links are hidden below 768px) */
+    .hamburger-menu { display: none; position: relative; }
+    .hamburger-btn {
+        display: flex; align-items: center; justify-content: center;
+        width: 34px; height: 34px; border-radius: var(--r-sm);
+        border: 1px solid var(--border); background: var(--bg);
+        color: var(--ink-2); cursor: pointer; flex-shrink: 0;
+    }
+    .hamburger-btn:hover { background: var(--bg-2); }
+    .hamburger-dropdown {
+        display: none;
+        position: absolute; top: calc(100% + 6px); right: 0;
+        background: #fff; border: 1px solid var(--border);
+        border-radius: var(--r-sm); box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+        min-width: 190px; overflow: hidden; z-index: 200;
+    }
+    .hamburger-menu.open .hamburger-dropdown { display: block; }
+    .hamburger-dropdown a {
+        display: block; padding: 0.65rem 1rem;
+        font-size: 0.85rem; font-weight: 500; color: var(--ink-2);
+        text-decoration: none;
+    }
+    .hamburger-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
     .btn-full { width: 100%; }
 
     /* Forms */
@@ -1260,6 +1284,8 @@ if ($tl_show) {
       .page { padding: 1rem; }
       .topbar { padding: 0 1rem; }
       .topbar-nav { display: none; }
+      .hamburger-menu { display: block; }
+      .dashboard-back-btn { display: none; }
       .detail-layout { grid-template-columns: 1fr; }
       .stat-grid-4 { grid-template-columns: 1fr 1fr; }
       .field-row-2 { grid-template-columns: 1fr; }
@@ -1284,7 +1310,17 @@ if ($tl_show) {
     <a href="about.php">About</a>
   </div>
   <div class="topbar-right">
-    <a href="index.php" class="btn btn-ghost btn-sm">← Dashboard</a>
+    <div class="hamburger-menu" id="hamburgerMenu">
+      <button type="button" class="hamburger-btn" aria-label="Menu">
+        <svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="2" y1="4.5" x2="15" y2="4.5"/><line x1="2" y1="8.5" x2="15" y2="8.5"/><line x1="2" y1="12.5" x2="15" y2="12.5"/></svg>
+      </button>
+      <div class="hamburger-dropdown">
+        <a href="index.php">Dashboard</a>
+        <a href="planning_groups.php">Manage Dashboards</a>
+        <a href="about.php">About</a>
+      </div>
+    </div>
+    <a href="index.php" class="btn btn-ghost btn-sm dashboard-back-btn">← Dashboard</a>
     <div class="user-chip" id="userChip">
         <?= htmlspecialchars(getCurrentCallsign()) ?>
         <svg class="user-chip-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="2,3.5 5,6.5 8,3.5"/></svg>
@@ -2675,6 +2711,15 @@ if (flash) setTimeout(() => { flash.style.transition = 'opacity 0.5s'; flash.sty
     if (!chip) return;
     chip.addEventListener('click', function(e) { e.stopPropagation(); this.classList.toggle('open'); });
     document.addEventListener('click', function() { chip.classList.remove('open'); });
+})();
+
+// Mobile hamburger nav menu
+(function() {
+    var menu = document.getElementById('hamburgerMenu');
+    if (!menu) return;
+    var btn = menu.querySelector('.hamburger-btn');
+    btn.addEventListener('click', function(e) { e.stopPropagation(); menu.classList.toggle('open'); });
+    document.addEventListener('click', function() { menu.classList.remove('open'); });
 })();
 
 <?php if (!empty($gpx_data['from_global_library']) && $sotamaps_track_count === null): ?>
