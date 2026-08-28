@@ -1374,7 +1374,7 @@ if ($tl_show) {
         ?>
         <a href="<?= htmlspecialchars($invite_url0) ?>" target="_blank" class="btn btn-secondary btn-sm">Activation Invite</a>
       <?php else: ?>
-        <a href="#planned-activations" class="btn btn-secondary btn-sm">Schedule Activation</a>
+        <a href="#planned-activations" class="btn btn-secondary btn-sm">Create Invite</a>
       <?php endif; ?>
       <button class="btn btn-primary btn-sm" type="submit" form="main-edit-form" name="update_summit">Save Changes</button>
     </div>
@@ -2025,11 +2025,53 @@ if ($tl_show) {
       <?php endif; ?>
 
       <details>
-        <summary style="cursor:pointer; font-size:0.875rem; font-weight:600; color:var(--accent); margin-bottom:0.875rem; display:inline-flex; align-items:center; gap:0.4rem;">
-          + Schedule a New Activation
+        <summary style="cursor:not-allowed; font-size:0.875rem; font-weight:600; color:var(--ink-3); margin-bottom:0.875rem; display:inline-flex; align-items:center; gap:0.5rem;">
+          + Post an Alert to SOTAwatch
+          <span style="font-size:0.65rem; font-weight:600; color:var(--orange); background:var(--orange-bg); border-radius:20px; padding:0.15rem 0.55rem; text-transform:uppercase; letter-spacing:0.05em;">Coming Soon</span>
         </summary>
         <div style="background:var(--accent-bg); border:1px solid var(--accent-border); border-radius:var(--r-md); padding:0.7rem 0.875rem; margin-bottom:1rem; font-size:0.8rem; color:var(--accent-2); line-height:1.5;">
-          <strong>Note:</strong> Scheduling an activation here is for your own planning only. SOTAWatch alert posting is coming soon — we'll add that once the SOTA API integration is complete.
+          <strong>Note:</strong> Posting alerts directly to SOTAwatch from SOTAplanner isn't live yet — we're waiting on write access from the SOTA team. These fields are a preview of what will be here.
+        </div>
+        <fieldset disabled style="border:none; padding:0; margin:0; opacity:0.55;">
+          <div class="field-row-2" style="margin-bottom:1rem;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">Activating Callsign</label>
+              <input type="text" class="form-input" placeholder="KI6CR/P">
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">Poster Callsign</label>
+              <input type="text" class="form-input" value="<?= htmlspecialchars(getCurrentCallsign()) ?>">
+            </div>
+          </div>
+          <div class="field-row-2" style="margin-bottom:1rem;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">Activation Date</label>
+              <input type="date" class="form-input" value="<?= date('Y-m-d', strtotime('+7 days')) ?>">
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">Time (UTC)</label>
+              <input type="time" class="form-input" value="14:00">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Frequency &amp; Mode</label>
+            <input type="text" class="form-input" placeholder="14.285-SSB, 7.032-CW" maxlength="40">
+            <div class="form-hint">Combine each frequency and mode, comma-separated. Max 40 characters.</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Comments (optional)</label>
+            <textarea class="form-textarea" rows="2" placeholder="CQ SOTA"></textarea>
+          </div>
+          <button type="button" class="btn btn-primary" disabled>Post Alert to SOTAwatch</button>
+        </fieldset>
+      </details>
+
+      <details style="margin-top:0.875rem;">
+        <summary style="cursor:pointer; font-size:0.875rem; font-weight:600; color:var(--accent); margin-bottom:0.875rem; display:inline-flex; align-items:center; gap:0.4rem;">
+          + Create an Invite to This Activation
+        </summary>
+        <div style="background:var(--accent-bg); border:1px solid var(--accent-border); border-radius:var(--r-md); padding:0.7rem 0.875rem; margin-bottom:1rem; font-size:0.8rem; color:var(--accent-2); line-height:1.5;">
+          <strong>Note:</strong> This creates a shareable invite page for your own planning and guests — it doesn't post anything to SOTAwatch.
         </div>
         <form method="POST" style="margin-top:0;">
           <div class="field-row-2" style="margin-bottom:1rem;">
@@ -2064,7 +2106,7 @@ if ($tl_show) {
             <label class="form-label">Parking &amp; Travel Notes (optional)</label>
             <textarea name="travel_notes" class="form-textarea" rows="2" placeholder="Parking details, carpooling info..."></textarea>
           </div>
-          <button type="submit" name="add_planned_activation" class="btn btn-primary">Schedule Activation</button>
+          <button type="submit" name="add_planned_activation" class="btn btn-primary">Create Invite</button>
         </form>
       </details>
     </div>
