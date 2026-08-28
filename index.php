@@ -934,6 +934,9 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
       position: relative; isolation: isolate;
     }
     #dash-map { height: 580px; width: 100%; }
+    /* "Map" base layer reuses OpenStreetMap tiles with a muted filter instead of a
+       separate CDN (e.g. CartoDB), avoiding a third-party tile API dependency. */
+    .sota-muted-tiles .leaflet-tile-pane { filter: grayscale(65%) brightness(1.08) contrast(0.95); }
     .map-loading {
       position: absolute; inset: 0; background: var(--bg);
       display: flex; align-items: center; justify-content: center;
@@ -1879,10 +1882,9 @@ function initDashMap() {
     dashMap = L.map('dash-map', { zoomControl: true });
 
     dashBaseLayers = {
-        light: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-            attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
-            maxZoom: 19,
-            subdomains: 'abcd'
+        light: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            maxZoom: 19
         }),
         topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
             attribution: '© <a href="https://opentopomap.org">OpenTopoMap</a>',
@@ -1894,6 +1896,9 @@ function initDashMap() {
         })
     };
     dashBaseLayers[activeDashBase].addTo(dashMap);
+    // "Map" reuses the OSM tiles above with a muted CSS filter (see #dash-map CSS)
+    // instead of a separate tile CDN, so the filter only applies while "Map" is active.
+    dashMap.getContainer().classList.toggle('sota-muted-tiles', activeDashBase === 'light');
 
     const bounds = [];
 
@@ -2001,6 +2006,7 @@ function switchDashBase(name) {
     dashMap.removeLayer(dashBaseLayers[activeDashBase]);
     dashBaseLayers[name].addTo(dashMap);
     activeDashBase = name;
+    dashMap.getContainer().classList.toggle('sota-muted-tiles', name === 'light');
     try { localStorage.setItem('sota_dash_base', name); } catch(e) {}
     document.querySelectorAll('.dash-base-btn').forEach(function(b) {
         b.classList.toggle('active', b.dataset.base === name);
@@ -2039,9 +2045,11 @@ function setDashView(view) {
     }
 }
 
-// Restore last-used view
+// Restore last-used view — but a brand-new, empty dashboard always opens to List;
+// there's nothing useful to show on the map yet.
+var DASH_HAS_SUMMITS = <?= (count($summits) > 0 || !$is_all) ? 'true' : 'false' ?>;
 try {
-    if (localStorage.getItem('sota_dash_view') === 'map') {
+    if (DASH_HAS_SUMMITS && localStorage.getItem('sota_dash_view') === 'map') {
         setDashView('map');
     }
 } catch(e) {}
