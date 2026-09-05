@@ -299,129 +299,13 @@ $bkey = defined('GOOGLE_MAPS_BROWSER_KEY') ? GOOGLE_MAPS_BROWSER_KEY : '';
 
 <div class="page">
 
-    <!-- Hub-and-spoke illustration: inputs scattered on left → SOTAplanner logo on right -->
-    <div class="about-section" id="converge-section" style="padding:0;overflow:hidden;margin-bottom:1rem;">
-        <svg viewBox="0 0 680 460" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;max-width:100%;" aria-label="Six inputs — Summit, Trail Info, Travel Time, Cell Coverage, Hike Time, Activation Time — all flow into SOTAplanner">
-          <defs>
-            <marker id="arr" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto">
-              <path d="M1.5,1.5 L7.5,4.5 L1.5,7.5" fill="none" stroke="#C2BDB4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </marker>
-          </defs>
-
-          <!-- Background -->
-          <rect width="680" height="460" fill="#F7F6F3" rx="12"/>
-
-          <!-- ── ARROWS (icon edge → hub edge) — fade out as bubbles converge ──
-               3 rows on each side of the centered hub, staggered in/out for visual rhythm -->
-          <g class="conv-arrows">
-          <line x1="95"  y1="80"  x2="260" y2="205" stroke="#D4D0C8" stroke-width="1.5" marker-end="url(#arr)"/>
-          <line x1="175" y1="228" x2="258" y2="228" stroke="#D4D0C8" stroke-width="1.5" marker-end="url(#arr)"/>
-          <line x1="95"  y1="376" x2="260" y2="251" stroke="#D4D0C8" stroke-width="1.5" marker-end="url(#arr)"/>
-          <line x1="585" y1="80"  x2="420" y2="205" stroke="#D4D0C8" stroke-width="1.5" marker-end="url(#arr)"/>
-          <line x1="505" y1="228" x2="422" y2="228" stroke="#D4D0C8" stroke-width="1.5" marker-end="url(#arr)"/>
-          <line x1="585" y1="376" x2="420" y2="251" stroke="#D4D0C8" stroke-width="1.5" marker-end="url(#arr)"/>
-          </g>
-
-          <!-- ── HUB: SOTAplanner logo (r=80), centered on the canvas — grows slightly + glows as it absorbs the bubbles ── -->
-          <g class="hub-group">
-          <circle class="hub-ring" cx="340" cy="228" r="80" fill="white" stroke="#D8C890" stroke-width="2"/>
-          <g transform="translate(340,228) scale(1.36) translate(-55,-55)">
-            <circle fill="none" stroke="#1c1b19" stroke-width="1.5" cx="55" cy="55" r="50"/>
-            <path fill="none" stroke="#8c8a86" stroke-width=".5" opacity=".2" d="M18,75.5c11.33-4,23.67-5,37-3,13.33-3.33,25.67-3.67,37-1"/>
-            <path fill="none" stroke="#8c8a86" stroke-width=".5" opacity=".15" d="M22,81.5c12-4,23-5,33-3,13.33-3.33,24.33-3.67,33-1"/>
-            <path fill="none" stroke="#1c1b19" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M26,79.5l17-30,7,8,12-20,22,42"/>
-            <circle fill="#2b8e8e" cx="62" cy="35.5" r="3.5"/>
-            <circle fill="none" stroke="#2b8e8e" stroke-width="1.2" opacity=".45" cx="62" cy="35.5" r="9"/>
-            <circle fill="none" stroke="#2b8e8e" stroke-width=".8" opacity=".2" cx="62" cy="35.5" r="15"/>
-          </g>
-          <text x="340" y="323" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="14" font-weight="700" fill="#1C1B19" letter-spacing="-0.02em">SOTAplanner</text>
-          <text x="340" y="338" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="9.5" font-weight="400" fill="#8C8A86" letter-spacing="0.01em">the complete picture</text>
-          </g>
-
-          <!-- ── ICON CIRCLES — all use toolkit icons (viewBox 0 0 24 24, scale 1.8) ──
-               3 bubbles staggered on each side of the centered hub (outer/inner/outer).
-               Each is wrapped in a .conv-node group with its own center (data-cx/data-cy)
-               so JS can translate+shrink+fade it into the hub as the page scrolls. -->
-
-          <!-- 1. Summit (65, 80) — LEFT, outer -->
-          <g class="conv-node" data-cx="65" data-cy="80">
-          <circle cx="65" cy="80" r="30" fill="white" stroke="#E5E2DA" stroke-width="1.5"/>
-          <g transform="translate(65,80) scale(1.8) translate(-12,-12)" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 20L12 4L21 20H3Z"/>
-            <path d="M9 20L12 13L15 17"/>
-          </g>
-          <text x="65" y="123" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#1C1B19">Summit</text>
-          </g>
-
-          <!-- 2. Travel Time (145, 228) — LEFT, inner -->
-          <g class="conv-node" data-cx="145" data-cy="228">
-          <circle cx="145" cy="228" r="30" fill="white" stroke="#E5E2DA" stroke-width="1.5"/>
-          <g transform="translate(145,228) scale(1.8) translate(-12,-12)" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 1 1 18 0z"/>
-            <circle cx="12" cy="10" r="3"/>
-          </g>
-          <text x="145" y="271" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#1C1B19">Travel Time</text>
-          </g>
-
-          <!-- 3. Hike Time (65, 376) — LEFT, outer -->
-          <g class="conv-node" data-cx="65" data-cy="376">
-          <circle cx="65" cy="376" r="30" fill="white" stroke="#E5E2DA" stroke-width="1.5"/>
-          <g transform="translate(65,376) scale(1.8) translate(-12,-12)" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="4" r="1.5" fill="#4A4844" stroke="none"/>
-            <line x1="12" y1="5.5" x2="11" y2="13"/>
-            <rect x="8" y="5.5" width="3.5" height="5.5" rx="1"/>
-            <line x1="16" y1="7" x2="18" y2="22"/>
-            <line x1="11" y1="9" x2="16" y2="8"/>
-            <line x1="11" y1="13" x2="8" y2="22"/>
-            <line x1="11" y1="13" x2="14" y2="22"/>
-          </g>
-          <text x="65" y="419" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#1C1B19">Hike Time</text>
-          </g>
-
-          <!-- 4. Trail Info (615, 80) — RIGHT, outer -->
-          <g class="conv-node" data-cx="615" data-cy="80">
-          <circle cx="615" cy="80" r="30" fill="white" stroke="#E5E2DA" stroke-width="1.5"/>
-          <g transform="translate(615,80) scale(1.8) translate(-12,-12)" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="1,6 1,22 8,18 16,22 23,18 23,2 16,6 8,2"/>
-            <line x1="8" y1="2" x2="8" y2="18"/>
-            <line x1="16" y1="6" x2="16" y2="22"/>
-          </g>
-          <text x="615" y="123" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#1C1B19">Trail Info</text>
-          </g>
-
-          <!-- 5. Cell Coverage (535, 228) — RIGHT, inner (signal bars icon) -->
-          <g class="conv-node" data-cx="535" data-cy="228">
-          <circle cx="535" cy="228" r="30" fill="white" stroke="#E5E2DA" stroke-width="1.5"/>
-          <g transform="translate(535,228) scale(1.8) translate(-12,-12)" fill="#4A4844" stroke="none">
-            <rect x="2" y="16" width="3.5" height="5" rx="0.5"/>
-            <rect x="8" y="12" width="3.5" height="9" rx="0.5"/>
-            <rect x="14" y="7" width="3.5" height="14" rx="0.5"/>
-            <rect x="20" y="2" width="3.5" height="19" rx="0.5"/>
-          </g>
-          <text x="535" y="271" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#1C1B19">Cell Coverage</text>
-          </g>
-
-          <!-- 6. Activation Time (615, 376) — RIGHT, outer (exact toolkit 'radio' icon) -->
-          <g class="conv-node" data-cx="615" data-cy="376">
-          <circle cx="615" cy="376" r="30" fill="white" stroke="#E5E2DA" stroke-width="1.5"/>
-          <g transform="translate(615,376) scale(1.8) translate(-12,-12)" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="7" y="8" width="8" height="13" rx="2"/>
-            <line x1="12" y1="8" x2="12" y2="3"/>
-            <rect x="9" y="10" width="4" height="3" rx="0.5"/>
-            <circle cx="11" cy="17" r="1.5" fill="#4A4844" stroke="none"/>
-          </g>
-          <text x="615" y="419" text-anchor="middle" font-family="DM Sans,system-ui,sans-serif" font-size="11.5" font-weight="600" fill="#1C1B19">Activation time</text>
-          </g>
-        </svg>
-    </div>
-
     <div class="about-section">
         <h2>What It Does</h2>
         <p>
-            <strong>SOTA Planner</strong> pulls together everything required to activate a summit —
-            travel time from your front door, hike distance and elevation, time on the air, and the
-            return trip — so you can see the full door-to-door picture and know whether a given
-            summit fits the time you have.
+            <strong>SOTA Planner</strong> adds up everything it takes to activate a summit: travel
+            time from your front door, hike distance and elevation, time on the air, and the trip
+            back. You see the full door-to-door picture and know right away whether a summit fits
+            the time you have.
         </p>
     </div>
 
@@ -467,9 +351,9 @@ $bkey = defined('GOOGLE_MAPS_BROWSER_KEY') ? GOOGLE_MAPS_BROWSER_KEY : '';
     <div class="about-section">
         <h2>Who Built This</h2>
         <p>
-            SOTA Planner was created by <strong>Chris Reddick, KI6CR</strong> — a busy ham
-            who wanted a smarter way to plan outings with his activator friend group. It's
-            free to use, no email or registration required.
+            SOTA Planner was created by <strong>Chris Reddick, KI6CR</strong>, a busy ham who
+            wanted a smarter way to plan outings with his activator friend group. It's free to
+            use, no email or registration required.
         </p>
         <p>
             More at <a href="https://ki6cr.com" target="_blank">ki6cr.com</a>
@@ -479,9 +363,9 @@ $bkey = defined('GOOGLE_MAPS_BROWSER_KEY') ? GOOGLE_MAPS_BROWSER_KEY : '';
     <div class="about-section">
         <h2>Community Growth</h2>
         <p>
-            Every summit with community trail data — a GPS route, a starting point, real hike
-            times — pulled from the SOTA Mapping Project, OpenStreetMap, and dashboard research
-            across the whole site. The same number shown on the login page, tracked here over time.
+            Every summit with community trail data (a GPS route, a starting point, real hike times)
+            pulled from the SOTA Mapping Project, OpenStreetMap, and dashboard research across the
+            whole site. This is the same number shown on the login page, tracked here over time.
         </p>
         <div class="stat-hero">
             <span class="stat-hero-num"><?= number_format($total_ready) ?></span>
@@ -545,71 +429,6 @@ $bkey = defined('GOOGLE_MAPS_BROWSER_KEY') ? GOOGLE_MAPS_BROWSER_KEY : '';
     &nbsp;·&nbsp;
     <a href="https://sotaplanner.com">sotaplanner.com</a>
 </footer>
-
-<!-- Scroll-driven convergence: the five data-source bubbles fly into the SOTAplanner hub
-     as the illustration scrolls through the viewport, then reverse if the user scrolls back
-     up. Hand-rolled against raw scroll position (same technique as the login page's
-     feature-tile scrub) rather than motion.dev, since this is pure scroll-scrubbing with no
-     need for its spring/stagger helpers. -->
-<script>
-(function () {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
-    var section = document.getElementById('converge-section');
-    var nodes = section ? section.querySelectorAll('.conv-node') : [];
-    var arrows = section ? section.querySelector('.conv-arrows') : null;
-    var hubGroup = section ? section.querySelector('.hub-group') : null;
-    var hubRing = section ? section.querySelector('.hub-ring') : null;
-    if (!section || !nodes.length || !hubGroup) return;
-
-    var hub = { x: 340, y: 228 };
-    var ticking = false;
-
-    function smoothstep(p) { return p * p * (3 - 2 * p); }
-
-    function applyScrub() {
-        // The illustration sits right at the top of the page (nothing above it to scroll
-        // past), so progress is driven directly off how far the page has scrolled rather
-        // than the section's position in the viewport — guarantees it always starts fully
-        // expanded at scrollY 0 and converges as the user scrolls down.
-        var scrollY = window.scrollY || window.pageYOffset;
-        var vh = window.innerHeight;
-        var triggerDistance = vh * 0.6;
-        var p = Math.min(1, Math.max(0, scrollY / triggerDistance));
-        var t = smoothstep(p);
-
-        nodes.forEach(function (n) {
-            var cx = parseFloat(n.dataset.cx);
-            var cy = parseFloat(n.dataset.cy);
-            var dx = (hub.x - cx) * t;
-            var dy = (hub.y - cy) * t;
-            var s = 1 - 0.55 * t;
-            n.setAttribute('transform',
-                'translate(' + dx + ',' + dy + ') translate(' + cx + ',' + cy + ') scale(' + s + ') translate(' + (-cx) + ',' + (-cy) + ')');
-            n.style.opacity = Math.max(0, 1 - t * 1.15);
-        });
-
-        if (arrows) arrows.style.opacity = 1 - t;
-
-        hubGroup.setAttribute('transform',
-            'translate(' + hub.x + ',' + hub.y + ') scale(' + (1 + 0.08 * t) + ') translate(' + (-hub.x) + ',' + (-hub.y) + ')');
-        if (hubRing) hubRing.setAttribute('stroke-width', 2 + 3 * t);
-
-        ticking = false;
-    }
-
-    function onScroll() {
-        if (!ticking) {
-            requestAnimationFrame(applyScrub);
-            ticking = true;
-        }
-    }
-
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll);
-    applyScrub();
-})();
-</script>
 
 <script>
 document.getElementById('toggle-table-btn')?.addEventListener('click', function () {
@@ -800,7 +619,7 @@ async function loadData() {
         const res = await fetch('api_trail_data_map.php');
         allSummits = await res.json();
         document.getElementById('map-loading').style.display = 'none';
-        document.getElementById('map-hint').textContent = `${allSummits.length.toLocaleString()} summits — zoom or pan to explore`;
+        document.getElementById('map-hint').textContent = `${allSummits.length.toLocaleString()} summits, zoom or pan to explore`;
 
         // Build every marker once — SuperCluster handles aggregation at any zoom,
         // so there's no need to rebuild/filter per viewport like a smaller dataset would.

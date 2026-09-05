@@ -272,18 +272,18 @@ session_start();
         </div>
         <p class="version-desc">Live activation syncing with the SOTA API, a new Community Growth page, and travel terminology that works for transit trips too.</p>
         <ul>
-            <li>Summit detail now includes a preview of the upcoming SOTAwatch alert-posting feature — posting is still pending official write access from the SOTA team, but you can see what the form will look like</li>
-            <li>The "Schedule Activation" button is now called "Create Invite," since that's what it actually does — it generates a shareable planning/invite page rather than posting anywhere</li>
-            <li>Additional callsigns you list in Settings now automatically get access to your dashboards the next time they log in — no separate invite needed</li>
-            <li>Bulk-nominating summits (by area or by reference list) now automatically calculates travel time for any summit with a known starting point — if your dashboard doesn't have an address yet, you'll be prompted to add one on the spot, or you can skip it and do it later</li>
-            <li>Nominating summits now opens straight to Bulk Search by Area — search a location and add every summit in range at once; the name/reference search is still there as a second tab</li>
+            <li>Summit detail now includes a preview of the upcoming SOTAwatch alert-posting feature. Posting itself is still pending official write access from the SOTA team, but you can see what the form will look like.</li>
+            <li>The "Schedule Activation" button is now called "Create Invite," since that's what it actually does: generate a shareable planning/invite page rather than post anywhere</li>
+            <li>Additional callsigns you list in Settings now automatically get access to your dashboards the next time they log in, no separate invite needed</li>
+            <li>Bulk-nominating summits (by area or by reference list) now automatically calculates travel time for any summit with a known starting point. If your dashboard doesn't have an address yet, you'll be prompted to add one on the spot, or you can skip it and do it later.</li>
+            <li>Nominating summits now opens straight to Bulk Search by Area: search a location and add every summit in range at once. The name/reference search is still there as a second tab.</li>
             <li>Summits marked Drive Up now show their real travel time on the dashboard map, instead of a "+ Research" flag they don't need since there's no hike to research</li>
-            <li>New "Community Growth" page (in the top nav) shows every summit with community trail data plotted on a world map, plus a chart of how that number has grown over time — including a callout marking the big June 2026 SOTA Mapping Project import</li>
+            <li>New "Community Growth" page (in the top nav) shows every summit with community trail data plotted on a world map, plus a chart of how that number has grown over time, including a callout marking the big June 2026 SOTA Mapping Project import</li>
             <li>The dashboard map now has a Map / Topo / Satellite toggle, same as the summit detail map, so you can switch base layers when scanning your summit list</li>
-            <li>Opening your dashboard now quietly checks the SOTA activation record in the background — if a summit your team already activated is still showing as Ready, the row fades from green to grey and picks up the activation date automatically, no page reload needed</li>
+            <li>Opening your dashboard now quietly checks the SOTA activation record in the background. If a summit your team already activated is still showing as Ready, the row fades from green to grey and picks up the activation date automatically, with no page reload needed.</li>
             <li>Summit detail now shows "Ready to Activate" instead of just "Ready" on the status buttons</li>
-            <li>"Trailhead" is now "Starting Point" throughout the app — it could be a trailhead, a parking lot, or a transit stop, wherever your journey to the summit begins</li>
-            <li>"Drive Time" is now "Travel Time," and the "Directions" links to Google Maps no longer force driving mode — Google will offer transit, walking, and driving options, which is handy for activations reached by train or bus</li>
+            <li>"Trailhead" is now "Starting Point" throughout the app, since it could be a trailhead, a parking lot, or a transit stop: wherever your journey to the summit begins</li>
+            <li>"Drive Time" is now "Travel Time," and the "Directions" links to Google Maps no longer force driving mode. Google now offers transit, walking, and driving options, which is handy for activations reached by train or bus.</li>
         </ul>
     </div>
 
@@ -295,14 +295,14 @@ session_start();
         </div>
         <p class="version-desc">Dashboards (formerly Planning Groups), richer map hover cards, and editable planned activations.</p>
         <ul>
-            <li>"Planning Groups" has been renamed "Dashboards" throughout the app — same feature, clearer name for the workspace that holds your summit list, addresses, and members</li>
+            <li>"Planning Groups" has been renamed "Dashboards" throughout the app: same feature, clearer name for the workspace that holds your summit list, addresses, and members</li>
             <li>The "Groups & Addresses" page is now "Manage Dashboards"</li>
             <li>Hovering a summit on the dashboard map now shows a points badge, plus a breakdown of drive time and hike time alongside the total</li>
-            <li>Summits without hike research no longer show a misleading time on the map — they're marked "+ Research" instead</li>
+            <li>Summits without hike research no longer show a misleading time on the map; they're marked "+ Research" instead</li>
             <li>Summits you've already activated this year now appear faded on the map so they stand out as done</li>
-            <li>The dashboard filter bar is now organized into two clean rows — filters on top, controls below — and wraps properly on mobile</li>
+            <li>The dashboard filter bar is now organized into two clean rows (filters on top, controls below) and wraps properly on mobile</li>
             <li>A new Unique Summits toggle lets you instantly filter to summits your group has never activated, making it easy to hunt for firsts</li>
-            <li>Planned activations on the summit detail page can now be edited — click Edit to update the date, time, callsigns, duration, guest message, travel notes, or live GPS link without deleting and re-creating</li>
+            <li>Planned activations on the summit detail page can now be edited. Click Edit to update the date, time, callsigns, duration, guest message, travel notes, or live GPS link without deleting and re-creating.</li>
             <li>The activation invite now shows a Get Directions button in the hero that opens Google Maps with the trailhead pre-set as the destination</li>
             <li>The Day at a Glance timeline now includes a Back at Trailhead time so guests can see the full shape of the day</li>
             <li>The invite page Gantt chart now uses the same hike time calculation as the summit detail page, including pace multiplier and one-way track handling</li>
@@ -317,20 +317,20 @@ session_start();
         </div>
         <p class="version-desc">Bulk nomination, public summit notes, per-user units, and smarter GPS-driven trail data.</p>
         <ul>
-            <li>The Nominate page now uses a wider two-column layout on desktop — the "Search by Area" tab shows the summit list alongside a large map, and hovering a summit name highlights its dot on the map</li>
+            <li>The Nominate page now uses a wider two-column layout on desktop. The "Search by Area" tab shows the summit list alongside a large map, and hovering a summit name highlights its dot on the map.</li>
             <li>Expired summits are now filtered out of all search results and can no longer be nominated</li>
-            <li>Summit notes can now be shared publicly — check the new "Share publicly" box when adding a note and it will appear on that summit's page for all planning groups, with a green Public badge and your group's name</li>
+            <li>Summit notes can now be shared publicly. Check the new "Share publicly" box when adding a note and it will appear on that summit's page for all planning groups, with a green Public badge and your group's name.</li>
             <li>In the "Search by Area" nominator, the Nominate button now appears above the summit list so it's always visible without scrolling when a large radius returns many results</li>
             <li>Nominate multiple summits at once by pasting a comma-separated list of SOTA references</li>
-            <li>Units preference (metric or imperial) is now per-user and auto-detected from your callsign — non-US/Canada users default to metric</li>
+            <li>Units preference (metric or imperial) is now per-user and auto-detected from your callsign; non-US/Canada users default to metric</li>
             <li>Summit detail now shows who last activated the summit globally (with callsign and date) and separately tracks the last activation by your planning group</li>
             <li>GPX elevation profile now correctly detects when a track has no elevation data and shows a clear message instead of a blank chart</li>
             <li>Login page shows how many summits in the global library already have a GPX route and trailhead coordinate, giving new visitors an at-a-glance sense of how much data is pre-loaded</li>
-            <li>Right-clicking anywhere on the summit map shows the exact coordinates of that point — click them to copy to your clipboard, with a brief "Copied" confirmation just like Google Maps</li>
-            <li>When a community route is imported, distance and elevation are automatically enabled as the source for hike planning — no need to manually check "Use GPS data"</li>
+            <li>Right-clicking anywhere on the summit map shows the exact coordinates of that point. Click them to copy to your clipboard, with a brief "Copied" confirmation just like Google Maps.</li>
+            <li>When a community route is imported, distance and elevation are automatically enabled as the source for hike planning, so there's no need to manually check "Use GPS data"</li>
             <li>Hovering over the locked distance or elevation fields shows a tooltip explaining they're set by the GPS track</li>
-            <li>The loading animation while searching for a community route now uses the SOTAplanner mountain logo — the path draws itself and the summit marker pulses when the peak is reached</li>
-            <li>Trailhead detection is now more reliable: if a cached community route had no trailhead stored, it's automatically re-derived from the GPS file on next use</li>
+            <li>The loading animation while searching for a community route now uses the SOTAplanner mountain logo: the path draws itself and the summit marker pulses when the peak is reached</li>
+            <li>Trailhead detection is now more reliable. If a cached community route had no trailhead stored, it's automatically re-derived from the GPS file on next use.</li>
             <li>Summit search now narrows as you type a SOTA reference prefix — type "W6/CT-" to browse all summits in that region and pick one from the list</li>
             <li>When you type a full designator directly, the summit name now appears in the confirmation box so you can verify you have the right summit before nominating</li>
             <li>When nominating a summit, a loading indicator shows while the app searches the SOTA Mapping Project for a community route</li>
@@ -354,14 +354,14 @@ session_start();
             <li>When you add a summit that has a community-submitted track on the SOTA Mapping Project, the route map and elevation profile appear automatically — no GPX upload needed</li>
             <li>Hike distance and elevation gain are pre-filled from the community track</li>
             <li>A "Community route from SOTA Mapping Project" badge appears on any summit using a shared track</li>
-            <li>Summit detail page now shows recent SOTAwatch alerts — see who has spotted this summit and when, right alongside your planning data</li>
-            <li>Activation history pulled from the SOTA database appears on each summit detail page — see past activations at a glance</li>
+            <li>Summit detail page now shows recent SOTAwatch alerts, so you can see who has spotted this summit and when, right alongside your planning data</li>
+            <li>Activation history pulled from the SOTA database appears on each summit detail page, giving you past activations at a glance</li>
             <li>Redesigned About page with a clearer feature overview and illustrated layout</li>
-            <li>Nominate a summit by searching its name — type "Mount Wilson" or "Mt Adams" and pick from results, no need to know the SOTA reference code</li>
-            <li>Summit detail page form is more compact — distance, gain, and difficulty sit in one row; trailhead and cell service share a row</li>
+            <li>Nominate a summit by searching its name. Type "Mount Wilson" or "Mt Adams" and pick from results, no need to know the SOTA reference code.</li>
+            <li>Summit detail page form is more compact: distance, gain, and difficulty sit in one row; trailhead and cell service share a row</li>
             <li>Trail app links (AllTrails, Gaia, CalTopo, etc.) are now tucked behind a toggle so they don't clutter the page</li>
-            <li>Activation Zone map button now toggles — click once to zoom to the activation zone, click again to zoom back out to the full GPX track</li>
-            <li>The day timeline bar is taller and now shows each activity's label and duration directly inside the colored segment — no more reading a separate legend</li>
+            <li>Activation Zone map button now toggles: click once to zoom to the activation zone, click again to zoom back out to the full GPX track</li>
+            <li>The day timeline bar is taller and now shows each activity's label and duration directly inside the colored segment, so there's no more reading a separate legend</li>
             <li>Notes on the summit detail page now show which group member wrote them</li>
             <li>New users are walked through creating a group and adding a starting address step-by-step</li>
             <li>Drive time now auto-calculates the first time you open a summit detail page, no button press needed</li>
@@ -386,14 +386,14 @@ session_start();
             <span class="version-number">v1.0.4</span>
             <span class="version-date">April 2026</span>
         </div>
-        <p class="version-desc">Initial release — summit wishlist, GPX analysis, activation timeline, and shareable invitations.</p>
+        <p class="version-desc">Initial release: summit wishlist, GPX analysis, activation timeline, and shareable invitations.</p>
         <ul>
             <li>Sign in with your callsign — SOTA SSO coming when OAuth credentials are available</li>
             <li>Planning groups are now private to the owner and invited members</li>
             <li>Group owners can add and remove members by callsign</li>
             <li>Summit list on mobile shows tap-friendly cards with key stats at a glance</li>
             <li>Summit detail, invitation, and planning pages all work cleanly on a phone</li>
-            <li>Activation timeline on summit detail — Gantt chart showing drive, hike up, radio time, and hike down with milestone markers</li>
+            <li>Activation timeline on summit detail: a Gantt chart showing drive, hike up, radio time, and hike down with milestone markers</li>
             <li>Download the GPX track from summit detail and invitation pages to load onto a watch or phone</li>
             <li>Summit wishlist with drive time, hike time, and total day estimate</li>
             <li>GPX track upload and analysis — hiking time, activation time, elevation, speed</li>
