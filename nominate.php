@@ -1962,6 +1962,23 @@ document.getElementById('area_radius').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') { e.preventDefault(); doAreaSearch(); }
 });
 
+// If someone pastes a SOTA reference (or several, comma-separated) into the
+// area-search location field, treat it like they meant the Name/Reference tab.
+function looksLikeDesignatorList(val) {
+    const parts = val.trim().split(',').map(function(p) { return p.trim(); }).filter(function(p) { return p.length > 0; });
+    if (parts.length === 0) return false;
+    return parts.every(function(p) { return refPattern.test(p); });
+}
+document.getElementById('area_location').addEventListener('input', function() {
+    const val = this.value;
+    if (!looksLikeDesignatorList(val)) return;
+    this.value = '';
+    switchTab('search');
+    searchInput.value = val.trim();
+    searchInput.dispatchEvent(new Event('input'));
+    searchInput.focus();
+});
+
 function doAreaSearch() {
     const location   = document.getElementById('area_location').value.trim();
     const radiusInput = parseFloat(document.getElementById('area_radius').value) || 25;
