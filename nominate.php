@@ -871,6 +871,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
       #area_map { height: 520px; }
     }
 
+    /* Map-click "search here" popup */
+    .area-click-popup { font-family: var(--font-sans); }
+    .area-click-popup-btn {
+      background: var(--ink); color: #fff; border: none; border-radius: var(--r-sm);
+      padding: 0.4rem 0.75rem; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+      font-family: var(--font-sans); display: block;
+    }
+    .area-click-popup-btn:hover { background: var(--ink-2); }
+    /* Google's InfoWindow chrome adds generous default padding; tighten it around our small button */
+    .gm-style-iw.gm-style-iw-c { padding: 8px !important; }
+    .gm-style-iw-d { overflow: hidden !important; }
+
+    /* Green pulse highlight when a summit dot is clicked on the map */
+    @keyframes areaRowPulse {
+      0%, 100% { background: var(--green-bg); box-shadow: inset 0 0 0 2px var(--green); }
+      50% { background: var(--surface); box-shadow: inset 0 0 0 2px var(--green); }
+    }
+    .area-row-pulse { animation: areaRowPulse 0.7s ease-in-out 2; }
+    .area-row-selected { background: var(--green-bg) !important; }
+
     /* Card */
     .card {
       background: var(--surface); border: 1px solid var(--border);
@@ -1300,6 +1320,7 @@ document.addEventListener('click', function(e) {
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 let mapsApiLoaded = false;
 let areaMap = null, areaCircle = null, areaMarkers = [], summitMarkerMap = {};
+let areaClickInfoWindow = null, lastSelectedAreaRow = null;
 
 function switchTab(tab) {
     document.querySelectorAll('.nom-tab').forEach(function(t) {
@@ -1331,35 +1352,62 @@ window.initAreaMap = function() {
     });
     setTimeout(function() { google.maps.event.trigger(areaMap, 'resize'); }, 50);
 
+    // Clicking anywhere on the map (not on a summit marker) offers to re-center
+    // the search there. Marker clicks are handled separately and don't bubble here.
+    areaMap.addListener('click', function(e) {
+        showAreaClickPopup(e.latLng);
+    });
+
     if (preload) {
-        // Show coordinates in location field and auto-run the search
-        document.getElementById('area_location').value = preload.lat.toFixed(4) + ', ' + preload.lng.toFixed(4);
-        setTimeout(function() {
-            // Use the direct lat/lng endpoint to avoid a redundant geocode round-trip
-            const radiusInput = parseFloat(document.getElementById('area_radius').value) || 25;
-            const minPts = parseInt(document.getElementById('area_min_pts').value) || 1;
-            const radius_mi = useMetric ? radiusInput * 0.621371 : radiusInput;
-            const resultsDiv = document.getElementById('area_results');
-            const btn = document.getElementById('area_search_btn');
-            resultsDiv.innerHTML = '<div class="search-status">Searching…</div>';
-            btn.disabled = true;
-            fetch('nominate.php?action=radius_search&lat=' + preload.lat + '&lng=' + preload.lng + '&radius_mi=' + radius_mi.toFixed(2) + '&min_pts=' + minPts)
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    btn.disabled = false;
-                    if (data.error) {
-                        resultsDiv.innerHTML = '<div class="msg msg-error">' + escHtml(data.error) + '</div>';
-                        return;
-                    }
-                    renderAreaResults(data);
-                })
-                .catch(function() {
-                    btn.disabled = false;
-                    resultsDiv.innerHTML = '<div class="msg msg-error">Search failed. Please try again.</div>';
-                });
-        }, 200);
+        setTimeout(function() { searchAtLatLng(preload.lat, preload.lng); }, 200);
     }
 };
+
+function showAreaClickPopup(latLng) {
+    if (areaClickInfoWindow) areaClickInfoWindow.close();
+    const lat = latLng.lat(), lng = latLng.lng();
+
+    const div = document.createElement('div');
+    div.className = 'area-click-popup';
+    div.innerHTML = '<button type="button" class="area-click-popup-btn">Search Here</button>';
+    div.querySelector('.area-click-popup-btn').addEventListener('click', function() {
+        areaClickInfoWindow.close();
+        searchAtLatLng(lat, lng);
+    });
+
+    areaClickInfoWindow = new google.maps.InfoWindow({
+        position: { lat: lat, lng: lng },
+        content: div,
+    });
+    areaClickInfoWindow.open(areaMap);
+}
+
+function searchAtLatLng(lat, lng) {
+    // Show coordinates in location field and run the search directly against
+    // the lat/lng endpoint, avoiding a redundant geocode round-trip.
+    document.getElementById('area_location').value = lat.toFixed(4) + ', ' + lng.toFixed(4);
+    const radiusInput = parseFloat(document.getElementById('area_radius').value) || 25;
+    const minPts = parseInt(document.getElementById('area_min_pts').value) || 1;
+    const radius_mi = useMetric ? radiusInput * 0.621371 : radiusInput;
+    const resultsDiv = document.getElementById('area_results');
+    const btn = document.getElementById('area_search_btn');
+    resultsDiv.innerHTML = '<div class="search-status">Searching…</div>';
+    btn.disabled = true;
+    fetch('nominate.php?action=radius_search&lat=' + lat + '&lng=' + lng + '&radius_mi=' + radius_mi.toFixed(2) + '&min_pts=' + minPts)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            if (data.error) {
+                resultsDiv.innerHTML = '<div class="msg msg-error">' + escHtml(data.error) + '</div>';
+                return;
+            }
+            renderAreaResults(data);
+        })
+        .catch(function() {
+            btn.disabled = false;
+            resultsDiv.innerHTML = '<div class="msg msg-error">Search failed. Please try again.</div>';
+        });
+}
 
 function updateAreaMap(data) {
     if (!areaMap) return;
@@ -1413,6 +1461,7 @@ function updateAreaMap(data) {
                 strokeWeight: 1.5,
             }
         });
+        marker.addListener('click', function() { selectSummitFromMap(s.ref); });
         areaMarkers.push(marker);
         summitMarkerMap[s.ref] = { marker: marker, nominated: !!s.nominated };
     });
@@ -1451,6 +1500,25 @@ function unhighlightSummitMarker(ref) {
         strokeWeight: 1.5,
     });
     entry.marker.setZIndex(null);
+}
+
+function selectSummitFromMap(ref) {
+    const cb = document.querySelector('#area_list .area-chk[data-ref="' + CSS.escape(ref) + '"]');
+    if (!cb) return;
+    const row = cb.closest('label');
+    if (!row) return;
+
+    if (lastSelectedAreaRow && lastSelectedAreaRow !== row) {
+        lastSelectedAreaRow.classList.remove('area-row-selected', 'area-row-pulse');
+    }
+
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    // Restart the pulse animation even if this row was already selected.
+    row.classList.remove('area-row-pulse');
+    void row.offsetWidth;
+    row.classList.add('area-row-pulse', 'area-row-selected');
+    lastSelectedAreaRow = row;
 }
 
 // ── Elements ─────────────────────────────────────────────────────────────────
@@ -1927,6 +1995,7 @@ function renderAreaResults(data) {
     const summits    = data.summits || [];
     const resultsDiv = document.getElementById('area_results');
     const unitsLabel = useMetric ? 'km' : 'mi';
+    lastSelectedAreaRow = null;
 
     // Always update the map when we have a geocoded location
     updateAreaMap(data);
