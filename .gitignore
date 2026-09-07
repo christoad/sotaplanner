@@ -26,3 +26,6 @@ gpx_files/
 playwright/
 screenshots/
 .playwright-mcp/
+
+# Claude Code local session/tool state (worktrees, local settings)
+.claude/

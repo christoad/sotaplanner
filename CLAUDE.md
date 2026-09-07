@@ -2,6 +2,9 @@
 
 ## Pending Work — Ask Chris at Session Start
 
+**TODO — delete leftover db_migrate.php from production (queued 2026-09-04):**
+A disposable `db_migrate.php` (password-gated, `?pw=sota`) was rsynced to `/home/chrisr069/sotaplannerdotcom/` to add the `activation_zone_cache` table and its `last_sotlas_check` column (see "GPX Track Analysis" below). It ran successfully, but deleting it afterward hit the known intermittent DreamHost SSH timeout issue (see "Dreamhost SSH Connectivity Issues" below) before the cleanup command could go through. Not an active risk (password-gated, idempotent), but per the db_migrate.php pattern it should be deleted once SSH is reachable: `ssh dreamhost-sota "rm /home/chrisr069/sotaplannerdotcom/db_migrate.php"`. Remove this TODO once done.
+
 **Google Maps API — two-key setup (completed 2026-06-01):**
 Two separate API keys are used. Both are in the same paid Google Cloud project.
 
@@ -154,7 +157,9 @@ Each summit in a group has:
 **Terminology note (renamed 2026-08):** The user-facing terms are **"Starting Point"** (not "Trailhead" — could be a trailhead, a parking lot, or a transit stop, e.g. for European activations reached by train/bus) and **"Travel Time"** (not "Drive Time" — the Google Maps "Directions" links no longer force `travelmode=driving`, so Google offers transit/walk/drive/bike). Under the hood, this is still a UI-text-only rename: the `trailhead_lat`/`trailhead_lng` columns, `drive_time_min` column, `calculateDriveTime()` function, and the Distance Matrix API call all keep their original names and still compute *driving* time specifically — there is no real transit-time calculation yet. When writing new UI copy, say "Starting Point" / "Travel Time"; when writing/reading code, the internal name is still "trailhead" / "drive time".
 
 ### GPX Track Analysis
-Users can upload a recorded GPX track from a past activation. The app parses it to extract real-world stats: total hiking time, activation time (time spent in the activation zone), rest break time, hiking distance, elevation gain/loss, average hiking speed, and summit coordinates. These stats can be used as the authoritative hike time for that summit. The activation zone polygon is overlaid on the map using the activation.zone API.
+Users can upload a recorded GPX track from a past activation. The app parses it to extract real-world stats: total hiking time, activation time (time spent in the activation zone), rest break time, hiking distance, elevation gain/loss, average hiking speed, and summit coordinates. These stats can be used as the authoritative hike time for that summit. The activation zone polygon overlaid on the map comes from `get_activation_zone_from_api()` in `config.php`, which tries SOTLAS's high-precision boundary first and falls back to the activation.zone API — see "External APIs Used" above. The result is permanently cached (these boundaries don't change) in the `activation_zone_cache` table, keyed by `sota_ref`, storing which source (`sotlas` or `activation_zone`) was used. This single function is shared by every caller that needs an activation zone polygon: `activation_zone.php` (summit detail map when no GPX is present), the GPX-analysis path in `config.php` (stored per-track in `gpx_tracks.activation_zone_polygon`/`activation_zone_method`), and `activation_invite.php`.
+
+**Quiet background upgrade to SOTLAS (added 2026-09-04):** SOTLAS is still rolling out high-precision boundaries to more associations over time, so a summit cached with the `activation_zone` fallback today may have a SOTLAS boundary next month. `activation_zone_upgrade_cron.php` (weekly, Sat 4:00 AM) re-checks SOTLAS for any cache row still on the fallback and hasn't been re-checked in 30+ days (`activation_zone_cache.last_sotlas_check`), upgrading the row in place — no user action or page load needed to trigger it. Logs to the same `sota_logs/gpx_cron.log` visible in God Mode → Data Tools → Cron Activity Log.
 
 ### Shared Summit Data
 When a new group is created, the owner can choose to "adopt" summit research from an existing group. The summit record gets `uses_shared_data = true` and `source_group_id` pointing to the original group. Shared summits inherit trail data, GPX tracks, and notes from the source group, so new groups don't have to re-research summits from scratch.
@@ -194,7 +199,8 @@ Past activations can be logged against a summit: date, callsigns of participants
 - **Google Maps Geocoding API** — converting address strings to lat/lng
 - **SOTA API** (`api2.sota.org.uk`) — summit lookup by reference, fetching summit metadata
 - **SOTLAS** (`sotlas.com`) — additional trail/summit reference data and links
-- **activation.zone API** — terrain-based activation zone polygon for a given summit's coordinates
+- **SOTLAS Activation Zone** (`az.sotl.as/{assoc}/{region}/{number}.geojson`) — high-precision (~1m) terrain-derived activation zone boundary, primary source as of 2026-09; returns HTTP 403 (not 404) when no polygon exists for a summit, so any non-200 is treated as "not found" and triggers the activation.zone fallback below
+- **activation.zone API** — SRTM-based (lower-resolution) activation zone polygon fallback, used only when SOTLAS has no boundary for the summit
 - **SOTAmaps** (`sotamaps.org`) — community GPX track import
 
 ---
@@ -337,6 +343,7 @@ Key tables:
 - `app_settings` — key-value store for per-group settings (e.g. selected address ID); also stores `sota_cache_summit_count` (total SOTA summits from gz cache, refreshed daily) used by the God Mode progress panel
 - `global_gpx_tracks` — global GPX library; one row per `sota_ref` that has an imported community route; keyed globally, not per planning group; columns include `trailhead_lat` / `trailhead_lon` (note: `_lon` not `_lng`)
 - `global_gpx_checked` — audit log of every summit ever queried against SOTAmaps; `tracks_found=0` means nothing was available; used by cron to avoid redundant re-queries and to schedule periodic retries
+- `activation_zone_cache` — global, permanent cache of activation zone polygons keyed by `sota_ref` (PK); columns: `polygon` (GeoJSON coordinates, JSON-encoded), `source` (`sotlas` or `activation_zone`), `fetched_at`, `last_sotlas_check` (drives the weekly upgrade cron — see "GPX Track Analysis" above). Populated by `get_activation_zone_from_api()` in `config.php`
 
 ---
 

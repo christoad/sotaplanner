@@ -1,5 +1,5 @@
 <?php
-define('APP_VERSION', '1.7.4');
+define('APP_VERSION', '1.7.5');
 
 // Enable error reporting for debugging
 error_reporting(E_ALL);
@@ -468,7 +468,7 @@ function analyze_gpx_track($gpx_file_path, $summit_ref = null) {
         if ($api_result && isset($api_result['polygon'])) {
             $activation_zone_polygon = $api_result['polygon'];
             $using_api = true;
-            $activation_zone_method = 'api';
+            $activation_zone_method = $api_result['source'] ?? 'api';
         }
     }
     
@@ -629,7 +629,87 @@ function analyze_gpx_track($gpx_file_path, $summit_ref = null) {
     ];
 }
 
+// Returns the best available activation zone polygon for a summit, preferring
+// SOTLAS's high-precision (~1m) terrain-derived boundary (az.sotl.as) and falling
+// back to the older SRTM-based Activation.Zone API. Result is cached permanently
+// in activation_zone_cache since these boundaries don't change once computed.
 function get_activation_zone_from_api($summit_ref, $lat, $lon, $elevation) {
+    $ref_key = strtoupper(trim($summit_ref));
+    $db = getDbConnection();
+
+    $stmt = $db->prepare("SELECT polygon, source FROM activation_zone_cache WHERE sota_ref = ?");
+    $stmt->execute([$ref_key]);
+    $cached = $stmt->fetch();
+    if ($cached) {
+        $polygon = json_decode($cached['polygon'], true);
+        if ($polygon) return ['polygon' => $polygon, 'source' => $cached['source']];
+    }
+
+    $result = get_sotlas_az_polygon($ref_key);
+    $source = 'sotlas';
+
+    if (!$result) {
+        $result = _get_activation_zone_from_activationzone_api($ref_key, $lat, $lon, $elevation);
+        $source = 'activation_zone';
+    }
+
+    if (!$result || !isset($result['polygon'])) return null;
+
+    // last_sotlas_check is set here too since a SOTLAS lookup was just attempted above
+    // (whether or not it succeeded) — the upgrade cron uses it to avoid re-checking
+    // a summit we already just confirmed has no SOTLAS boundary yet.
+    $stmt = $db->prepare("
+        INSERT INTO activation_zone_cache (sota_ref, polygon, source, last_sotlas_check)
+        VALUES (?, ?, ?, NOW())
+        ON DUPLICATE KEY UPDATE polygon = VALUES(polygon), source = VALUES(source), fetched_at = CURRENT_TIMESTAMP, last_sotlas_check = NOW()
+    ");
+    $stmt->execute([$ref_key, json_encode($result['polygon']), $source]);
+
+    return ['polygon' => $result['polygon'], 'source' => $source];
+}
+
+// SOTLAS high-precision activation zone (az.sotl.as) — returns null if unavailable
+// for this summit. Note: the object storage behind az.sotl.as returns HTTP 403
+// (not 404) when no polygon exists, so any non-200 response is treated as "not found".
+function get_sotlas_az_polygon($summit_ref) {
+    $parts = explode('/', $summit_ref, 2);
+    if (count($parts) !== 2) return null;
+    $assoc = $parts[0];
+
+    $region_parts = explode('-', $parts[1], 2);
+    if (count($region_parts) !== 2) return null;
+    $region = $region_parts[0];
+    $number = $region_parts[1];
+
+    $url = 'https://az.sotl.as/' . rawurlencode($assoc) . '/' . rawurlencode($region) . '/' . rawurlencode($number) . '.geojson';
+
+    $context = stream_context_create(['http' => [
+        'method'        => 'GET',
+        'header'        => "Accept: application/json\r\n",
+        'timeout'       => 10,
+        'user_agent'    => 'SOTAPlanner/1.0',
+        'ignore_errors' => true,
+    ]]);
+
+    $raw = @file_get_contents($url, false, $context);
+    if ($raw === false || $raw === '') return null;
+
+    $status_line = $http_response_header[0] ?? '';
+    if (!preg_match('/\s200\s/', $status_line)) return null;
+
+    $data = json_decode($raw, true);
+    if (!$data) return null;
+
+    $coords = $data['geometry']['coordinates']
+        ?? $data['coordinates']
+        ?? $data['features'][0]['geometry']['coordinates']
+        ?? null;
+
+    return $coords ? ['polygon' => $coords] : null;
+}
+
+// SRTM-based Activation.Zone API (api.activation.zone) — fallback when SOTLAS has no boundary
+function _get_activation_zone_from_activationzone_api($summit_ref, $lat, $lon, $elevation) {
     // API requires the dash removed from the summit code (W6/CT-170 → W6/CT170)
     $ref_clean = str_replace('-', '', $summit_ref);
 

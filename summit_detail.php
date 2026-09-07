@@ -2487,7 +2487,7 @@ function toggleCarrier(name) {
   }
 }
 
-function initActivationZone(poly) {
+function initActivationZone(poly, source) {
   let coords;
   if (Array.isArray(poly[0]) && Array.isArray(poly[0][0]) && Array.isArray(poly[0][0][0])) coords = poly[0][0].map(c => [c[1], c[0]]);
   else if (Array.isArray(poly[0]) && Array.isArray(poly[0][0])) coords = poly[0].map(c => [c[1], c[0]]);
@@ -2497,7 +2497,13 @@ function initActivationZone(poly) {
   const zBtn = document.getElementById('btn-actzone');
   if (zBtn) { zBtn.disabled = false; zBtn.style.opacity = '1'; }
   const az = document.getElementById('az-methodology');
-  if (az) az.innerHTML = '<strong>Activation Zone:</strong> <span style="color:var(--green);">Precise terrain-based boundary</span> from <a href="https://activation.zone" target="_blank">Activation.Zone</a> by N6ARA.';
+  if (az) {
+    if (source === 'sotlas') {
+      az.innerHTML = '<strong>Activation Zone:</strong> <span style="color:var(--green);">High-precision (~1m) terrain boundary</span> from <a href="https://sotl.as" target="_blank">SOTLAS</a>.';
+    } else {
+      az.innerHTML = '<strong>Activation Zone:</strong> <span style="color:var(--green);">Terrain-based boundary</span> from <a href="https://activation.zone" target="_blank">Activation.Zone</a> by N6ARA.';
+    }
+  }
 }
 function setActivationZoneFallback() {
   const az = document.getElementById('az-methodology');
@@ -2542,11 +2548,11 @@ fetch('load_gpx.php?id=<?= $gpx_data['id'] ?>')
     map.fitBounds(L.polyline(coords).getBounds(), { padding: [50, 50] });
     if (window._dismissGpxOverlay) { window._dismissGpxOverlay(); window._dismissGpxOverlay = null; }
     <?php if ($gpx_data['using_api'] && $gpx_data['activation_zone_polygon']): ?>
-    initActivationZone(<?= $gpx_data['activation_zone_polygon'] ?>);
+    initActivationZone(<?= $gpx_data['activation_zone_polygon'] ?>, <?= json_encode($gpx_data['activation_zone_method']) ?>);
     <?php elseif (!empty($summit['sota_ref'])): ?>
     fetch('activation_zone.php?sota_ref=<?= urlencode($summit['sota_ref']) ?>')
       .then(r => r.json())
-      .then(data => { if (data.polygon) initActivationZone(data.polygon); else setActivationZoneFallback(); })
+      .then(data => { if (data.polygon) initActivationZone(data.polygon, data.source); else setActivationZoneFallback(); })
       .catch(() => setActivationZoneFallback());
     <?php endif; ?>
   });
@@ -2621,7 +2627,7 @@ function setupElevMapHover(s, mapRef) {
 // No GPX — fetch activation zone directly
 fetch('activation_zone.php?sota_ref=<?= urlencode($summit['sota_ref']) ?>')
   .then(r => r.json())
-  .then(data => { if (data.polygon) initActivationZone(data.polygon); else setActivationZoneFallback(); })
+  .then(data => { if (data.polygon) initActivationZone(data.polygon, data.source); else setActivationZoneFallback(); })
   .catch(() => setActivationZoneFallback());
 <?php endif; ?>
 

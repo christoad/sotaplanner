@@ -263,12 +263,24 @@ session_start();
         </a>
     </div>
 
-    <!-- August 2026 (v1.5.8-v1.6.0) -->
+    <!-- September 2026 -->
     <div class="version-block current">
+        <div class="version-header">
+            <span class="version-number">v1.7.5</span>
+            <span class="version-date">September 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">More precise activation zone boundaries on the summit map.</p>
+        <ul>
+            <li>Activation zone boundaries now use SOTLAS's high-precision (~1m) terrain data where available, instead of the older lower-resolution estimate, with the older method still used as a fallback for summits SOTLAS hasn't mapped yet</li>
+        </ul>
+    </div>
+
+    <!-- August 2026 (v1.5.8-v1.6.0) -->
+    <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.7.4</span>
             <span class="version-date">August 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Live activation syncing with the SOTA API, a new Community Growth page, and travel terminology that works for transit trips too.</p>
         <ul>

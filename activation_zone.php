@@ -26,7 +26,31 @@ if (!$sota_ref) {
 $db = getDbConnection();
 $current_group = getCurrentPlanningGroup($db);
 
-// Check cache first — polygon stored from a previous GPX import for this summit
+// Look up summit coordinates — the Activation.Zone fallback API requires lat/lon/alt
+$stmt = $db->prepare("SELECT latitude, longitude, elevation_m FROM summits WHERE sota_ref = ? LIMIT 1");
+$stmt->execute([$sota_ref]);
+$summit = $stmt->fetch();
+
+if (!$summit || !$summit['latitude']) {
+    echo json_encode(['error' => 'Summit coordinates not found for ' . htmlspecialchars($sota_ref)]);
+    exit;
+}
+
+// Tries SOTLAS's high-precision boundary first, then Activation.Zone; result is
+// permanently cached in activation_zone_cache (see get_activation_zone_from_api()).
+$result = get_activation_zone_from_api(
+    $sota_ref,
+    $summit['latitude'],
+    $summit['longitude'],
+    $summit['elevation_m']
+);
+
+if ($result && isset($result['polygon'])) {
+    echo json_encode(['polygon' => $result['polygon'], 'source' => $result['source']]);
+    exit;
+}
+
+// Last resort — a polygon stored from a previous GPX import for this summit
 if ($current_group) {
     $stmt = $db->prepare("
         SELECT gt.activation_zone_polygon
@@ -46,25 +70,4 @@ if ($current_group) {
     }
 }
 
-// Look up summit coordinates — the POST API requires lat/lon/alt
-$stmt = $db->prepare("SELECT latitude, longitude, elevation_m FROM summits WHERE sota_ref = ? LIMIT 1");
-$stmt->execute([$sota_ref]);
-$summit = $stmt->fetch();
-
-if (!$summit || !$summit['latitude']) {
-    echo json_encode(['error' => 'Summit coordinates not found for ' . htmlspecialchars($sota_ref)]);
-    exit;
-}
-
-$result = get_activation_zone_from_api(
-    $sota_ref,
-    $summit['latitude'],
-    $summit['longitude'],
-    $summit['elevation_m']
-);
-
-if ($result && isset($result['polygon'])) {
-    echo json_encode(['polygon' => $result['polygon'], 'source' => 'api']);
-} else {
-    echo json_encode(['error' => 'No activation zone boundary found for ' . htmlspecialchars($sota_ref)]);
-}
+echo json_encode(['error' => 'No activation zone boundary found for ' . htmlspecialchars($sota_ref)]);
