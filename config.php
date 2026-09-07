@@ -135,7 +135,7 @@ function getCurrentPlanningGroup($db) {
     $group_id = $_SESSION['current_planning_group_id'];
     $callsign = getCurrentCallsign();
 
-    if ($callsign && !isGodMode()) {
+    if ($callsign) {
         // Verify user has access to this group
         $stmt = $db->prepare("
             SELECT pg.* FROM planning_groups pg
@@ -268,16 +268,10 @@ function updateUserCallsign($db, $oldCallsign, $newCallsign) {
 
 // ── Planning group helpers ─────────────────────────────────────────────────
 
-/** Return all planning groups the current user owns or is a member of.
- *  KI6CR sees every group on the site. */
+/** Return all planning groups the current user owns or is a member of. */
 function getAllPlanningGroups($db) {
     $callsign = getCurrentCallsign();
     if (!$callsign) return [];
-
-    if (isGodMode()) {
-        $stmt = $db->query("SELECT * FROM planning_groups ORDER BY id ASC");
-        return $stmt->fetchAll();
-    }
 
     $stmt = $db->prepare("
         SELECT DISTINCT pg.*
