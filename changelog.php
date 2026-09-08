@@ -266,12 +266,13 @@ session_start();
     <!-- September 2026 -->
     <div class="version-block current">
         <div class="version-header">
-            <span class="version-number">v1.7.6</span>
+            <span class="version-number">v1.7.7</span>
             <span class="version-date">September 2026</span>
             <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">More precise activation zone boundaries on the summit map, plus a smarter nomination search.</p>
         <ul>
+            <li>The dashboard's summit list now ends with a "+ Add Summits" button for quickly adding more, and the top bar button is now labeled "+ Add Summits" instead of "+ Nominate"</li>
             <li>Pasting a SOTA reference (or a comma-separated list of them) into the "Search by Area" location box now automatically switches to the Name/Reference tab and looks it up, instead of trying to geocode it as a place</li>
             <li>Activation zone boundaries now use SOTLAS's high-precision (~1m) terrain data where available, instead of the older lower-resolution estimate, with the older method still used as a fallback for summits SOTLAS hasn't mapped yet</li>
         </ul>

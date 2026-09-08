@@ -804,6 +804,8 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     }
 
     /* ── Empty state ── */
+    .add-summits-footer { text-align: center; padding: var(--sp-6) 0 var(--sp-2); }
+
     .empty { text-align: center; padding: var(--sp-16) var(--sp-8); }
     .empty-icon { font-size: 2.5rem; margin-bottom: var(--sp-4); opacity: 0.3; }
     .empty h3 { color: var(--ink); margin-bottom: var(--sp-2); }
@@ -1124,7 +1126,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                 <a href="#" onclick="document.getElementById('howModal').style.display='flex'; document.getElementById('hamburgerMenu').classList.remove('open'); return false;">How It Works</a>
             </div>
         </div>
-        <a href="nominate.php" class="btn btn-primary btn-sm">+ Nominate</a>
+        <a href="nominate.php" class="btn btn-primary btn-sm">+ Add Summits</a>
         <div class="topbar-divider"></div>
         <div class="user-chip" id="userChip">
             <?= htmlspecialchars(getCurrentCallsign()) ?>
@@ -1450,6 +1452,10 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
             </table>
         </div>
     <?php endif; ?>
+
+    <div class="add-summits-footer">
+        <a href="nominate.php" class="btn btn-primary">+ Add Summits</a>
+    </div>
     </div><!-- /#list-view -->
 
 </div><!-- /.page -->
@@ -1488,7 +1494,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
         <p style="font-size:0.9rem; color:var(--ink-2); margin-bottom:var(--sp-5); line-height:1.7">Each dashboard has its own summit list, addresses, and settings. Switch dashboards in the top bar. Dashboards let different clubs or styles maintain separate lists while sharing the same tool.</p>
 
         <p class="hiw-section">Adding Summits</p>
-        <p style="font-size:0.9rem; color:var(--ink-2); line-height:1.7">Click <strong>+ Nominate Summit</strong> to add a summit by SOTA reference. Coordinates and points pull from the SOTA database automatically. Use the summit detail page to add trail info, upload a GPX track, and log activations.</p>
+        <p style="font-size:0.9rem; color:var(--ink-2); line-height:1.7">Click <strong>+ Add Summits</strong> to add a summit by SOTA reference. Coordinates and points pull from the SOTA database automatically. Use the summit detail page to add trail info, upload a GPX track, and log activations.</p>
 
         <button class="btn btn-primary" style="width:100%; margin-top:var(--sp-6)" onclick="document.getElementById('howModal').style.display='none'">Got it</button>
     </div>
@@ -1698,7 +1704,7 @@ var STEPS = [
     {
         sel: 'a[href="nominate.php"].btn',
         title: "Add your first summit",
-        body:  "Click '+ Nominate Summit' and enter a SOTA reference code (like W7O/NC-001). SOTA Planner pulls the name, elevation, and coordinates automatically.",
+        body:  "Click '+ Add Summits' and enter a SOTA reference code (like W7O/NC-001). SOTA Planner pulls the name, elevation, and coordinates automatically.",
     },
     {
         sel: '.toolbar',
