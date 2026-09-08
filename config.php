@@ -1,5 +1,5 @@
 <?php
-define('APP_VERSION', '1.7.7');
+define('APP_VERSION', '1.7.8');
 
 // Enable error reporting for debugging
 error_reporting(E_ALL);

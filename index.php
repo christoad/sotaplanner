@@ -216,6 +216,7 @@ $sort_order = $_GET['order'] ?? 'DESC';
 // Get filter parameter (comma-separated for multiple filters)
 $filter_param = $_GET['filter'] ?? 'all';
 $unique_only = isset($_GET['unique']) && $_GET['unique'] === '1';
+$min_pts = isset($_GET['min_pts']) ? max(0, (int)$_GET['min_pts']) : 0;
 
 // Parse into array - 'all' means everything, 'none' means nothing
 if ($filter_param === 'all' || empty($filter_param)) {
@@ -323,6 +324,11 @@ if (!empty($filter_conditions)) {
 // Unique summits: nobody in this group has ever activated them
 if ($unique_only) {
     $where_clause .= " AND s.activated_by IS NULL";
+}
+
+// Points filter
+if ($min_pts > 0) {
+    $where_clause .= " AND s.points >= " . $min_pts;
 }
 
 $stmt = $db->prepare("
@@ -717,6 +723,19 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     .unique-toggle:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-bg); border-style: solid; }
     .unique-toggle.active { background: var(--blue-bg); border-color: var(--blue); border-style: solid; color: var(--blue); font-weight: 600; }
 
+    /* ── Bulk-select / trash ── */
+    .bulk-select-info { font-size: 0.78rem; color: var(--ink-3); white-space: nowrap; }
+    .trash-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 30px; height: 30px; border-radius: var(--r-md);
+      border: 1px solid var(--border); background: var(--surface); color: var(--ink-3);
+      cursor: pointer; transition: all 0.12s; flex-shrink: 0;
+    }
+    .trash-btn:hover { background: var(--bg-2); color: var(--ink); }
+    .trash-btn.armed { background: var(--red-bg); border-color: var(--red); color: var(--red); }
+    .trash-btn.armed:hover { background: var(--red); color: #fff; }
+    #dashboard-table td.td-select, #dashboard-table th.td-select { display: none; }
+
     @media (max-width: 640px) {
       .toolbar { padding: var(--sp-3); }
       .toolbar-row { gap: var(--sp-2); }
@@ -883,6 +902,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
       .topbar-context { flex-wrap: nowrap; gap: 6px; }
       .topbar-addr { display: none; }
       .select-inline { max-width: 140px; }
+      #btn-trash, #btn-cancel-select, #bulk-select-info { display: none !important; }
 
       .table-wrap { border: none; background: transparent; box-shadow: none; overflow: visible; }
       .data-table thead { display: none; }
@@ -912,6 +932,9 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
       .td-main, .td-time, .td-diff, .td-status { display: table-cell; vertical-align: middle; }
       .td-hide-mobile { display: table-cell; }
       .td-stats { display: none; }
+      #dashboard-table.select-mode td.td-select, #dashboard-table.select-mode th.td-select {
+        display: table-cell; text-align: center; width: 34px;
+      }
     }
 
     /* ── View toggle ── */
@@ -1203,6 +1226,16 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                     <button onclick="toggleFilter('<?= $key ?>')" class="filter-pill <?= $active ? 'active' : '' ?>"><?= $label ?></button>
                 <?php endforeach; ?>
             </div>
+            <div class="toolbar-sep"></div>
+            <span class="toolbar-label">Points</span>
+            <select class="select-inline" id="min_pts_select" onchange="changeMinPts(this.value)" style="max-width:110px;">
+                <option value="0"<?= $min_pts === 0 ? ' selected' : '' ?>>All</option>
+                <option value="2"<?= $min_pts === 2 ? ' selected' : '' ?>>2+</option>
+                <option value="4"<?= $min_pts === 4 ? ' selected' : '' ?>>4+</option>
+                <option value="6"<?= $min_pts === 6 ? ' selected' : '' ?>>6+</option>
+                <option value="8"<?= $min_pts === 8 ? ' selected' : '' ?>>8+</option>
+                <option value="10"<?= $min_pts === 10 ? ' selected' : '' ?>>10</option>
+            </select>
         </div>
         <!-- Row 2: view toggle + unique toggle + activation controls -->
         <div class="toolbar-row">
@@ -1231,6 +1264,13 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                     <button type="submit" name="calculate_drive_times" class="btn btn-ghost btn-sm">Recalculate Travel Times</button>
                 </form>
             <?php endif; ?>
+            <div class="toolbar-right">
+                <span id="bulk-select-info" class="bulk-select-info" style="display:none"></span>
+                <button type="button" id="btn-cancel-select" class="btn btn-ghost btn-sm" style="display:none" onclick="cancelSelectMode()">Cancel</button>
+                <button type="button" id="btn-trash" class="trash-btn" onclick="onTrashClick()" title="Delete summits">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -1273,9 +1313,12 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
         </div>
     <?php else: ?>
         <div class="table-wrap">
-            <table class="data-table">
+            <table class="data-table" id="dashboard-table">
                 <thead>
                     <tr>
+                        <th class="td-select" onclick="event.stopPropagation()">
+                            <input type="checkbox" id="select-all-rows" onclick="event.stopPropagation()" onchange="toggleSelectAllRows(this.checked)">
+                        </th>
                         <th class="<?= $sort_by === 'name' ? 'sorted' : '' ?>" onclick="sortTable('name')">
                             Summit <span class="sort-icon"><?= $sort_by === 'name' ? ($sort_order === 'ASC' ? '↑' : '↓') : '↕' ?></span>
                         </th>
@@ -1373,7 +1416,10 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                             $elevation_for_display ? number_format(convertElevation($elevation_for_display, $user_units)) . ' ' . getElevationUnit($user_units) . ' gain' : null,
                         ]);
                     ?>
-                    <tr class="<?= $row_class ?>" data-summit-id="<?= $summit['id'] ?>" onclick="window.location='summit_detail.php?id=<?= $summit['id'] ?>&group=<?= $current_group['id'] ?>';">
+                    <tr class="<?= $row_class ?>" data-summit-id="<?= $summit['id'] ?>" onclick="handleRowClick(event, <?= $summit['id'] ?>, <?= $current_group['id'] ?>)">
+                        <td class="td-select" onclick="event.stopPropagation()">
+                            <input type="checkbox" class="row-select" data-id="<?= $summit['id'] ?>" onchange="toggleRowSelect(<?= $summit['id'] ?>, this.checked)">
+                        </td>
                         <td class="td-main" onclick="event.stopPropagation()">
                             <a href="summit_detail.php?id=<?= $summit['id'] ?>&group=<?= $current_group['id'] ?>" style="text-decoration:none">
                                 <div class="summit-name"><?= htmlspecialchars($summit['name']) ?></div>
@@ -1566,6 +1612,125 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
             urlParams.set('unique', '1');
         }
         window.location.search = urlParams.toString();
+    }
+
+    function changeMinPts(val) {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (val === '0') {
+            urlParams.delete('min_pts');
+        } else {
+            urlParams.set('min_pts', val);
+        }
+        window.location.search = urlParams.toString();
+    }
+
+    // ── Bulk select / delete ──
+    let selectMode = false;
+    const selectedIds = new Set();
+
+    function onTrashClick() {
+        if (!selectMode) {
+            enterSelectMode();
+        } else if (selectedIds.size > 0) {
+            performBulkDelete();
+        } else {
+            cancelSelectMode();
+        }
+    }
+
+    function enterSelectMode() {
+        selectMode = true;
+        document.getElementById('dashboard-table')?.classList.add('select-mode');
+        document.getElementById('btn-cancel-select').style.display = '';
+        updateTrashUI();
+    }
+
+    function cancelSelectMode() {
+        selectMode = false;
+        selectedIds.clear();
+        document.querySelectorAll('.row-select').forEach(cb => cb.checked = false);
+        const allCb = document.getElementById('select-all-rows');
+        if (allCb) { allCb.checked = false; allCb.indeterminate = false; }
+        document.getElementById('dashboard-table')?.classList.remove('select-mode');
+        document.getElementById('btn-cancel-select').style.display = 'none';
+        updateTrashUI();
+    }
+
+    function toggleRowSelect(id, checked) {
+        if (checked) selectedIds.add(id); else selectedIds.delete(id);
+        const allBoxes = document.querySelectorAll('.row-select');
+        const allCb = document.getElementById('select-all-rows');
+        if (allCb) {
+            allCb.checked = allBoxes.length > 0 && selectedIds.size === allBoxes.length;
+            allCb.indeterminate = selectedIds.size > 0 && selectedIds.size < allBoxes.length;
+        }
+        updateTrashUI();
+    }
+
+    function toggleSelectAllRows(checked) {
+        document.querySelectorAll('.row-select').forEach(cb => {
+            cb.checked = checked;
+            const id = parseInt(cb.dataset.id, 10);
+            if (checked) selectedIds.add(id); else selectedIds.delete(id);
+        });
+        updateTrashUI();
+    }
+
+    function updateTrashUI() {
+        const btn = document.getElementById('btn-trash');
+        const info = document.getElementById('bulk-select-info');
+        if (!selectMode) {
+            btn.classList.remove('armed');
+            btn.title = 'Delete summits';
+            info.style.display = 'none';
+            return;
+        }
+        info.style.display = '';
+        if (selectedIds.size > 0) {
+            btn.classList.add('armed');
+            btn.title = 'Delete ' + selectedIds.size + ' selected summit' + (selectedIds.size !== 1 ? 's' : '');
+            info.textContent = selectedIds.size + ' selected';
+        } else {
+            btn.classList.remove('armed');
+            btn.title = 'Select summits to delete';
+            info.textContent = 'Select summits to delete';
+        }
+    }
+
+    function handleRowClick(event, summitId, groupId) {
+        if (selectMode) {
+            event.stopPropagation();
+            const cb = document.querySelector('.row-select[data-id="' + summitId + '"]');
+            if (cb) {
+                cb.checked = !cb.checked;
+                toggleRowSelect(summitId, cb.checked);
+            }
+            return;
+        }
+        window.location = 'summit_detail.php?id=' + summitId + '&group=' + groupId;
+    }
+
+    function performBulkDelete() {
+        const ids = Array.from(selectedIds);
+        if (ids.length === 0) return;
+        if (!confirm('Delete ' + ids.length + ' summit' + (ids.length !== 1 ? 's' : '') + ' from this dashboard? This cannot be undone.')) return;
+        const btn = document.getElementById('btn-trash');
+        btn.disabled = true;
+        fetch('bulk_delete_summits.php', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'ids=' + encodeURIComponent(ids.join(','))
+        }).then(r => r.json()).then(data => {
+            if (data.success) {
+                window.location.reload();
+            } else {
+                alert(data.error || 'Failed to delete summits. Please try again.');
+                btn.disabled = false;
+            }
+        }).catch(() => {
+            alert('Failed to delete summits. Please try again.');
+            btn.disabled = false;
+        });
     }
 
     // User chip dropdown

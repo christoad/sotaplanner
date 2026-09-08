@@ -266,12 +266,14 @@ session_start();
     <!-- September 2026 -->
     <div class="version-block current">
         <div class="version-header">
-            <span class="version-number">v1.7.7</span>
+            <span class="version-number">v1.7.8</span>
             <span class="version-date">September 2026</span>
             <span class="version-badge">Current</span>
         </div>
-        <p class="version-desc">More precise activation zone boundaries on the summit map, plus a smarter nomination search.</p>
+        <p class="version-desc">More precise activation zone boundaries on the summit map, plus a smarter nomination search and easier bulk cleanup of your dashboard.</p>
         <ul>
+            <li>The dashboard summit list now has a Points filter (2+, 4+, 6+, 8+, or exactly 10) alongside the existing status and difficulty filters</li>
+            <li>You can now remove multiple summits from your dashboard at once: click the trash icon to reveal checkboxes on each row, select the ones you want gone, then click the trash icon again to delete them</li>
             <li>The dashboard's summit list now ends with a "+ Add Summits" button for quickly adding more, and the top bar button is now labeled "+ Add Summits" instead of "+ Nominate"</li>
             <li>Pasting a SOTA reference (or a comma-separated list of them) into the "Search by Area" location box now automatically switches to the Name/Reference tab and looks it up, instead of trying to geocode it as a place</li>
             <li>Activation zone boundaries now use SOTLAS's high-precision (~1m) terrain data where available, instead of the older lower-resolution estimate, with the older method still used as a fallback for summits SOTLAS hasn't mapped yet</li>
