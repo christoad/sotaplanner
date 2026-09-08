@@ -160,6 +160,12 @@ if (!$current_group) {
     }
 }
 
+if ($multi_edit_id) {
+    $stmt = $db->prepare("SELECT name FROM multi_activations WHERE id = ? AND planning_group_id = ?");
+    $stmt->execute([$multi_edit_id, $current_group['id']]);
+    $multi_edit_name = $stmt->fetchColumn() ?: null;
+}
+
 // Sync activation status from the SOTA API in the background, once per session/day per dashboard
 $activations_sync_flag_key = 'activations_synced_group_' . $current_group['id'];
 $should_sync_activations = ($_SESSION[$activations_sync_flag_key] ?? null) !== gmdate('Y-m-d');
@@ -217,6 +223,18 @@ $sort_order = $_GET['order'] ?? 'DESC';
 $filter_param = $_GET['filter'] ?? 'all';
 $unique_only = isset($_GET['unique']) && $_GET['unique'] === '1';
 $min_pts = isset($_GET['min_pts']) ? max(0, (int)$_GET['min_pts']) : 0;
+
+// Arriving from "+ Add Summit" on the multi-activation page: pre-seed select mode
+// with the route's existing members, ready for the user to check more to add.
+$multi_prefill_ids = [];
+$multi_edit_id = null;
+$multi_edit_name = null;
+if (isset($_GET['multi_select'])) {
+    $multi_prefill_ids = array_values(array_unique(array_filter(array_map('intval', explode(',', $_GET['multi_select'])))));
+}
+if (isset($_GET['multi_edit_id'])) {
+    $multi_edit_id = (int)$_GET['multi_edit_id'];
+}
 
 // Parse into array - 'all' means everything, 'none' means nothing
 if ($filter_param === 'all' || empty($filter_param)) {
@@ -366,25 +384,241 @@ $stmt = $db->prepare("
 $stmt->execute([$current_group['id'], $current_group['id'], $current_group['id']]);
 $summits = $stmt->fetchAll();
 
-// Build map data
-function extractGpxPath($filepath, $maxPoints = 250) {
-    if (!$filepath || !file_exists($filepath)) return null;
-    $content = @file_get_contents($filepath);
-    if (!$content) return null;
-    preg_match_all('/lat="([\d.\-]+)"\s+lon="([\d.\-]+)"/i', $content, $m);
-    if (empty($m[1])) return null;
-    $total = count($m[1]);
-    $pts = [];
-    $step = max(1, (int)ceil($total / $maxPoints));
-    for ($i = 0; $i < $total; $i += $step) {
-        $pts[] = [(float)$m[1][$i], (float)$m[2][$i]];
-    }
-    if (($i - $step) < ($total - 1)) {
-        $pts[] = [(float)$m[1][$total-1], (float)$m[2][$total-1]];
-    }
-    return $pts;
+// Saved multi-activations for this group, keyed by the first (lead) summit's id.
+// A saved route replaces its member summits' individual dashboard rows with one
+// summary row (aggregate stats, precomputed on save), with the members nested
+// underneath — each still a normal link through to its own summit_detail.php.
+$multi_lookup = [];
+$stmt = $db->prepare("
+    SELECT ma.id AS multi_id, ma.name AS multi_name,
+           ma.total_points, ma.total_hike_min, ma.total_drive_min, ma.total_time_min,
+           ma.total_dist_mi, ma.total_elev_ft,
+           mas.summit_id, mas.sort_order, s.name AS summit_name, s.sota_ref, s.points
+    FROM multi_activations ma
+    JOIN multi_activation_summits mas ON mas.multi_activation_id = ma.id
+    JOIN summits s ON s.id = mas.summit_id
+    WHERE ma.planning_group_id = ?
+    ORDER BY ma.id, mas.sort_order
+");
+$stmt->execute([$current_group['id']]);
+$multi_groups = [];
+foreach ($stmt->fetchAll() as $r) {
+    $multi_groups[$r['multi_id']]['name'] ??= $r['multi_name'];
+    $multi_groups[$r['multi_id']]['totals'] ??= [
+        'points'    => $r['total_points'],
+        'hike_min'  => $r['total_hike_min'],
+        'drive_min' => $r['total_drive_min'],
+        'time_min'  => $r['total_time_min'],
+        'dist_mi'   => $r['total_dist_mi'],
+        'elev_ft'   => $r['total_elev_ft'],
+    ];
+    $multi_groups[$r['multi_id']]['members'][] = $r;
+}
+foreach ($multi_groups as $mid => $m) {
+    if (empty($m['members'])) continue;
+    $lead = $m['members'][0];
+    $multi_lookup[$lead['summit_id']] = [
+        'multi_id' => $mid,
+        'name'     => $m['name'],
+        'totals'   => $m['totals'],
+        'members'  => $m['members'], // includes the lead itself at index 0
+    ];
 }
 
+$summits_by_id = [];
+foreach ($summits as $s) $summits_by_id[$s['id']] = $s;
+
+// Every member of a saved multi (lead included) is hidden from the flat list —
+// it renders nested under the multi's summary row instead. Only do this for
+// multis whose lead actually passes the active filters (otherwise the summary
+// row won't render this pass, and a member would vanish with no row at all).
+$multi_member_ids = [];
+foreach ($multi_lookup as $lead_id => $ml) {
+    if (!isset($summits_by_id[$lead_id])) continue;
+    foreach ($ml['members'] as $mem) $multi_member_ids[$mem['summit_id']] = true;
+}
+
+// A member might not itself pass the active filters — make sure its full row
+// data is still available so it can render inside its multi's nested list.
+$missing_member_ids = [];
+foreach (array_keys($multi_member_ids) as $mid) {
+    if (!isset($summits_by_id[$mid])) $missing_member_ids[] = $mid;
+}
+if (!empty($missing_member_ids)) {
+    $ph = implode(',', array_fill(0, count($missing_member_ids), '?'));
+    $stmt = $db->prepare("
+        SELECT s.*,
+               g.hiking_time as gpx_hiking_time,
+               g.elevation_gain as gpx_elevation_gain,
+               g.elevation_loss as gpx_elevation_loss,
+               g.total_distance as gpx_total_distance,
+               g.file_path as gpx_file_path,
+               g.track_type,
+               g.use_for_hike_time,
+               g.use_for_elevation,
+               s.drive_time_min as drive_time,
+               ay.this_year_callsigns
+        FROM summits s
+        LEFT JOIN gpx_tracks g ON s.id = g.summit_id AND g.planning_group_id = ?
+        LEFT JOIN (
+            SELECT summit_id,
+                   GROUP_CONCAT(DISTINCT callsigns ORDER BY activation_date DESC SEPARATOR ', ') AS this_year_callsigns
+            FROM activations
+            WHERE planning_group_id = ?
+              AND YEAR(CONVERT_TZ(activation_date, '+00:00', '+00:00')) = YEAR(UTC_TIMESTAMP())
+            GROUP BY summit_id
+        ) ay ON ay.summit_id = s.id
+        WHERE s.id IN ($ph) AND s.planning_group_id = ?
+    ");
+    $stmt->execute(array_merge([$current_group['id'], $current_group['id']], $missing_member_ids, [$current_group['id']]));
+    foreach ($stmt->fetchAll() as $s) $summits_by_id[$s['id']] = $s;
+}
+
+// Renders one <tr> (+ its mobile stats cell) for a summit row — shared by both
+// normal top-level rows and the rows nested under a multi-activation summary.
+function render_dashboard_row($summit, $current_group, $user_units, $activation_time, $nested = false, $route_order = null, $multi_group_id = null) {
+    $track_type    = $summit['track_type'] ?? 'round-trip';
+    $one_way       = ($track_type === 'ascent' || $track_type === 'descent');
+    $has_timestamps = ($summit['gpx_hiking_time'] ?? 0) > 0;
+
+    if ($summit['use_for_elevation'] && $summit['gpx_elevation_gain']) {
+        $elevation_for_display = ($track_type === 'descent')
+            ? ($summit['gpx_elevation_loss'] ?? 0) * 3.28084
+            : $summit['gpx_elevation_gain'] * 3.28084;
+    } else {
+        $elevation_for_display = $summit['hike_elevation_gain_ft'];
+    }
+
+    if ($summit['use_for_hike_time'] && ($summit['gpx_total_distance'] ?? 0) > 0) {
+        $dist_km = $summit['gpx_total_distance'];
+        if ($one_way) $dist_km *= 2;
+        $distance_display_mi = round($dist_km * 0.621371, 2);
+    } else {
+        $distance_display_mi = $summit['hike_distance_mi'];
+    }
+
+    if ($summit['use_for_hike_time'] && $has_timestamps) {
+        $secs = $summit['gpx_hiking_time'];
+        if ($one_way) $secs *= 2;
+        $hike_time_total = round($secs / 60);
+    } else {
+        $hike_time_total = ($distance_display_mi || $elevation_for_display)
+            ? calculateHikeTime($distance_display_mi ?? 0, $elevation_for_display ?? 0, $current_group['pace_multiplier'] ?? 1.0)
+            : 0;
+    }
+
+    $drive_time = $summit['drive_time'] ?? 0;
+    $total_time = $hike_time_total + $drive_time + $activation_time;
+
+    $activated_this_year = false;
+    if ($summit['last_activated_date']) {
+        $last_activated_year = date('Y', strtotime($summit['last_activated_date']));
+        $activated_this_year = ($last_activated_year == gmdate('Y'));
+    }
+
+    if ($activated_this_year) {
+        $row_class = 'row-activated';
+    } elseif ($summit['status'] === 'ready' || ($summit['status'] === 'activated' && !$activated_this_year)) {
+        $row_class = 'row-ready';
+    } else {
+        $row_class = '';
+    }
+    if ($nested) $row_class .= ' multi-nested-row is-open nested-summit-row';
+
+    $mobile_parts = array_filter([
+        $hike_time_total ? 'Hike ' . formatTime($hike_time_total) : null,
+        $drive_time      ? 'Travel ' . formatTime($drive_time) : null,
+        $distance_display_mi ? convertDistance($distance_display_mi, $user_units) . ' ' . getDistanceUnit($user_units) : null,
+        $elevation_for_display ? number_format(convertElevation($elevation_for_display, $user_units)) . ' ' . getElevationUnit($user_units) . ' gain' : null,
+    ]);
+
+    $onclick = $nested
+        ? "window.location='summit_detail.php?id={$summit['id']}&group={$current_group['id']}'"
+        : "handleRowClick(event, {$summit['id']}, {$current_group['id']})";
+    $row_attrs = $nested ? ' data-multi-group="' . (int)$multi_group_id . '"' : '';
+    ?>
+    <tr class="<?= trim($row_class) ?>" data-summit-id="<?= $summit['id'] ?>" onclick="<?= $onclick ?>"<?= $row_attrs ?>>
+        <td class="td-select" onclick="event.stopPropagation()">
+            <input type="checkbox" class="row-select" data-id="<?= $summit['id'] ?>" onchange="toggleRowSelect(<?= $summit['id'] ?>, this.checked)">
+        </td>
+        <td class="td-main" onclick="event.stopPropagation()">
+            <a href="summit_detail.php?id=<?= $summit['id'] ?>&group=<?= $current_group['id'] ?>" style="text-decoration:none">
+                <?php if ($route_order): ?><span class="route-order-chip"><?= $route_order ?></span><?php endif; ?>
+                <div class="summit-name"><?= htmlspecialchars($summit['name']) ?></div>
+                <div class="summit-ref"><?= htmlspecialchars($summit['sota_ref']) ?></div>
+            </a>
+        </td>
+        <td class="td-hide-mobile">
+            <span class="points-dot"><?= $summit['points'] ?></span>
+        </td>
+        <td class="td-diff">
+            <?php if ($summit['difficulty']): ?>
+                <span class="badge badge-<?= htmlspecialchars($summit['difficulty']) ?>"><?= ucwords(str_replace('-', ' ', $summit['difficulty'])) ?></span>
+            <?php else: ?>
+                <span style="color:var(--ink-4)">—</span>
+            <?php endif; ?>
+        </td>
+        <td class="td-hide-mobile">
+            <?php
+            $elevation = convertElevation($summit['elevation_ft'], $user_units);
+            $unit = getElevationUnit($user_units);
+            ?>
+            <span class="stat-val"><?= number_format($elevation) ?></span> <span class="stat-unit"><?= $unit ?></span>
+        </td>
+        <td class="td-hide-mobile">
+            <?php if ($distance_display_mi): ?>
+                <span class="stat-val"><?= convertDistance($distance_display_mi, $user_units) ?></span>
+                <span class="stat-unit"><?= getDistanceUnit($user_units) ?></span>
+            <?php else: ?>
+                <span style="color:var(--ink-4)">—</span>
+            <?php endif; ?>
+        </td>
+        <td class="td-hide-mobile">
+            <?php if ($elevation_for_display): ?>
+                <span class="stat-val"><?= number_format(convertElevation($elevation_for_display, $user_units)) ?></span>
+                <span class="stat-unit"><?= getElevationUnit($user_units) ?></span>
+            <?php else: ?>
+                <span style="color:var(--ink-4)">—</span>
+            <?php endif; ?>
+        </td>
+        <td class="td-hide-mobile text-right">
+            <span class="stat-val"><?= $hike_time_total ? formatTime($hike_time_total) : '—' ?></span>
+        </td>
+        <td class="td-hide-mobile text-right">
+            <span class="stat-val"><?= $drive_time ? formatTime($drive_time) : '—' ?></span>
+        </td>
+        <td class="td-time text-right">
+            <span class="total-time"><?= formatTime($total_time) ?></span>
+        </td>
+        <td class="td-hide-mobile td-last-activated">
+            <?php if ($summit['last_activated_date']): ?>
+                <div class="stat-val"><?= date('M j, Y', strtotime($summit['last_activated_date'])) ?></div>
+                <?php if (!empty($summit['this_year_callsigns'])): ?>
+                    <div class="last-act-callsign"><?= htmlspecialchars($summit['this_year_callsigns']) ?></div>
+                <?php elseif (!empty($summit['activated_by'])): ?>
+                    <div class="last-act-callsign"><?= htmlspecialchars($summit['activated_by']) ?></div>
+                <?php endif; ?>
+            <?php else: ?>
+                <span style="color:var(--ink-4)">—</span>
+            <?php endif; ?>
+        </td>
+        <td class="td-status">
+            <?php if ($summit['status'] === 'activated'): ?>
+                <?php if ($activated_this_year): ?>
+                    <span class="badge badge-activated">Activated <?= date('Y', strtotime($summit['last_activated_date'])) ?></span>
+                <?php else: ?>
+                    <span class="badge badge-ready">Ready</span>
+                <?php endif; ?>
+            <?php else: ?>
+                <span class="badge badge-<?= htmlspecialchars($summit['status']) ?>"><?= ucfirst($summit['status']) ?></span>
+            <?php endif; ?>
+        </td>
+        <td class="td-stats"><?= implode(' · ', $mobile_parts) ?></td>
+    </tr>
+    <?php
+}
+
+// Build map data
 $map_summits = [];
 foreach ($summits as $sm) {
     if (!$sm['latitude'] || !$sm['longitude']) continue;
@@ -460,6 +694,10 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
       --accent-border: oklch(84% 0.08 65);
       --green:         oklch(52% 0.13 155);
       --green-bg:      oklch(95% 0.04 155);
+      --green-dark:        oklch(34% 0.10 155);
+      --green-dark-2:      oklch(26% 0.09 155);
+      --green-dark-bg:     oklch(88% 0.07 155);
+      --green-dark-border: oklch(70% 0.10 155);
       --orange:        oklch(62% 0.14 58);
       --orange-bg:     oklch(96% 0.05 58);
       --red:           oklch(52% 0.16 22);
@@ -695,6 +933,20 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     }
     .toolbar-sep { width: 1px; height: 16px; background: var(--border-2); flex-shrink: 0; }
     .toolbar-right { margin-left: auto; display: flex; align-items: center; gap: var(--sp-2); }
+    /* While bulk-selecting, the action cluster detaches and floats at the bottom
+       of the viewport so it's always reachable while scrolling through rows to
+       check off — the armed button also grows a bit once there's something to act on. */
+    .toolbar-right.floating {
+      position: fixed; left: 50%; bottom: var(--sp-6); transform: translateX(-50%);
+      margin-left: 0; background: var(--surface); border: 1px solid var(--border-2);
+      border-radius: 100px; padding: var(--sp-2) var(--sp-3);
+      box-shadow: var(--shadow-lg); z-index: 500;
+    }
+    .toolbar-right.floating .multi-btn.armed,
+    .toolbar-right.floating .trash-btn.armed {
+      transform: scale(1.18); box-shadow: var(--shadow-md);
+    }
+    @media (max-width: 768px) { .toolbar-right.floating { display: none !important; } }
 
     /* ── Filter pills ── */
     .filter-row {
@@ -734,6 +986,16 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     .trash-btn:hover { background: var(--bg-2); color: var(--ink); }
     .trash-btn.armed { background: var(--red-bg); border-color: var(--red); color: var(--red); }
     .trash-btn.armed:hover { background: var(--red); color: #fff; }
+    .multi-btn {
+      display: inline-flex; align-items: center; gap: 0.35rem;
+      height: 30px; padding: 0 var(--sp-3); border-radius: var(--r-md);
+      border: 1px solid var(--border); background: var(--surface); color: var(--ink-2);
+      font-family: var(--font-sans); font-size: 0.8rem; font-weight: 500;
+      cursor: pointer; transition: all 0.12s; white-space: nowrap; flex-shrink: 0;
+    }
+    .multi-btn:hover { background: var(--bg-2); color: var(--ink); }
+    .multi-btn.armed { background: var(--green); border-color: var(--green); color: #fff; }
+    .multi-btn.armed:hover { background: var(--green-2, oklch(46% 0.13 155)); }
     #dashboard-table td.td-select, #dashboard-table th.td-select { display: none; }
 
     @media (max-width: 640px) {
@@ -822,6 +1084,41 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
       font-variant-numeric: tabular-nums;
     }
 
+    /* ── Multi-activation summary row + nested member rows ──
+       Deliberately a darker green than the plain "Ready" rows (--green-bg),
+       so a saved route reads as its own distinct-but-related status at a glance. */
+    .multi-summary-row { background: var(--green-dark-bg) !important; border-left: 3px solid var(--green-dark); }
+    .multi-summary-row:hover { background: oklch(83% 0.08 155) !important; }
+    .multi-summary-row .summit-name { color: var(--green-dark-2); }
+    .multi-expand-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; margin-right: 4px; vertical-align: middle;
+      border: none; border-radius: var(--r-sm); background: transparent;
+      cursor: pointer; color: var(--green-dark-2); padding: 0; flex-shrink: 0;
+    }
+    .multi-expand-btn:hover { background: oklch(80% 0.09 155); }
+    .multi-expand-caret { transition: transform 0.15s; display: inline-flex; line-height: 1; }
+    .multi-expand-btn.open .multi-expand-caret { transform: rotate(180deg); }
+    .badge-multi { background: var(--green-dark-bg); color: var(--green-dark-2); border: 1px solid var(--green-dark-border); }
+    .data-table tbody tr.nested-summit-row { background: oklch(94% 0.045 155) !important; opacity: 1 !important; }
+    .data-table tbody tr.nested-summit-row:hover { background: oklch(91% 0.055 155) !important; }
+    .nested-summit-row .td-main { border-left: 3px solid var(--green-dark-border); }
+    .nested-summit-row .td-main a { padding-left: var(--sp-8); }
+    .route-order-chip {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 15px; height: 15px; border-radius: 50%; background: var(--green-dark); color: #fff;
+      font-size: 0.58rem; font-weight: 700; margin-right: 5px; vertical-align: middle;
+    }
+    /* Multi rows read as a route "header" rather than a peer summit — ~75% of a normal row */
+    .data-table tbody tr.multi-summary-row td,
+    .data-table tbody tr.nested-summit-row td { padding-top: var(--sp-2) !important; padding-bottom: var(--sp-2) !important; }
+    .multi-summary-row .summit-name, .nested-summit-row .summit-name { font-size: 0.8rem; }
+    .multi-summary-row .summit-ref, .nested-summit-row .summit-ref { font-size: 0.65rem; }
+    .multi-summary-row .stat-val, .nested-summit-row .stat-val,
+    .multi-summary-row .total-time, .nested-summit-row .total-time { font-size: 0.78rem; }
+    .multi-summary-row .badge, .nested-summit-row .badge { padding: 1px 6px; font-size: 0.6rem; }
+    .multi-summary-row .points-dot, .nested-summit-row .points-dot { width: 18px; height: 18px; font-size: 0.6rem; }
+
     /* ── Empty state ── */
     .add-summits-footer { text-align: center; padding: var(--sp-6) 0 var(--sp-2); }
 
@@ -902,7 +1199,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
       .topbar-context { flex-wrap: nowrap; gap: 6px; }
       .topbar-addr { display: none; }
       .select-inline { max-width: 140px; }
-      #btn-trash, #btn-cancel-select, #bulk-select-info { display: none !important; }
+      #btn-trash, #btn-multi, #btn-cancel-select, #bulk-select-info { display: none !important; }
 
       .table-wrap { border: none; background: transparent; box-shadow: none; overflow: visible; }
       .data-table thead { display: none; }
@@ -920,6 +1217,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
       }
       .data-table tbody tr.row-ready { background: var(--green-bg); border-color: oklch(88% 0.06 155) !important; }
       .data-table tbody tr.row-activated { background: var(--gray-bg); opacity: 0.6; }
+      .data-table tbody tr.nested-summit-row { margin-left: var(--sp-6); border-left: 3px solid var(--green-dark-border) !important; }
       .data-table td { padding: 0; border: none; }
       .td-main    { grid-column: 1; grid-row: 1; }
       .td-time    { grid-column: 2; grid-row: 1; text-align: right; align-self: center; }
@@ -935,7 +1233,12 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
       #dashboard-table.select-mode td.td-select, #dashboard-table.select-mode th.td-select {
         display: table-cell; text-align: center; width: 34px;
       }
+      /* A saved route can't be folded into another route — only its member
+         summits are selectable while building a new multi-activation. */
+      #dashboard-table.mode-multi .multi-row-select { visibility: hidden; }
     }
+    .multi-nested-row { display: none; }
+    .multi-nested-row.is-open { display: table-row; }
 
     /* ── View toggle ── */
     .view-toggle-group {
@@ -1267,7 +1570,11 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
             <div class="toolbar-right">
                 <span id="bulk-select-info" class="bulk-select-info" style="display:none"></span>
                 <button type="button" id="btn-cancel-select" class="btn btn-ghost btn-sm" style="display:none" onclick="cancelSelectMode()">Cancel</button>
-                <button type="button" id="btn-trash" class="trash-btn" onclick="onTrashClick()" title="Delete summits">
+                <button type="button" id="btn-multi" class="multi-btn" onclick="onMultiClick()" title="Plan a multi-summit activation">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/></svg>
+                    Multi-Activate
+                </button>
+                <button type="button" id="btn-trash" class="trash-btn" onclick="onTrashClick()" title="Delete summits or routes">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                 </button>
             </div>
@@ -1356,144 +1663,85 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                 </thead>
                 <tbody>
                     <?php foreach ($summits as $summit):
-                        $track_type    = $summit['track_type'] ?? 'round-trip';
-                        $one_way       = ($track_type === 'ascent' || $track_type === 'descent');
-                        $has_timestamps = ($summit['gpx_hiking_time'] ?? 0) > 0;
+                        $sid = $summit['id'];
 
-                        // Elevation gain
-                        if ($summit['use_for_elevation'] && $summit['gpx_elevation_gain']) {
-                            $elevation_for_display = ($track_type === 'descent')
-                                ? ($summit['gpx_elevation_loss'] ?? 0) * 3.28084
-                                : $summit['gpx_elevation_gain'] * 3.28084;
-                        } else {
-                            $elevation_for_display = $summit['hike_elevation_gain_ft'];
-                        }
-
-                        // Distance
-                        if ($summit['use_for_hike_time'] && ($summit['gpx_total_distance'] ?? 0) > 0) {
-                            $dist_km = $summit['gpx_total_distance'];
-                            if ($one_way) $dist_km *= 2;
-                            $distance_display_mi = round($dist_km * 0.621371, 2);
-                        } else {
-                            $distance_display_mi = $summit['hike_distance_mi'];
-                        }
-
-                        // Hike time
-                        if ($summit['use_for_hike_time'] && $has_timestamps) {
-                            $secs = $summit['gpx_hiking_time'];
-                            if ($one_way) $secs *= 2;
-                            $hike_time_total = round($secs / 60);
-                        } else {
-                            $hike_time_total = ($distance_display_mi || $elevation_for_display)
-                                ? calculateHikeTime($distance_display_mi ?? 0, $elevation_for_display ?? 0, $current_group['pace_multiplier'] ?? 1.0)
-                                : 0;
-                        }
-
-                        $drive_time = $summit['drive_time_min'] ?? 0;
-                        $total_time = $hike_time_total + $drive_time + $activation_time;
-
-                        // Activated this year check (UTC)
-                        $activated_this_year = false;
-                        if ($summit['last_activated_date']) {
-                            $last_activated_year = date('Y', strtotime($summit['last_activated_date']));
-                            $activated_this_year = ($last_activated_year == gmdate('Y'));
-                        }
-
-                        // Row class
-                        if ($activated_this_year) {
-                            $row_class = 'row-activated';
-                        } elseif ($summit['status'] === 'ready' || ($summit['status'] === 'activated' && !$activated_this_year)) {
-                            $row_class = 'row-ready';
-                        } else {
-                            $row_class = '';
-                        }
-
-                        // Mobile stats strip
-                        $mobile_parts = array_filter([
-                            $hike_time_total ? 'Hike ' . formatTime($hike_time_total) : null,
-                            $drive_time      ? 'Travel ' . formatTime($drive_time) : null,
-                            $distance_display_mi ? convertDistance($distance_display_mi, $user_units) . ' ' . getDistanceUnit($user_units) : null,
-                            $elevation_for_display ? number_format(convertElevation($elevation_for_display, $user_units)) . ' ' . getElevationUnit($user_units) . ' gain' : null,
-                        ]);
+                        // Lead of a saved multi: render its summary row + nested member rows instead
+                        if (isset($multi_lookup[$sid])):
+                            $ml = $multi_lookup[$sid];
+                            $t = $ml['totals'];
+                            $t_points = (int)($t['points'] ?? 0);
+                            $t_hike   = (int)($t['hike_min'] ?? 0);
+                            $t_drive  = (int)($t['drive_min'] ?? 0);
+                            $t_total  = (int)($t['time_min'] ?? 0);
+                            $t_dist   = (float)($t['dist_mi'] ?? 0);
+                            $t_elev   = (int)($t['elev_ft'] ?? 0);
+                            $route_label = $ml['name'] ?: (count($ml['members']) . '-Summit Route');
+                            $multi_mobile_parts = array_filter([
+                                $t_hike  ? 'Hike ' . formatTime($t_hike) : null,
+                                $t_drive ? 'Travel ' . formatTime($t_drive) : null,
+                                $t_dist  ? convertDistance($t_dist, $user_units) . ' ' . getDistanceUnit($user_units) : null,
+                                $t_elev  ? number_format(convertElevation($t_elev, $user_units)) . ' ' . getElevationUnit($user_units) . ' gain' : null,
+                            ]);
                     ?>
-                    <tr class="<?= $row_class ?>" data-summit-id="<?= $summit['id'] ?>" onclick="handleRowClick(event, <?= $summit['id'] ?>, <?= $current_group['id'] ?>)">
+                    <tr class="multi-summary-row" data-multi-id="<?= $ml['multi_id'] ?>" onclick="window.location='multi_activate.php?id=<?= $ml['multi_id'] ?>&group=<?= $current_group['id'] ?>'">
                         <td class="td-select" onclick="event.stopPropagation()">
-                            <input type="checkbox" class="row-select" data-id="<?= $summit['id'] ?>" onchange="toggleRowSelect(<?= $summit['id'] ?>, this.checked)">
+                            <input type="checkbox" class="multi-row-select" data-multi-id="<?= $ml['multi_id'] ?>" onchange="toggleMultiRowSelect(<?= $ml['multi_id'] ?>, this.checked)">
                         </td>
                         <td class="td-main" onclick="event.stopPropagation()">
-                            <a href="summit_detail.php?id=<?= $summit['id'] ?>&group=<?= $current_group['id'] ?>" style="text-decoration:none">
-                                <div class="summit-name"><?= htmlspecialchars($summit['name']) ?></div>
-                                <div class="summit-ref"><?= htmlspecialchars($summit['sota_ref']) ?></div>
+                            <button type="button" class="multi-expand-btn open" id="multi-toggle-<?= $ml['multi_id'] ?>" onclick="toggleMultiNested(<?= $ml['multi_id'] ?>)" title="Expand/collapse summits">
+                                <span class="multi-expand-caret"><svg width="11" height="7" viewBox="0 0 10 6" fill="none"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                            </button>
+                            <a href="multi_activate.php?id=<?= $ml['multi_id'] ?>&group=<?= $current_group['id'] ?>" style="text-decoration:none">
+                                <div class="summit-name"><?= htmlspecialchars($route_label) ?></div>
+                                <div class="summit-ref"><?= count($ml['members']) ?> summits</div>
                             </a>
                         </td>
                         <td class="td-hide-mobile">
-                            <span class="points-dot"><?= $summit['points'] ?></span>
+                            <span class="points-dot"><?= $t_points ?></span>
                         </td>
                         <td class="td-diff">
-                            <?php if ($summit['difficulty']): ?>
-                                <span class="badge badge-<?= htmlspecialchars($summit['difficulty']) ?>"><?= ucwords(str_replace('-', ' ', $summit['difficulty'])) ?></span>
-                            <?php else: ?>
-                                <span style="color:var(--ink-4)">—</span>
-                            <?php endif; ?>
+                            <span class="badge badge-multi">Multi-Route</span>
                         </td>
+                        <td class="td-hide-mobile"><span style="color:var(--ink-4)">—</span></td>
                         <td class="td-hide-mobile">
-                            <?php
-                            $elevation = convertElevation($summit['elevation_ft'], $user_units);
-                            $unit = getElevationUnit($user_units);
-                            ?>
-                            <span class="stat-val"><?= number_format($elevation) ?></span> <span class="stat-unit"><?= $unit ?></span>
-                        </td>
-                        <td class="td-hide-mobile">
-                            <?php if ($distance_display_mi): ?>
-                                <span class="stat-val"><?= convertDistance($distance_display_mi, $user_units) ?></span>
+                            <?php if ($t_dist): ?>
+                                <span class="stat-val"><?= convertDistance($t_dist, $user_units) ?></span>
                                 <span class="stat-unit"><?= getDistanceUnit($user_units) ?></span>
-                            <?php else: ?>
-                                <span style="color:var(--ink-4)">—</span>
-                            <?php endif; ?>
+                            <?php else: ?><span style="color:var(--ink-4)">—</span><?php endif; ?>
                         </td>
                         <td class="td-hide-mobile">
-                            <?php if ($elevation_for_display): ?>
-                                <span class="stat-val"><?= number_format(convertElevation($elevation_for_display, $user_units)) ?></span>
+                            <?php if ($t_elev): ?>
+                                <span class="stat-val"><?= number_format(convertElevation($t_elev, $user_units)) ?></span>
                                 <span class="stat-unit"><?= getElevationUnit($user_units) ?></span>
-                            <?php else: ?>
-                                <span style="color:var(--ink-4)">—</span>
-                            <?php endif; ?>
+                            <?php else: ?><span style="color:var(--ink-4)">—</span><?php endif; ?>
                         </td>
                         <td class="td-hide-mobile text-right">
-                            <span class="stat-val"><?= $hike_time_total ? formatTime($hike_time_total) : '—' ?></span>
+                            <span class="stat-val"><?= $t_hike ? formatTime($t_hike) : '—' ?></span>
                         </td>
                         <td class="td-hide-mobile text-right">
-                            <span class="stat-val"><?= $drive_time ? formatTime($drive_time) : '—' ?></span>
+                            <span class="stat-val"><?= $t_drive ? formatTime($t_drive) : '—' ?></span>
                         </td>
                         <td class="td-time text-right">
-                            <span class="total-time"><?= formatTime($total_time) ?></span>
+                            <span class="total-time"><?= $t_total ? formatTime($t_total) : '—' ?></span>
                         </td>
-                        <td class="td-hide-mobile td-last-activated">
-                            <?php if ($summit['last_activated_date']): ?>
-                                <div class="stat-val"><?= date('M j, Y', strtotime($summit['last_activated_date'])) ?></div>
-                                <?php if (!empty($summit['this_year_callsigns'])): ?>
-                                    <div class="last-act-callsign"><?= htmlspecialchars($summit['this_year_callsigns']) ?></div>
-                                <?php elseif (!empty($summit['activated_by'])): ?>
-                                    <div class="last-act-callsign"><?= htmlspecialchars($summit['activated_by']) ?></div>
-                                <?php endif; ?>
-                            <?php else: ?>
-                                <span style="color:var(--ink-4)">—</span>
-                            <?php endif; ?>
-                        </td>
-                        <td class="td-status">
-                            <?php if ($summit['status'] === 'activated'): ?>
-                                <?php if ($activated_this_year): ?>
-                                    <span class="badge badge-activated">Activated <?= date('Y', strtotime($summit['last_activated_date'])) ?></span>
-                                <?php else: ?>
-                                    <span class="badge badge-ready">Ready</span>
-                                <?php endif; ?>
-                            <?php else: ?>
-                                <span class="badge badge-<?= htmlspecialchars($summit['status']) ?>"><?= ucfirst($summit['status']) ?></span>
-                            <?php endif; ?>
-                        </td>
-                        <td class="td-stats"><?= implode(' · ', $mobile_parts) ?></td>
+                        <td class="td-hide-mobile td-last-activated"><span style="color:var(--ink-4)">—</span></td>
+                        <td class="td-status"><span class="badge badge-multi">Planned Route</span></td>
+                        <td class="td-stats"><?= implode(' · ', $multi_mobile_parts) ?></td>
                     </tr>
-                    <?php endforeach; ?>
+                    <?php foreach ($ml['members'] as $i => $mem):
+                        $mem_summit = $summits_by_id[$mem['summit_id']] ?? null;
+                        if (!$mem_summit) continue;
+                        render_dashboard_row($mem_summit, $current_group, $user_units, $activation_time, true, $i + 1, $ml['multi_id']);
+                    endforeach; ?>
+                    <?php
+                            continue;
+                        endif;
+
+                        // Non-lead member of a saved multi: already rendered nested above, skip here
+                        if (isset($multi_member_ids[$sid])) continue;
+
+                        render_dashboard_row($summit, $current_group, $user_units, $activation_time, false);
+                    endforeach; ?>
                 </tbody>
             </table>
         </div>
@@ -1624,76 +1872,147 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
         window.location.search = urlParams.toString();
     }
 
-    // ── Bulk select / delete ──
+    // ── Bulk select / delete / multi-activate ──
+    const CURRENT_GROUP_ID = <?= (int)$current_group['id'] ?>;
+    const MULTI_MAX = 6;
+    const MULTI_PREFILL_IDS = <?= json_encode($multi_prefill_ids) ?>;
+    const MULTI_EDIT_NAME = <?= json_encode($multi_edit_name) ?>;
+    let multiEditId = <?= json_encode($multi_edit_id) ?>;
     let selectMode = false;
+    let actionMode = null; // 'trash' | 'multi'
     const selectedIds = new Set();
+    const selectedMultiIds = new Set();
+    let _flashTimer = null;
 
     function onTrashClick() {
         if (!selectMode) {
-            enterSelectMode();
-        } else if (selectedIds.size > 0) {
+            enterSelectMode('trash');
+        } else if (selectedIds.size > 0 || selectedMultiIds.size > 0) {
             performBulkDelete();
         } else {
             cancelSelectMode();
         }
     }
 
-    function enterSelectMode() {
+    function onMultiClick() {
+        if (!selectMode) {
+            enterSelectMode('multi');
+        } else if (selectedIds.size >= 2) {
+            const ids = Array.from(selectedIds);
+            let url = 'multi_activate.php?ids=' + ids.join(',') + '&group=' + CURRENT_GROUP_ID;
+            if (multiEditId) url += '&id=' + multiEditId;
+            window.location = url;
+        }
+    }
+
+    function enterSelectMode(mode) {
         selectMode = true;
-        document.getElementById('dashboard-table')?.classList.add('select-mode');
+        actionMode = mode;
+        document.getElementById('dashboard-table')?.classList.add('select-mode', 'mode-' + mode);
         document.getElementById('btn-cancel-select').style.display = '';
-        updateTrashUI();
+        document.getElementById('btn-trash').style.display = (mode === 'trash') ? '' : 'none';
+        document.getElementById('btn-multi').style.display = (mode === 'multi') ? '' : 'none';
+        document.querySelector('.toolbar-right')?.classList.add('floating');
+        const allCb = document.getElementById('select-all-rows');
+        if (allCb) allCb.disabled = (mode === 'multi');
+        updateActionUI();
     }
 
     function cancelSelectMode() {
         selectMode = false;
+        const prevMode = actionMode;
+        actionMode = null;
+        multiEditId = null;
         selectedIds.clear();
-        document.querySelectorAll('.row-select').forEach(cb => cb.checked = false);
+        selectedMultiIds.clear();
+        document.querySelectorAll('.row-select, .multi-row-select').forEach(cb => cb.checked = false);
         const allCb = document.getElementById('select-all-rows');
-        if (allCb) { allCb.checked = false; allCb.indeterminate = false; }
-        document.getElementById('dashboard-table')?.classList.remove('select-mode');
+        if (allCb) { allCb.checked = false; allCb.indeterminate = false; allCb.disabled = false; }
+        document.getElementById('dashboard-table')?.classList.remove('select-mode', 'mode-' + prevMode);
         document.getElementById('btn-cancel-select').style.display = 'none';
-        updateTrashUI();
+        document.getElementById('btn-trash').style.display = '';
+        document.getElementById('btn-multi').style.display = '';
+        document.querySelector('.toolbar-right')?.classList.remove('floating');
+        updateActionUI();
     }
 
     function toggleRowSelect(id, checked) {
+        if (checked && actionMode === 'multi' && selectedIds.size >= MULTI_MAX) {
+            const cb = document.querySelector('.row-select[data-id="' + id + '"]');
+            if (cb) cb.checked = false;
+            flashActionInfo('Multi-activations are capped at ' + MULTI_MAX + ' summits');
+            return;
+        }
         if (checked) selectedIds.add(id); else selectedIds.delete(id);
         const allBoxes = document.querySelectorAll('.row-select');
         const allCb = document.getElementById('select-all-rows');
-        if (allCb) {
+        if (allCb && actionMode !== 'multi') {
             allCb.checked = allBoxes.length > 0 && selectedIds.size === allBoxes.length;
             allCb.indeterminate = selectedIds.size > 0 && selectedIds.size < allBoxes.length;
         }
-        updateTrashUI();
+        updateActionUI();
+    }
+
+    function toggleMultiRowSelect(multiId, checked) {
+        if (checked) selectedMultiIds.add(multiId); else selectedMultiIds.delete(multiId);
+        updateActionUI();
     }
 
     function toggleSelectAllRows(checked) {
+        if (actionMode === 'multi') return;
         document.querySelectorAll('.row-select').forEach(cb => {
             cb.checked = checked;
             const id = parseInt(cb.dataset.id, 10);
             if (checked) selectedIds.add(id); else selectedIds.delete(id);
         });
-        updateTrashUI();
+        updateActionUI();
     }
 
-    function updateTrashUI() {
-        const btn = document.getElementById('btn-trash');
+    function flashActionInfo(msg) {
         const info = document.getElementById('bulk-select-info');
+        if (!info) return;
+        clearTimeout(_flashTimer);
+        info.textContent = msg;
+        info.style.color = 'var(--red)';
+        _flashTimer = setTimeout(() => { info.style.color = ''; updateActionUI(); }, 1800);
+    }
+
+    function updateActionUI() {
+        const info = document.getElementById('bulk-select-info');
+        const trashBtn = document.getElementById('btn-trash');
+        const multiBtn = document.getElementById('btn-multi');
         if (!selectMode) {
-            btn.classList.remove('armed');
-            btn.title = 'Delete summits';
+            trashBtn.classList.remove('armed');
+            trashBtn.title = 'Delete summits';
+            multiBtn.classList.remove('armed');
+            multiBtn.title = 'Plan a multi-summit activation';
             info.style.display = 'none';
             return;
         }
         info.style.display = '';
-        if (selectedIds.size > 0) {
-            btn.classList.add('armed');
-            btn.title = 'Delete ' + selectedIds.size + ' selected summit' + (selectedIds.size !== 1 ? 's' : '');
-            info.textContent = selectedIds.size + ' selected';
-        } else {
-            btn.classList.remove('armed');
-            btn.title = 'Select summits to delete';
-            info.textContent = 'Select summits to delete';
+        info.style.color = '';
+        if (actionMode === 'trash') {
+            const total = selectedIds.size + selectedMultiIds.size;
+            if (total > 0) {
+                trashBtn.classList.add('armed');
+                trashBtn.title = 'Delete ' + total + ' selected item' + (total !== 1 ? 's' : '');
+                info.textContent = total + ' selected';
+            } else {
+                trashBtn.classList.remove('armed');
+                trashBtn.title = 'Select summits or routes to delete';
+                info.textContent = 'Select summits or routes to delete';
+            }
+        } else if (actionMode === 'multi') {
+            const editPrefix = multiEditId ? ('Editing "' + (MULTI_EDIT_NAME || 'route') + '" — ') : '';
+            if (selectedIds.size >= 2) {
+                multiBtn.classList.add('armed');
+                multiBtn.title = multiEditId ? 'Update this route' : ('Plan a route for ' + selectedIds.size + ' summits');
+                info.textContent = editPrefix + selectedIds.size + ' selected (up to ' + MULTI_MAX + ')';
+            } else {
+                multiBtn.classList.remove('armed');
+                multiBtn.title = 'Select at least 2 summits';
+                info.textContent = editPrefix + 'Select at least 2 summits (up to ' + MULTI_MAX + ')';
+            }
         }
     }
 
@@ -1710,27 +2029,52 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
         window.location = 'summit_detail.php?id=' + summitId + '&group=' + groupId;
     }
 
+    function toggleMultiNested(multiId) {
+        const rows = document.querySelectorAll('.multi-nested-row[data-multi-group="' + multiId + '"]');
+        if (!rows.length) return;
+        const nowOpen = !rows[0].classList.contains('is-open');
+        rows.forEach(function(r) { r.classList.toggle('is-open', nowOpen); });
+        const btn = document.getElementById('multi-toggle-' + multiId);
+        if (btn) btn.classList.toggle('open', nowOpen);
+    }
+
     function performBulkDelete() {
         const ids = Array.from(selectedIds);
-        if (ids.length === 0) return;
-        if (!confirm('Delete ' + ids.length + ' summit' + (ids.length !== 1 ? 's' : '') + ' from this dashboard? This cannot be undone.')) return;
+        const multiIds = Array.from(selectedMultiIds);
+        if (ids.length === 0 && multiIds.length === 0) return;
+        const parts = [];
+        if (ids.length) parts.push(ids.length + ' summit' + (ids.length !== 1 ? 's' : ''));
+        if (multiIds.length) parts.push(multiIds.length + ' multi-activation route' + (multiIds.length !== 1 ? 's' : ''));
+        if (!confirm('Delete ' + parts.join(' and ') + '? This cannot be undone.')) return;
         const btn = document.getElementById('btn-trash');
         btn.disabled = true;
         fetch('bulk_delete_summits.php', {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: 'ids=' + encodeURIComponent(ids.join(','))
+            body: 'ids=' + encodeURIComponent(ids.join(',')) + '&multi_ids=' + encodeURIComponent(multiIds.join(','))
         }).then(r => r.json()).then(data => {
             if (data.success) {
                 window.location.reload();
             } else {
-                alert(data.error || 'Failed to delete summits. Please try again.');
+                alert(data.error || 'Failed to delete. Please try again.');
                 btn.disabled = false;
             }
         }).catch(() => {
-            alert('Failed to delete summits. Please try again.');
+            alert('Failed to delete. Please try again.');
             btn.disabled = false;
         });
+    }
+
+    // Arriving from "+ Add Summit" on the multi-activation page — jump straight
+    // into multi-select mode with the route's current members pre-included.
+    if (MULTI_PREFILL_IDS.length > 0) {
+        enterSelectMode('multi');
+        MULTI_PREFILL_IDS.forEach(function(id) {
+            selectedIds.add(id);
+            const cb = document.querySelector('.row-select[data-id="' + id + '"]');
+            if (cb) cb.checked = true;
+        });
+        updateActionUI();
     }
 
     // User chip dropdown

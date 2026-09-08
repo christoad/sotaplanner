@@ -5,19 +5,22 @@ require_once 'config.php';
 $db = getDbConnection();
 
 echo "<pre style='font-family:monospace; background:#111; color:#0f0; padding:1rem;'>";
-echo "=== db_migrate.php: add last_sotlas_check to activation_zone_cache ===\n\n";
+echo "=== db_migrate.php: allow a summit to appear more than once in a multi-activation ===\n\n";
 
-$cols = array_column($db->query("SHOW COLUMNS FROM activation_zone_cache")->fetchAll(), 'Field');
-if (!in_array('last_sotlas_check', $cols, true)) {
-    $db->exec("ALTER TABLE activation_zone_cache ADD COLUMN last_sotlas_check TIMESTAMP NULL DEFAULT NULL AFTER fetched_at");
-    echo "✓ Added column last_sotlas_check\n";
+$idx = $db->query("SHOW INDEX FROM multi_activation_summits WHERE Key_name = 'uniq_multi_summit'")->fetchAll();
+if (!empty($idx)) {
+    $db->exec("ALTER TABLE multi_activation_summits DROP INDEX uniq_multi_summit");
+    echo "✓ Dropped old uniq_multi_summit index (summit_id could only appear once per route)\n";
 } else {
-    echo "— Column last_sotlas_check already exists, skipped\n";
+    echo "— uniq_multi_summit already gone, skipped\n";
 }
 
-// Backfill existing rows so the upgrade cron doesn't treat every pre-existing
-// row as never-checked (they were all checked at fetch time already).
-$n = $db->exec("UPDATE activation_zone_cache SET last_sotlas_check = fetched_at WHERE last_sotlas_check IS NULL");
-echo "✓ Backfilled last_sotlas_check on $n existing row(s)\n";
+$idx2 = $db->query("SHOW INDEX FROM multi_activation_summits WHERE Key_name = 'uniq_multi_order'")->fetchAll();
+if (empty($idx2)) {
+    $db->exec("ALTER TABLE multi_activation_summits ADD UNIQUE KEY uniq_multi_order (multi_activation_id, sort_order)");
+    echo "✓ Added uniq_multi_order index (multi_activation_id, sort_order) — position is now what's unique, not the summit\n";
+} else {
+    echo "— uniq_multi_order already exists, skipped\n";
+}
 
 echo "\nAll done. Delete this file from the server.\n</pre>";

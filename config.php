@@ -1,5 +1,5 @@
 <?php
-define('APP_VERSION', '1.7.8');
+define('APP_VERSION', '1.8.0');
 
 // Enable error reporting for debugging
 error_reporting(E_ALL);
@@ -101,6 +101,69 @@ function calculateDriveTime($origin_address, $dest_lat, $dest_lng, &$element_sta
 
     error_log("SOTA Maps Distance Matrix HTTP $http_code for dest=$dest_lat,$dest_lng");
     return null;
+}
+
+// Generalized drive-time lookup: both origin and destination can be a "lat,lng"
+// string or a free-text address. Used for multi-activation legs where neither
+// end is always the group's saved address (e.g. trailhead-to-trailhead).
+function calculateDriveTimeBetween($origin, $destination, &$distance_mi = null) {
+    if (GOOGLE_MAPS_API_KEY === 'YOUR_API_KEY_HERE') {
+        return null;
+    }
+
+    $url = "https://maps.googleapis.com/maps/api/distancematrix/json?" . http_build_query([
+        'origins'      => $origin,
+        'destinations' => $destination,
+        'key'          => GOOGLE_MAPS_API_KEY,
+        'units'        => 'imperial',
+    ]);
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($http_code === 200 && $response) {
+        $data = json_decode($response, true);
+        $element = $data['rows'][0]['elements'][0] ?? null;
+        if (($data['status'] ?? '') === 'OK' && $element && ($element['status'] ?? '') === 'OK') {
+            if (isset($element['distance']['value'])) {
+                $distance_mi = round($element['distance']['value'] / 1609.344, 2);
+            }
+            return round($element['duration']['value'] / 60);
+        }
+        error_log("SOTA Maps Distance Matrix non-OK (between): top=" . ($data['status'] ?? '?') . " origin=$origin dest=$destination");
+        return null;
+    }
+
+    error_log("SOTA Maps Distance Matrix HTTP $http_code (between) origin=$origin dest=$destination");
+    return null;
+}
+
+// Geocode a free-text address to lat/lng using the server-side Maps key.
+// Returns ['lat'=>float, 'lng'=>float, 'label'=>string] or null on failure.
+function geocodeAddress($address) {
+    if (!defined('GOOGLE_MAPS_API_KEY') || GOOGLE_MAPS_API_KEY === 'YOUR_API_KEY_HERE') {
+        return null;
+    }
+    if (trim($address) === '') return null;
+
+    $url = 'https://maps.googleapis.com/maps/api/geocode/json?address=' . urlencode($address) . '&key=' . GOOGLE_MAPS_API_KEY;
+    $resp = @file_get_contents($url);
+    if (!$resp) return null;
+
+    $geo = json_decode($resp, true);
+    if (!$geo || ($geo['status'] ?? '') !== 'OK' || empty($geo['results'])) {
+        return null;
+    }
+
+    return [
+        'lat'   => (float)$geo['results'][0]['geometry']['location']['lat'],
+        'lng'   => (float)$geo['results'][0]['geometry']['location']['lng'],
+        'label' => $geo['results'][0]['formatted_address'],
+    ];
 }
 
 // Get currently selected address for current planning group
@@ -773,6 +836,25 @@ function _extract_az_polygon($data) {
     }
 
     return null;
+}
+
+// Downsample a GPX file's track points for lightweight map display.
+function extractGpxPath($filepath, $maxPoints = 250) {
+    if (!$filepath || !file_exists($filepath)) return null;
+    $content = @file_get_contents($filepath);
+    if (!$content) return null;
+    preg_match_all('/lat="([\d.\-]+)"\s+lon="([\d.\-]+)"/i', $content, $m);
+    if (empty($m[1])) return null;
+    $total = count($m[1]);
+    $pts = [];
+    $step = max(1, (int)ceil($total / $maxPoints));
+    for ($i = 0; $i < $total; $i += $step) {
+        $pts[] = [(float)$m[1][$i], (float)$m[2][$i]];
+    }
+    if (($i - $step) < ($total - 1)) {
+        $pts[] = [(float)$m[1][$total-1], (float)$m[2][$total-1]];
+    }
+    return $pts;
 }
 
 function haversine_distance($lat1, $lon1, $lat2, $lon2) {

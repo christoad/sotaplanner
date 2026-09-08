@@ -266,12 +266,16 @@ session_start();
     <!-- September 2026 -->
     <div class="version-block current">
         <div class="version-header">
-            <span class="version-number">v1.7.8</span>
+            <span class="version-number">v1.8.0</span>
             <span class="version-date">September 2026</span>
             <span class="version-badge">Current</span>
         </div>
-        <p class="version-desc">More precise activation zone boundaries on the summit map, plus a smarter nomination search and easier bulk cleanup of your dashboard.</p>
+        <p class="version-desc">A new tool for planning multi-summit activations in one trip, plus more precise activation zones, a smarter nomination search, and easier dashboard cleanup.</p>
         <ul>
+            <li>New "Multi-Activate" tool plans a driving route through several summits in one outing — drag to reorder stops, see the route on a Street/Topo/Satellite map with real driving directions, trail tracks, and activation zones, and get a full timeline from departure to return</li>
+            <li>Multi-activation routes save automatically and appear as their own row on the dashboard with rolled-up points, distance, and time; a "Directions" button opens the full round trip in Google Maps, and stat tiles show total driving distance (handy for EV range planning) alongside total time</li>
+            <li>The same summit can be added to a route more than once, for activations that cross UTC midnight for double SOTA points</li>
+            <li>The dashboard's bulk delete tool can now remove a saved multi-activation route on its own, without touching the summits nested under it</li>
             <li>The dashboard summit list now has a Points filter (2+, 4+, 6+, 8+, or exactly 10) alongside the existing status and difficulty filters</li>
             <li>You can now remove multiple summits from your dashboard at once: click the trash icon to reveal checkboxes on each row, select the ones you want gone, then click the trash icon again to delete them</li>
             <li>The dashboard's summit list now ends with a "+ Add Summits" button for quickly adding more, and the top bar button is now labeled "+ Add Summits" instead of "+ Nominate"</li>
