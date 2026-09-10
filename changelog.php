@@ -266,12 +266,14 @@ session_start();
     <!-- September 2026 -->
     <div class="version-block current">
         <div class="version-header">
-            <span class="version-number">v1.8.0</span>
+            <span class="version-number">v1.8.1</span>
             <span class="version-date">September 2026</span>
             <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">A new tool for planning multi-summit activations in one trip, plus more precise activation zones, a smarter nomination search, and easier dashboard cleanup.</p>
         <ul>
+            <li>Multi-Activate's outing timeline now has a Start Time picker showing real clock times for every leg of the trip, and a clearer breakdown of which blocks on the timeline belong to which summit</li>
+            <li>Multi-Activate routes can now include up to 11 summits in one outing, up from 6</li>
             <li>New "Multi-Activate" tool plans a driving route through several summits in one outing — drag to reorder stops, see the route on a Street/Topo/Satellite map with real driving directions, trail tracks, and activation zones, and get a full timeline from departure to return</li>
             <li>Multi-activation routes save automatically and appear as their own row on the dashboard with rolled-up points, distance, and time; a "Directions" button opens the full round trip in Google Maps, and stat tiles show total driving distance (handy for EV range planning) alongside total time</li>
             <li>The same summit can be added to a route more than once, for activations that cross UTC midnight for double SOTA points</li>

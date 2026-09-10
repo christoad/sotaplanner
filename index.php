@@ -1874,7 +1874,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
 
     // ── Bulk select / delete / multi-activate ──
     const CURRENT_GROUP_ID = <?= (int)$current_group['id'] ?>;
-    const MULTI_MAX = 6;
+    const MULTI_MAX = 11;
     const MULTI_PREFILL_IDS = <?= json_encode($multi_prefill_ids) ?>;
     const MULTI_EDIT_NAME = <?= json_encode($multi_edit_name) ?>;
     let multiEditId = <?= json_encode($multi_edit_id) ?>;

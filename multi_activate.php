@@ -12,7 +12,7 @@ $current_group = getCurrentPlanningGroup($db);
 if (!$current_group) { header('Location: index.php'); exit; }
 $user_units = getUserUnits($db);
 
-$MULTI_MAX = 6;
+$MULTI_MAX = 11;
 
 // ── POST actions ──────────────────────────────────────────────────────────
 // Saving the route itself is automatic (see the auto-save block below) — the
@@ -239,7 +239,7 @@ $return_leg_distance_mi = $return_leg['mi'];
 
 // ── Master timeline: segments (for the gantt bar) + milestones (arrival points) ──
 $segments = [];
-$milestones = [['label' => 'Depart', 'min' => 0]];
+$milestones = [['short' => 'Depart', 'full' => 'Depart', 'min' => 0]];
 $elapsed = 0;
 foreach ($stops as $i => $stop) {
     $n = $i + 1;
@@ -247,13 +247,13 @@ foreach ($stops as $i => $stop) {
         $segments[] = ['type' => 'drive', 'label' => "Drive to #$n", 'minutes' => $leg_times[$i], 'stop' => $i];
         $elapsed += $leg_times[$i];
     }
-    $milestones[] = ['label' => 'Arrive #' . $n . ': ' . $stop['name'], 'min' => $elapsed];
+    $milestones[] = ['short' => 'Arrive', 'full' => 'Arrive at ' . $stop['name'], 'min' => $elapsed];
     if ($stop['hike_min'] > 0) {
         $up = intval(round($stop['hike_min'] * 0.6));
         $down = $stop['hike_min'] - $up;
         $segments[] = ['type' => 'hike', 'label' => "Hike Up #$n", 'minutes' => $up, 'stop' => $i];
         $elapsed += $up;
-        $milestones[] = ['label' => 'On Summit #' . $n, 'min' => $elapsed];
+        $milestones[] = ['short' => 'On Summit', 'full' => 'On summit: ' . $stop['name'], 'min' => $elapsed];
     }
     $segments[] = ['type' => 'radio', 'label' => "Radio #$n", 'minutes' => $activation_time_min, 'stop' => $i];
     $elapsed += $activation_time_min;
@@ -266,11 +266,45 @@ if ($return_leg_time) {
     $segments[] = ['type' => 'drive', 'label' => 'Return', 'minutes' => $return_leg_time, 'stop' => null];
     $elapsed += $return_leg_time;
 }
-$milestones[] = ['label' => 'Home', 'min' => $elapsed];
+$milestones[] = ['short' => 'Home', 'full' => 'Arrive home', 'min' => $elapsed];
 $total_min = $elapsed;
 foreach ($milestones as &$m) { $m['pct'] = $total_min > 0 ? round($m['min'] / $total_min * 100, 1) : 0; }
 unset($m);
 $segments = array_values(array_filter($segments, fn($s) => $s['minutes'] > 0));
+
+// ── Per-summit leg spans: which portion of the bar (drive-there + hike + radio)
+// belongs to each stop, so the timeline can draw one line per summit instead of
+// a row of ambiguous dots. Segments for a given stop are already contiguous.
+$stop_spans = [];
+$cursor = 0;
+foreach ($segments as $seg) {
+    $seg_start = $cursor;
+    $cursor += $seg['minutes'];
+    if ($seg['stop'] === null) continue;
+    $i = $seg['stop'];
+    if (!isset($stop_spans[$i])) {
+        $stop_spans[$i] = ['n' => $i + 1, 'name' => $stops[$i]['name'], 'start' => $seg_start, 'end' => $cursor];
+    } else {
+        $stop_spans[$i]['end'] = $cursor;
+    }
+}
+foreach ($stop_spans as &$sp) {
+    $sp['pct_start'] = $total_min > 0 ? round($sp['start'] / $total_min * 100, 2) : 0;
+    $sp['pct_end']   = $total_min > 0 ? round($sp['end']   / $total_min * 100, 2) : 0;
+}
+unset($sp);
+$stop_spans = array_values($stop_spans);
+
+// Default start-of-day time used for the server-rendered clock times (before
+// JS applies the user's pulldown choice / their saved localStorage preference).
+$DEFAULT_START_MIN = 7 * 60; // 7:00 AM
+function multi_clock_label($minutes_from_midnight) {
+    $m = (($minutes_from_midnight % 1440) + 1440) % 1440;
+    $days = intdiv($minutes_from_midnight, 1440);
+    $label = date('g:i A', mktime(0, $m, 0));
+    if ($days > 0) $label .= ' (+' . $days . 'd)';
+    return $label;
+}
 
 $SEG_COLORS = ['drive' => '#7A6858', 'hike' => '#6E8155', 'radio' => '#C07840'];
 
@@ -541,10 +575,33 @@ a:hover { text-decoration: underline; }
 .time-bar-seg { display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; min-width: 0; padding: 0 6px; }
 .time-bar-label { color: rgba(255,255,255,0.95); font-size: 0.66rem; font-weight: 600; white-space: nowrap; line-height: 1.25; }
 .time-bar-time { color: rgba(255,255,255,0.8); font-size: 0.62rem; font-weight: 400; white-space: nowrap; line-height: 1.25; }
-.milestone-row { position: relative; height: 34px; margin-bottom: 0.5rem; }
-.milestone { position: absolute; top: 0; transform: translateX(-50%); text-align: center; white-space: nowrap; }
-.milestone-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); margin: 0 auto 3px; }
-.milestone-label { font-size: 0.65rem; color: var(--ink-3); }
+
+/* Leg-association row: one horizontal line per summit, spanning the drive-there
+   + hike + radio portion of the bar, with the summit name centered on the line —
+   makes it obvious at a glance which blocks below belong to which summit. */
+.leg-row { position: relative; height: 24px; margin-bottom: 4px; }
+.leg-span { position: absolute; top: 50%; height: 0; border-top: 2px solid var(--border-2); }
+.leg-span::before, .leg-span::after { content: ''; position: absolute; top: -4px; width: 1px; height: 8px; background: var(--ink-4); }
+.leg-span::before { left: 0; }
+.leg-span::after { right: 0; }
+.leg-span-label { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: var(--surface); padding: 0 8px; font-size: 0.72rem; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+
+/* Time-tick row below the bar: clock times at each milestone, driven by the
+   Start Time pulldown (see updateStartTime() in JS). */
+.tick-row { position: relative; height: 34px; margin-top: 6px; }
+.tick { position: absolute; top: 0; transform: translateX(-50%); text-align: center; white-space: nowrap; }
+.tick-mark { width: 1px; height: 6px; background: var(--ink-4); margin: 0 auto 3px; }
+.tick-type { font-size: 0.62rem; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.tick-time { font-size: 0.7rem; color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Start-time / activation-time pulldowns, left-aligned under the card title */
+.timeline-controls { display: flex; align-items: flex-end; gap: 0.75rem; margin-bottom: 1.25rem; }
+
+/* Inset the whole leg-row/time-bar/tick-row assembly from the card edges so the
+   first and last tick labels (Depart / Home) have room to breathe — all three
+   rows share this narrower coordinate space so their percentage positions stay
+   aligned with each other. */
+.timeline-track { margin: 0 2rem; }
 
 /* Compact rename control + delete, in the page header next to the activation-time pulldown */
 .save-inline { display: flex; align-items: center; gap: 0.4rem; }
@@ -600,19 +657,11 @@ a:hover { text-decoration: underline; }
       </div>
     </div>
     <div class="page-header-right">
-      <div>
-        <label class="form-label" for="activation_time_select">Activation time / summit</label>
-        <select class="form-select" id="activation_time_select" onchange="changeActivationTime(this.value)">
-          <?php foreach ([15, 20, 30, 45, 60, 90, 120] as $opt): ?>
-            <option value="<?= $opt ?>"<?= $activation_time_min == $opt ? ' selected' : '' ?>><?= $opt ?> min</option>
-          <?php endforeach; ?>
-        </select>
-      </div>
-      <a href="<?= htmlspecialchars('multi_activate.php?' . http_build_query(array_merge($url_base, ['ids' => implode(',', $summit_ids), 'ordered' => 1, 'recalc' => 1]))) ?>" class="btn btn-ghost btn-sm" style="margin-top:1.1rem;">Recalculate Travel Times</a>
+      <a href="<?= htmlspecialchars('multi_activate.php?' . http_build_query(array_merge($url_base, ['ids' => implode(',', $summit_ids), 'ordered' => 1, 'recalc' => 1]))) ?>" class="btn btn-ghost btn-sm">Recalculate Travel Times</a>
       <?php if ($gmaps_url): ?>
-        <a href="<?= htmlspecialchars($gmaps_url) ?>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="margin-top:1.1rem;" title="Open a round-trip driving route through every stop in Google Maps">Directions ↗</a>
+        <a href="<?= htmlspecialchars($gmaps_url) ?>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" title="Open a round-trip driving route through every stop in Google Maps">Directions ↗</a>
       <?php endif; ?>
-      <form method="GET" action="multi_activate.php" class="save-inline" style="margin-top:1.1rem;">
+      <form method="GET" action="multi_activate.php" class="save-inline">
         <input type="hidden" name="id" value="<?= $multi_id ?>">
         <input type="hidden" name="ids" value="<?= htmlspecialchars(implode(',', $summit_ids)) ?>">
         <input type="hidden" name="group" value="<?= $current_group['id'] ?>">
@@ -624,7 +673,7 @@ a:hover { text-decoration: underline; }
         <input type="hidden" name="delete_multi" value="1">
         <input type="hidden" name="multi_id" value="<?= $multi_id ?>">
       </form>
-      <button type="button" class="btn btn-danger btn-sm btn-icon" style="margin-top:1.1rem;" title="Delete this route"
+      <button type="button" class="btn btn-danger btn-sm btn-icon" title="Delete this route"
               onclick="if(confirm('Delete this saved multi-activation route? The individual summits will stay on your dashboard.')) document.getElementById('delete-form').submit();">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M5.5 4V2.5A1 1 0 0 1 6.5 1.5h3a1 1 0 0 1 1 1V4M6.5 7.5v4M9.5 7.5v4M3.5 4l.7 8.4A1 1 0 0 0 5.2 13.5h5.6a1 1 0 0 0 1-1.1L12.5 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
@@ -746,13 +795,36 @@ a:hover { text-decoration: underline; }
 
   <!-- Master Gantt -->
   <div class="card">
-    <div class="card-title">Outing Timeline</div>
+    <div class="card-title" style="display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
+      <span>Outing Timeline</span>
+      <?php if (!empty($segments)): ?>
+        <span style="font-size:0.78rem; font-weight:500; color:var(--ink-3);">Total: <strong style="color:var(--ink); font-weight:600;"><?= formatTime($total_min) ?></strong> door-to-door, round trip</span>
+      <?php endif; ?>
+    </div>
+    <div class="timeline-controls">
+      <div>
+        <label class="form-label" for="start_time_select">Start time</label>
+        <select class="form-select" id="start_time_select" onchange="updateStartTime()">
+          <?php for ($h = 0; $h < 24; $h++): $val = $h * 60; ?>
+            <option value="<?= $val ?>"<?= $val === $DEFAULT_START_MIN ? ' selected' : '' ?>><?= date('g:i A', mktime($h, 0, 0)) ?></option>
+          <?php endfor; ?>
+        </select>
+      </div>
+      <div>
+        <label class="form-label" for="activation_time_select">Activation time / summit</label>
+        <select class="form-select" id="activation_time_select" onchange="changeActivationTime(this.value)">
+          <?php foreach ([15, 20, 30, 45, 60, 90, 120] as $opt): ?>
+            <option value="<?= $opt ?>"<?= $activation_time_min == $opt ? ' selected' : '' ?>><?= $opt ?> min</option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+    </div>
     <?php if (!empty($segments)): ?>
-    <div class="milestone-row">
-      <?php foreach ($milestones as $m): ?>
-        <div class="milestone" style="left:<?= $m['pct'] ?>%">
-          <div class="milestone-dot"></div>
-          <div class="milestone-label"><?= htmlspecialchars($m['label']) ?><br>+<?= formatTime($m['min']) ?></div>
+    <div class="timeline-track">
+    <div class="leg-row">
+      <?php foreach ($stop_spans as $sp): ?>
+        <div class="leg-span" style="left:<?= $sp['pct_start'] ?>%; width:<?= max(0, $sp['pct_end'] - $sp['pct_start']) ?>%;">
+          <span class="leg-span-label">#<?= $sp['n'] ?> <?= htmlspecialchars($sp['name']) ?></span>
         </div>
       <?php endforeach; ?>
     </div>
@@ -764,7 +836,16 @@ a:hover { text-decoration: underline; }
         </div>
       <?php endforeach; ?>
     </div>
-    <div style="font-size:0.78rem; color:var(--ink-3);">Total: <strong style="color:var(--ink);"><?= formatTime($total_min) ?></strong> door-to-door, round trip</div>
+    <div class="tick-row">
+      <?php foreach ($milestones as $m): ?>
+        <div class="tick" style="left:<?= $m['pct'] ?>%" title="<?= htmlspecialchars($m['full']) ?>">
+          <div class="tick-mark"></div>
+          <div class="tick-type"><?= htmlspecialchars($m['short']) ?></div>
+          <div class="tick-time" data-elapsed-min="<?= $m['min'] ?>"><?= htmlspecialchars(multi_clock_label($DEFAULT_START_MIN + $m['min'])) ?></div>
+        </div>
+      <?php endforeach; ?>
+    </div>
+    </div>
     <?php else: ?>
       <p style="color:var(--ink-3); font-size:0.875rem;">Not enough data yet to build a timeline — add hike distance/elevation or a starting address.</p>
     <?php endif; ?>
@@ -831,6 +912,43 @@ function changeActivationTime(val) {
     url.searchParams.set('activation_time', val);
     window.location = url.toString();
 }
+
+// ── Start-time pulldown: purely a display offset (doesn't affect any stored
+// data), so it recomputes clock times in place via JS instead of reloading.
+// Remembered per-browser in localStorage so it sticks across visits.
+const START_TIME_STORAGE_KEY = 'multiActivateStartTimeMin';
+
+function formatClockFromMinutes(min) {
+    const m = ((min % 1440) + 1440) % 1440;
+    const days = Math.floor(min / 1440);
+    let h = Math.floor(m / 60), mm = m % 60;
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    let h12 = h % 12; if (h12 === 0) h12 = 12;
+    let s = h12 + ':' + String(mm).padStart(2, '0') + ' ' + ampm;
+    if (days > 0) s += ' (+' + days + 'd)';
+    return s;
+}
+
+function updateStartTime() {
+    const sel = document.getElementById('start_time_select');
+    if (!sel) return;
+    const startMin = parseInt(sel.value, 10);
+    try { localStorage.setItem(START_TIME_STORAGE_KEY, startMin); } catch (e) {}
+    document.querySelectorAll('[data-elapsed-min]').forEach(el => {
+        const elapsed = parseInt(el.getAttribute('data-elapsed-min'), 10);
+        el.textContent = formatClockFromMinutes(startMin + elapsed);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const sel = document.getElementById('start_time_select');
+    if (!sel) return;
+    try {
+        const saved = localStorage.getItem(START_TIME_STORAGE_KEY);
+        if (saved !== null && sel.querySelector('option[value="' + saved + '"]')) sel.value = saved;
+    } catch (e) {}
+    updateStartTime();
+});
 
 document.addEventListener('click', function(e) {
     const chip = document.getElementById('userChip');
