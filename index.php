@@ -944,7 +944,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     }
     .toolbar-right.floating .multi-btn.armed,
     .toolbar-right.floating .trash-btn.armed {
-      transform: scale(1.18); box-shadow: var(--shadow-md);
+      box-shadow: var(--shadow-md);
     }
     @media (max-width: 768px) { .toolbar-right.floating { display: none !important; } }
 
@@ -1109,15 +1109,25 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
       width: 15px; height: 15px; border-radius: 50%; background: var(--green-dark); color: #fff;
       font-size: 0.58rem; font-weight: 700; margin-right: 5px; vertical-align: middle;
     }
-    /* Multi rows read as a route "header" rather than a peer summit — ~75% of a normal row */
-    .data-table tbody tr.multi-summary-row td,
+    /* Nested member rows read as a route "header" child — ~75% of a normal row */
     .data-table tbody tr.nested-summit-row td { padding-top: var(--sp-2) !important; padding-bottom: var(--sp-2) !important; }
-    .multi-summary-row .summit-name, .nested-summit-row .summit-name { font-size: 0.8rem; }
-    .multi-summary-row .summit-ref, .nested-summit-row .summit-ref { font-size: 0.65rem; }
-    .multi-summary-row .stat-val, .nested-summit-row .stat-val,
-    .multi-summary-row .total-time, .nested-summit-row .total-time { font-size: 0.78rem; }
-    .multi-summary-row .badge, .nested-summit-row .badge { padding: 1px 6px; font-size: 0.6rem; }
-    .multi-summary-row .points-dot, .nested-summit-row .points-dot { width: 18px; height: 18px; font-size: 0.6rem; }
+    .nested-summit-row .summit-name { font-size: 0.8rem; }
+    .nested-summit-row .summit-ref { font-size: 0.65rem; }
+    .nested-summit-row .stat-val, .nested-summit-row .total-time { font-size: 0.78rem; }
+    .nested-summit-row .badge { padding: 1px 6px; font-size: 0.6rem; }
+    .nested-summit-row .points-dot { width: 18px; height: 18px; font-size: 0.6rem; }
+
+    /* The multi-summary row itself reads as a slim section header/divider above
+       its nested summits, not a peer row — collapsed to one line and much
+       shorter than either a normal summit row or its own nested children. */
+    .data-table tbody tr.multi-summary-row td { padding-top: 3px !important; padding-bottom: 3px !important; }
+    .multi-summary-row .td-main a { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+    .multi-summary-row .summit-name { font-size: 0.74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .multi-summary-row .summit-ref { font-size: 0.62rem; margin-top: 0; white-space: nowrap; flex-shrink: 0; }
+    .multi-summary-row .stat-val, .multi-summary-row .total-time { font-size: 0.72rem; }
+    .multi-summary-row .badge { padding: 0 5px; font-size: 0.56rem; }
+    .multi-summary-row .points-dot { width: 15px; height: 15px; font-size: 0.55rem; }
+    .multi-summary-row .multi-expand-btn { width: 17px; height: 17px; }
 
     /* ── Empty state ── */
     .add-summits-footer { text-align: center; padding: var(--sp-6) 0 var(--sp-2); }

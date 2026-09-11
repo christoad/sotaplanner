@@ -560,6 +560,10 @@ a:hover { text-decoration: underline; }
 .map-wrap { position: relative; border-radius: var(--r-lg); overflow: hidden; border: 1px solid var(--border); height: 420px; }
 #multi-map { width: 100%; height: 100%; }
 .lmap-num { width: 26px; height: 26px; border-radius: 50%; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,0.35); }
+/* Wider pill instead of a circle when a summit is visited more than once in the
+   route (e.g. re-activated across UTC midnight for double points) — shows every
+   visit's stop number instead of the later marker hiding the earlier one. */
+.lmap-num-multi { width: auto; min-width: 34px; padding: 0 6px; border-radius: 13px; font-size: 0.68rem; letter-spacing: -0.02em; white-space: nowrap; }
 .lmap-home { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; box-shadow: 0 1px 4px rgba(0,0,0,0.35); }
 .lmap-other { width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 2px solid var(--ink-4); color: var(--ink-2); display: flex; align-items: center; justify-content: center; font-size: 0.6rem; font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
 #btn-show-all-summits.active { background: var(--ink); color: #fff; border-color: var(--ink); }
@@ -1046,9 +1050,32 @@ async function initMap() {
         straightLine.push([MAP_ORIGIN.lat, MAP_ORIGIN.lng]);
     }
 
+    // Group stops that revisit the same summit (e.g. re-activated after UTC
+    // midnight for double SOTA points) so their markers don't just stack on top
+    // of each other — one marker shows every visit's stop number instead of the
+    // later marker hiding the earlier one.
+    const stopGroups = {};
+    const stopGroupOrder = [];
     MAP_STOPS.forEach(function(s) {
-        const icon = L.divIcon({ className: '', html: '<div class="lmap-num">' + s.order + '</div>', iconSize: [26, 26], iconAnchor: [13, 13] });
-        L.marker([s.lat, s.lng], { icon: icon }).addTo(map).bindTooltip('#' + s.order + ' ' + s.name + ' (' + s.ref + ')');
+        if (!stopGroups[s.id]) { stopGroups[s.id] = []; stopGroupOrder.push(s.id); }
+        stopGroups[s.id].push(s);
+    });
+    stopGroupOrder.forEach(function(id) {
+        const group = stopGroups[id];
+        const first = group[0];
+        const orders = group.map(g => g.order);
+        const multi = orders.length > 1;
+        const icon = L.divIcon({
+            className: '',
+            html: '<div class="lmap-num' + (multi ? ' lmap-num-multi' : '') + '">' + orders.join(' & ') + '</div>',
+            iconSize: multi ? [34, 26] : [26, 26],
+            iconAnchor: multi ? [17, 13] : [13, 13]
+        });
+        const tooltip = (multi ? 'Visited as #' + orders.join(' and #') : '#' + first.order) + ' ' + first.name + ' (' + first.ref + ')';
+        L.marker([first.lat, first.lng], { icon: icon }).addTo(map).bindTooltip(tooltip);
+    });
+
+    MAP_STOPS.forEach(function(s) {
         bounds.push([s.lat, s.lng]);
         straightLine.push([s.lat, s.lng]);
 
