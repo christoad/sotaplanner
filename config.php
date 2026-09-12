@@ -1,5 +1,5 @@
 <?php
-define('APP_VERSION', '1.8.1');
+define('APP_VERSION', '1.9.0');
 
 // Enable error reporting for debugging
 error_reporting(E_ALL);
@@ -284,6 +284,37 @@ function getDistanceUnit($units) {
 
 function getElevationUnit($units) {
     return $units === 'metric' ? 'm' : 'ft';
+}
+
+/**
+ * Whether today falls within the approximate hemisphere-based winter bonus
+ * window (Dec 1 - Mar 15 Northern, Jun 1 - Sep 15 Southern). SOTA doesn't
+ * publish a single source for each association's exact date range, so this
+ * is used to decide whether to show the bonus badge at all rather than
+ * showing it year-round. Mirrored in JS as winterBonusSeasonActive() in
+ * nominate.php.
+ */
+function isWinterBonusSeasonActive($latitude) {
+    $md = (int)date('n') * 100 + (int)date('j');
+    if ($latitude !== null && (float)$latitude < 0) {
+        return $md >= 601 && $md <= 915;
+    }
+    return $md >= 1201 || $md <= 315;
+}
+
+/**
+ * Tooltip text for a summit's winter bonus badge. SOTA doesn't publish a single
+ * source for each association's exact winter bonus date range (~200 associations
+ * each set their own in their own Association Reference Manual), so this gives a
+ * hemisphere-based default rather than a false-precision guess per association.
+ */
+function winterBonusSeasonText($bonus_points, $latitude) {
+    $season = $latitude !== null && (float)$latitude < 0
+        ? 'June 1 – September 15 (Southern Hemisphere winter)'
+        : 'December 1 – March 15 (Northern Hemisphere winter)';
+    $pts = (int)$bonus_points;
+    $label = $pts === 1 ? 'point' : 'points';
+    return "+{$pts} winter bonus {$label} — typically awarded {$season}. Exact dates are set by this summit's SOTA association.";
 }
 
 // ── Authentication helpers ─────────────────────────────────────────────────

@@ -225,6 +225,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'nominate_one') {
         $latitude     = $sd['latitude'] ?? $sd['lat'] ?? 0;
         $longitude    = $sd['longitude'] ?? $sd['lng'] ?? $sd['long'] ?? 0;
         $sotlas_link  = "https://sotl.as/summits/" . $sota_ref;
+        // Winter bonus isn't in the SOTA API response — only in our cache (built from
+        // SOTA's official summit-list CSV, see rebuild_sota_cache.php)
+        $bonus_points = get_sota_cache_summit($sota_ref)['bonus'] ?? 0;
 
         // Inherit shared data from another group if available
         $chk2 = $db->prepare("SELECT * FROM summits WHERE sota_ref = ? AND planning_group_id != ? AND (trail_link IS NOT NULL OR hike_distance_mi IS NOT NULL) LIMIT 1");
@@ -233,17 +236,17 @@ if (isset($_GET['action']) && $_GET['action'] === 'nominate_one') {
 
         $ins = $db->prepare("
             INSERT INTO summits
-            (planning_group_id, source_group_id, uses_shared_data, sota_ref, name, region, points,
+            (planning_group_id, source_group_id, uses_shared_data, sota_ref, name, region, points, bonus_points,
              elevation_m, elevation_ft, latitude, longitude, nominated_date, sotlas_link, status,
              trail_link, hike_distance_mi, hike_elevation_gain_ft, difficulty, trailhead_lat, trailhead_lng)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), ?, 'nominated', ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), ?, 'nominated', ?, ?, ?, ?, ?, ?)
         ");
         try {
             $ins->execute([
                 $current_group['id'],
                 $source ? $source['planning_group_id'] : null,
                 $source ? true : false,
-                $sota_ref, $name, $region, $points, $elevation_m, $elevation_ft, $latitude, $longitude, $sotlas_link,
+                $sota_ref, $name, $region, $points, $bonus_points, $elevation_m, $elevation_ft, $latitude, $longitude, $sotlas_link,
                 $source ? $source['trail_link'] : null,
                 $source ? $source['hike_distance_mi'] : null,
                 $source ? $source['hike_elevation_gain_ft'] : null,
@@ -476,6 +479,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
             $elevation_ft = $summit_data['altFt'] ?? round($elevation_m * 3.28084);
             $latitude     = $summit_data['latitude'] ?? $summit_data['lat'] ?? 0;
             $longitude    = $summit_data['longitude'] ?? $summit_data['lng'] ?? $summit_data['long'] ?? 0;
+            $bonus_points = get_sota_cache_summit($sota_ref)['bonus'] ?? 0;
 
             try {
                 // Already nominated by this group — count as success, don't re-insert
@@ -491,17 +495,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
 
                 $ins = $db->prepare("
                     INSERT INTO summits
-                    (planning_group_id, source_group_id, uses_shared_data, sota_ref, name, region, points,
+                    (planning_group_id, source_group_id, uses_shared_data, sota_ref, name, region, points, bonus_points,
                      elevation_m, elevation_ft, latitude, longitude, nominated_date, sotlas_link, status,
                      trail_link, hike_distance_mi, hike_elevation_gain_ft, difficulty,
                      trailhead_lat, trailhead_lng)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), ?, 'nominated', ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), ?, 'nominated', ?, ?, ?, ?, ?, ?)
                 ");
 
                 if ($source_summit) {
                     $ins->execute([
                         $current_group['id'], $source_summit['planning_group_id'], true,
-                        $sota_ref, $name, $region, $points, $elevation_m, $elevation_ft, $latitude, $longitude, $sotlas_link,
+                        $sota_ref, $name, $region, $points, $bonus_points, $elevation_m, $elevation_ft, $latitude, $longitude, $sotlas_link,
                         $source_summit['trail_link'], $source_summit['hike_distance_mi'],
                         $source_summit['hike_elevation_gain_ft'], $source_summit['difficulty'],
                         $source_summit['trailhead_lat'], $source_summit['trailhead_lng'],
@@ -509,7 +513,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
                 } else {
                     $ins->execute([
                         $current_group['id'], null, false,
-                        $sota_ref, $name, $region, $points, $elevation_m, $elevation_ft, $latitude, $longitude, $sotlas_link,
+                        $sota_ref, $name, $region, $points, $bonus_points, $elevation_m, $elevation_ft, $latitude, $longitude, $sotlas_link,
                         null, null, null, null, null, null
                     ]);
                 }
@@ -561,6 +565,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
             $elevation_ft = $summit_data['altFt'] ?? round($elevation_m * 3.28084);
             $latitude = $summit_data['latitude'] ?? $summit_data['lat'] ?? 0;
             $longitude = $summit_data['longitude'] ?? $summit_data['lng'] ?? $summit_data['long'] ?? 0;
+            $bonus_points = get_sota_cache_summit($sota_ref)['bonus'] ?? 0;
 
             try {
                 // Check if this group already nominated this summit
@@ -586,11 +591,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
 
                 $stmt = $db->prepare("
                     INSERT INTO summits
-                    (planning_group_id, source_group_id, uses_shared_data, sota_ref, name, region, points,
+                    (planning_group_id, source_group_id, uses_shared_data, sota_ref, name, region, points, bonus_points,
                      elevation_m, elevation_ft, latitude, longitude, nominated_date, sotlas_link, status,
                      trail_link, hike_distance_mi, hike_elevation_gain_ft, difficulty,
                      trailhead_lat, trailhead_lng)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), ?, 'nominated', ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), ?, 'nominated', ?, ?, ?, ?, ?, ?)
                 ");
 
                 $sotlas_link = "https://sotl.as/summits/" . $sota_ref;
@@ -600,7 +605,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
                         $current_group['id'],
                         $source_summit['planning_group_id'],
                         true,
-                        $sota_ref, $name, $region, $points, $elevation_m, $elevation_ft,
+                        $sota_ref, $name, $region, $points, $bonus_points, $elevation_m, $elevation_ft,
                         $latitude, $longitude, $sotlas_link,
                         $source_summit['trail_link'],
                         $source_summit['hike_distance_mi'],
@@ -663,7 +668,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
                         $current_group['id'],
                         null,
                         false,
-                        $sota_ref, $name, $region, $points, $elevation_m, $elevation_ft,
+                        $sota_ref, $name, $region, $points, $bonus_points, $elevation_m, $elevation_ft,
                         $latitude, $longitude, $sotlas_link,
                         null, null, null, null, null, null
                     ]);
@@ -955,6 +960,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
     .result-ref  { font-family: var(--font-mono); font-size: 0.75rem; color: var(--ink-3); margin-top: 2px; }
     .result-meta { font-size: 0.775rem; color: var(--ink-3); text-align: right; white-space: nowrap; flex-shrink: 0; }
     .result-pts  { font-weight: 700; color: var(--accent); }
+    .bonus-badge {
+      position: relative;
+      font-size: 0.72em; font-weight: 700; color: var(--orange);
+      margin-left: 0.3em; vertical-align: super; line-height: 1;
+      font-variant-numeric: tabular-nums; cursor: help;
+    }
+    .bonus-badge::after {
+      content: attr(data-tip);
+      position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+      background: var(--ink); color: #fff; font-size: 0.7rem; font-weight: 500; line-height: 1.4;
+      padding: 5px 9px; border-radius: var(--r-sm); width: max-content; max-width: 200px; text-align: center;
+      opacity: 0; visibility: hidden; transition: opacity 0.08s ease; pointer-events: none; z-index: 20;
+      box-shadow: var(--shadow-md);
+    }
+    .bonus-badge::before {
+      content: ""; position: absolute; bottom: calc(100% + 1px); left: 50%; transform: translateX(-50%);
+      border: 4px solid transparent; border-top-color: var(--ink);
+      opacity: 0; visibility: hidden; transition: opacity 0.08s ease; pointer-events: none; z-index: 20;
+    }
+    .bonus-badge:hover::after, .bonus-badge:hover::before { opacity: 1; visibility: visible; }
     .search-status { padding: 0.75rem 0; color: var(--ink-3); font-size: 0.85rem; }
     .search-count  { font-size: 0.75rem; color: var(--ink-4); margin-bottom: 0.5rem; }
 
@@ -1629,13 +1654,14 @@ function renderResults(results, q) {
     let html = '<div class="search-count">' + results.length + ' summit' + (results.length !== 1 ? 's' : '') + ' found' + more + '</div>';
     results.forEach(s => {
         const alt = s.altFt ? (s.altFt.toLocaleString() + ' ft') : '';
+        const bonus = (s.bonus && winterBonusSeasonActive(s.lat)) ? '<span class="bonus-badge" data-tip="' + escAttr(winterBonusSeasonText(s.bonus, s.lat)) + '">+' + s.bonus + '</span>' : '';
         html += `<div class="result-item" onclick="selectSummit('${escAttr(s.ref)}','${escAttr(s.name)}')">
             <div>
                 <div class="result-name">${escHtml(s.name)}</div>
                 <div class="result-ref">${escHtml(s.ref)}</div>
             </div>
             <div class="result-meta">
-                <div class="result-pts">${s.points} pt${s.points !== 1 ? 's' : ''}</div>
+                <div class="result-pts">${s.points} pt${s.points !== 1 ? 's' : ''}${bonus}</div>
                 ${alt ? '<div>' + alt + '</div>' : ''}
             </div>
         </div>`;
@@ -1767,6 +1793,26 @@ function setNominateEnabled(on) { nominateBtn.disabled = !on; nominateBtn.style.
 
 function escHtml(s)  { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function escAttr(s)  { return String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+
+// Mirrors isWinterBonusSeasonActive() in config.php.
+function winterBonusSeasonActive(lat) {
+    const now = new Date();
+    const md = (now.getMonth() + 1) * 100 + now.getDate();
+    if (typeof lat === 'number' && lat < 0) {
+        return md >= 601 && md <= 915;
+    }
+    return md >= 1201 || md <= 315;
+}
+
+// Mirrors winterBonusSeasonText() in config.php — SOTA doesn't publish a single source for
+// each association's exact winter bonus dates, so this gives a hemisphere-based default.
+function winterBonusSeasonText(bonus, lat) {
+    const season = (typeof lat === 'number' && lat < 0)
+        ? 'June 1 \u2013 September 15 (Southern Hemisphere winter)'
+        : 'December 1 \u2013 March 15 (Northern Hemisphere winter)';
+    const label = bonus === 1 ? 'point' : 'points';
+    return '+' + bonus + ' winter bonus ' + label + ' \u2014 typically awarded ' + season + '. Exact dates are set by this summit\'s SOTA association.';
+}
 
 // ── Form submit validation ────────────────────────────────────────────────────
 document.getElementById('nominate-form').addEventListener('submit', function(e) {
@@ -2050,8 +2096,9 @@ function renderAreaResults(data) {
         html += '<div style="font-size:0.8375rem; font-weight:600; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escHtml(s.name) + inGroup + '</div>';
         html += '<div style="font-family:var(--font-mono); font-size:0.72rem; color:var(--ink-3);">' + escHtml(s.ref) + '</div>';
         html += '</div>';
+        const bonusChip = (s.bonus && winterBonusSeasonActive(s.lat)) ? '<span class="bonus-badge" data-tip="' + escAttr(winterBonusSeasonText(s.bonus, s.lat)) + '">+' + s.bonus + '</span>' : '';
         html += '<div style="text-align:right; flex-shrink:0; font-size:0.775rem; line-height:1.4;">';
-        html += '<div style="font-weight:700; color:var(--accent);">' + s.points + ' pt' + (s.points !== 1 ? 's' : '') + '</div>';
+        html += '<div style="font-weight:700; color:var(--accent);">' + s.points + ' pt' + (s.points !== 1 ? 's' : '') + bonusChip + '</div>';
         html += '<div style="color:var(--ink-3);">' + dist + ' ' + unitsLabel + '</div>';
         if (alt) html += '<div style="color:var(--ink-4);">' + alt + '</div>';
         html += '</div>';

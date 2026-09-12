@@ -550,6 +550,9 @@ function render_dashboard_row($summit, $current_group, $user_units, $activation_
         </td>
         <td class="td-hide-mobile">
             <span class="points-dot"><?= $summit['points'] ?></span>
+            <?php if (!empty($summit['bonus_points']) && isWinterBonusSeasonActive($summit['latitude'])): ?>
+                <span class="bonus-badge" data-tip="<?= htmlspecialchars(winterBonusSeasonText($summit['bonus_points'], $summit['latitude'])) ?>">+<?= $summit['bonus_points'] ?></span>
+            <?php endif; ?>
         </td>
         <td class="td-diff">
             <?php if ($summit['difficulty']): ?>
@@ -1083,6 +1086,28 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
       font-size: 0.7rem; font-weight: 700; color: var(--ink-2);
       font-variant-numeric: tabular-nums;
     }
+    .bonus-badge {
+      position: relative;
+      font-size: 0.62rem; font-weight: 700; color: var(--orange);
+      margin-left: 3px; vertical-align: super; line-height: 1;
+      font-variant-numeric: tabular-nums; cursor: help;
+    }
+    .nested-summit-row .bonus-badge { font-size: 0.56rem; }
+    .multi-summary-row .bonus-badge { font-size: 0.5rem; }
+    .bonus-badge::after {
+      content: attr(data-tip);
+      position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+      background: var(--ink); color: #fff; font-size: 0.7rem; font-weight: 500; line-height: 1.4;
+      padding: 5px 9px; border-radius: var(--r-sm); width: max-content; max-width: 200px; text-align: center;
+      opacity: 0; visibility: hidden; transition: opacity 0.08s ease; pointer-events: none; z-index: 20;
+      box-shadow: var(--shadow-md); text-transform: none; letter-spacing: normal;
+    }
+    .bonus-badge::before {
+      content: ""; position: absolute; bottom: calc(100% + 1px); left: 50%; transform: translateX(-50%);
+      border: 4px solid transparent; border-top-color: var(--ink);
+      opacity: 0; visibility: hidden; transition: opacity 0.08s ease; pointer-events: none; z-index: 20;
+    }
+    .bonus-badge:hover::after, .bonus-badge:hover::before { opacity: 1; visibility: visible; }
 
     /* ── Multi-activation summary row + nested member rows ──
        Deliberately a darker green than the plain "Ready" rows (--green-bg),

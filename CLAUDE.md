@@ -2,9 +2,6 @@
 
 ## Pending Work — Ask Chris at Session Start
 
-**TODO — delete leftover db_migrate.php from production (queued 2026-09-04):**
-A disposable `db_migrate.php` (password-gated, `?pw=sota`) was rsynced to `/home/chrisr069/sotaplannerdotcom/` to add the `activation_zone_cache` table and its `last_sotlas_check` column (see "GPX Track Analysis" below). It ran successfully, but deleting it afterward hit the known intermittent DreamHost SSH timeout issue (see "Dreamhost SSH Connectivity Issues" below) before the cleanup command could go through. Not an active risk (password-gated, idempotent), but per the db_migrate.php pattern it should be deleted once SSH is reachable: `ssh dreamhost-sota "rm /home/chrisr069/sotaplannerdotcom/db_migrate.php"`. Remove this TODO once done.
-
 **Google Maps API — two-key setup (completed 2026-06-01):**
 Two separate API keys are used. Both are in the same paid Google Cloud project.
 
@@ -172,6 +169,19 @@ Planned activations can export a `.ics` calendar file and include a real-time lo
 ### Activation History
 Past activations can be logged against a summit: date, callsigns of participants, notes. These are stored in the `activations` table. Once official SOTA SSO OAuth is live, the plan is to pull real past activation data from the SOTA API for each summit.
 
+### Winter Bonus Points (added 2026-09-10)
+SOTA awards bonus points (usually +3, sometimes 0) to qualifying summits during their local winter season, shown as an orange "+N" badge next to the points value on the dashboard, summit detail page, and nomination search results. Hovering the badge shows a tooltip explaining when the bonus applies.
+
+**Data source — this is the important part:** neither the JSON API (`api2.sota.org.uk`) nor SOTLAS expose a summit's `BonusPoints` value. The only source is SOTA's official worldwide summit list CSV at `https://storage.sota.org.uk/summitslist.csv` (~24 MB, columns include `SummitCode, AssociationName, RegionName, SummitName, AltM, AltFt, Longitude, Latitude, Points, BonusPoints, ValidFrom, ValidTo, ActivationCount, ...`), which is explicitly published for third-party tool consumption (unlike the JSON API's ToS-gated docs — see "SOTA Data API" section below). `rebuild_sota_cache.php` now downloads this CSV directly instead of the old JSON API dump, so the cache rebuild is both simpler and faster (~24 MB vs ~90 MB) and gains bonus data as a side effect.
+
+**Cache format changed:** `sota_cache.csv.gz` gained an 8th pipe-delimited field, `bonus_points`: `code|name|norm|points|alt_ft|lat|lon|bonus`. `sota_cache_helper.php`'s functions handle old 7-field cache rows gracefully (bonus defaults to 0) so this isn't a breaking change if the cache is stale.
+
+**Season dates aren't centralized anywhere:** each of SOTA's ~200 associations sets its own winter bonus date range in its own Association Reference Manual (ARM) document — there's no single published table. Rather than fabricate false precision, the tooltip text (`winterBonusSeasonText()` in `config.php`, mirrored in JS in `nominate.php`) shows a hemisphere-based default (Dec 1 – Mar 15 for Northern, Jun 1 – Sep 15 for Southern, based on the summit's latitude) with a caveat that exact dates are association-specific.
+
+**DB:** `summits.bonus_points` (SMALLINT, default 0), populated at nomination time via `get_sota_cache_summit($ref)['bonus']` in `nominate.php`. Existing summits were backfilled once via a disposable `backfill_bonus_points.php` script (deleted after running, per the db_migrate.php pattern).
+
+**Keeping bonus data fresh:** re-run `rebuild_sota_cache.php?password=sota` periodically (it isn't on a cron schedule — see "Active cron schedule" above, this could be added there if it becomes stale) to pick up SOTA's periodic BonusPoints/ValidTo updates. There's currently no recurring backfill of already-nominated summits' `bonus_points` after a cache rebuild — if that matters later, recreate a small disposable script following the `backfill_bonus_points.php` pattern (join `summits.sota_ref` against the cache via `get_sota_cache_summit()`).
+
 ---
 
 ## Key Pages
@@ -201,6 +211,7 @@ Past activations can be logged against a summit: date, callsigns of participants
 - **SOTLAS** (`sotlas.com`) — additional trail/summit reference data and links
 - **SOTLAS Activation Zone** (`az.sotl.as/{assoc}/{region}/{number}.geojson`) — high-precision (~1m) terrain-derived activation zone boundary, primary source as of 2026-09; returns HTTP 403 (not 404) when no polygon exists for a summit, so any non-200 is treated as "not found" and triggers the activation.zone fallback below
 - **activation.zone API** — SRTM-based (lower-resolution) activation zone polygon fallback, used only when SOTLAS has no boundary for the summit
+- **SOTA official summit list CSV** (`storage.sota.org.uk/summitslist.csv`) — worldwide summit list published for third-party tools; the only source for winter `BonusPoints` per summit (see "Winter Bonus Points" above). Downloaded by `rebuild_sota_cache.php` to build `sota_cache.csv.gz`.
 - **SOTAmaps** (`sotamaps.org`) — community GPX track import
 
 ---

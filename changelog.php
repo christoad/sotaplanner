@@ -266,12 +266,13 @@ session_start();
     <!-- September 2026 -->
     <div class="version-block current">
         <div class="version-header">
-            <span class="version-number">v1.8.1</span>
+            <span class="version-number">v1.9.0</span>
             <span class="version-date">September 2026</span>
             <span class="version-badge">Current</span>
         </div>
-        <p class="version-desc">A new tool for planning multi-summit activations in one trip, plus more precise activation zones, a smarter nomination search, and easier dashboard cleanup.</p>
+        <p class="version-desc">A new tool for planning multi-summit activations in one trip, winter bonus points, more precise activation zones, a smarter nomination search, and easier dashboard cleanup.</p>
         <ul>
+            <li>Summits that earn SOTA's winter bonus now show a "+3" badge next to their points on the dashboard, summit detail page, and nomination search — hover it to see when the bonus season applies</li>
             <li>Multi-Activate's outing timeline now has a Start Time picker showing real clock times for every leg of the trip, and a clearer breakdown of which blocks on the timeline belong to which summit</li>
             <li>Multi-Activate routes can now include up to 11 summits in one outing, up from 6</li>
             <li>New "Multi-Activate" tool plans a driving route through several summits in one outing — drag to reorder stops, see the route on a Street/Topo/Satellite map with real driving directions, trail tracks, and activation zones, and get a full timeline from departure to return</li>

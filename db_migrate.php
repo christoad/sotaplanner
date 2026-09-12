@@ -5,22 +5,14 @@ require_once 'config.php';
 $db = getDbConnection();
 
 echo "<pre style='font-family:monospace; background:#111; color:#0f0; padding:1rem;'>";
-echo "=== db_migrate.php: allow a summit to appear more than once in a multi-activation ===\n\n";
+echo "=== db_migrate.php: add winter bonus points column to summits ===\n\n";
 
-$idx = $db->query("SHOW INDEX FROM multi_activation_summits WHERE Key_name = 'uniq_multi_summit'")->fetchAll();
-if (!empty($idx)) {
-    $db->exec("ALTER TABLE multi_activation_summits DROP INDEX uniq_multi_summit");
-    echo "✓ Dropped old uniq_multi_summit index (summit_id could only appear once per route)\n";
+$col = $db->query("SHOW COLUMNS FROM summits LIKE 'bonus_points'")->fetchAll();
+if (empty($col)) {
+    $db->exec("ALTER TABLE summits ADD COLUMN bonus_points SMALLINT NOT NULL DEFAULT 0 AFTER points");
+    echo "✓ Added summits.bonus_points (SMALLINT, default 0)\n";
 } else {
-    echo "— uniq_multi_summit already gone, skipped\n";
-}
-
-$idx2 = $db->query("SHOW INDEX FROM multi_activation_summits WHERE Key_name = 'uniq_multi_order'")->fetchAll();
-if (empty($idx2)) {
-    $db->exec("ALTER TABLE multi_activation_summits ADD UNIQUE KEY uniq_multi_order (multi_activation_id, sort_order)");
-    echo "✓ Added uniq_multi_order index (multi_activation_id, sort_order) — position is now what's unique, not the summit\n";
-} else {
-    echo "— uniq_multi_order already exists, skipped\n";
+    echo "— summits.bonus_points already exists, skipped\n";
 }
 
 echo "\nAll done. Delete this file from the server.\n</pre>";

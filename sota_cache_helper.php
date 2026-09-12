@@ -12,7 +12,7 @@ function normalize_for_search($str) {
     return trim(preg_replace('/\s+/', ' ', $s));
 }
 
-// Search the cache file. Returns array of [ref, name, points, altFt] sorted by points desc.
+// Search the cache file. Returns array of [ref, name, points, altFt, bonus] sorted by points desc.
 // If the query contains '/', it is treated as a SOTA reference prefix (e.g. "W6/CT-") and
 // matched against the code column. Otherwise, keyword search on the name column is used.
 function search_sota_cache($query, $limit = 20) {
@@ -32,10 +32,10 @@ function search_sota_cache($query, $limit = 20) {
         while (!gzeof($gz)) {
             $line = gzgets($gz, 512);
             if (!$line) continue;
-            $s = explode('|', rtrim($line, "\r\n"), 5);
+            $s = explode('|', rtrim($line, "\r\n"));
             if (count($s) < 5) continue;
             if (strpos(strtoupper($s[0]), $ref_prefix) === 0) {
-                $results[] = [$s[0], $s[1], (int)$s[3], (int)$s[4]];
+                $results[] = [$s[0], $s[1], (int)$s[3], (int)$s[4], (int)($s[7] ?? 0), isset($s[5]) ? (float)$s[5] : null];
             }
         }
         gzclose($gz);
@@ -49,13 +49,13 @@ function search_sota_cache($query, $limit = 20) {
         while (!gzeof($gz)) {
             $line = gzgets($gz, 512);
             if (!$line) continue;
-            $s = explode('|', rtrim($line, "\r\n"), 5);
+            $s = explode('|', rtrim($line, "\r\n"));
             if (count($s) < 5) continue;
             $norm_name = $s[2];
             foreach ($keywords as $kw) {
                 if (strpos($norm_name, $kw) === false) continue 2;
             }
-            $results[] = [$s[0], $s[1], (int)$s[3], (int)$s[4]];
+            $results[] = [$s[0], $s[1], (int)$s[3], (int)$s[4], (int)($s[7] ?? 0), isset($s[5]) ? (float)$s[5] : null];
         }
         gzclose($gz);
         usort($results, fn($a, $b) => $b[2] !== $a[2] ? $b[2] - $a[2] : strcmp($a[1], $b[1]));
@@ -66,7 +66,42 @@ function search_sota_cache($query, $limit = 20) {
         'name'   => $r[1],
         'points' => $r[2],
         'altFt'  => $r[3],
+        'bonus'  => $r[4],
+        'lat'    => $r[5],
     ], array_slice($results, 0, $limit));
+}
+
+// Exact lookup of a single summit by its SOTA reference (e.g. "W7O/NC-001").
+// Returns null if not found or the cache doesn't exist. Used to backfill bonus_points
+// (and other cache-only fields) for a specific summit at nomination time.
+function get_sota_cache_summit($ref) {
+    if (!file_exists(SOTA_CACHE_FILE)) return null;
+    $ref = strtoupper(trim($ref));
+
+    $gz = @gzopen(SOTA_CACHE_FILE, 'rb');
+    if (!$gz) return null;
+
+    $found = null;
+    while (!gzeof($gz)) {
+        $line = gzgets($gz, 512);
+        if (!$line) continue;
+        $s = explode('|', rtrim($line, "\r\n"));
+        if (count($s) < 5) continue;
+        if (strtoupper($s[0]) === $ref) {
+            $found = [
+                'ref'    => $s[0],
+                'name'   => $s[1],
+                'points' => (int)$s[3],
+                'altFt'  => (int)$s[4],
+                'lat'    => isset($s[5]) ? (float)$s[5] : null,
+                'lon'    => isset($s[6]) ? (float)$s[6] : null,
+                'bonus'  => (int)($s[7] ?? 0),
+            ];
+            break;
+        }
+    }
+    gzclose($gz);
+    return $found;
 }
 
 function haversine_miles($lat1, $lon1, $lat2, $lon2) {
@@ -123,6 +158,7 @@ function search_sota_cache_by_radius($center_lat, $center_lon, $radius_miles, $m
             'lat'     => $lat,
             'lon'     => $lon,
             'dist_mi' => round($dist, 1),
+            'bonus'   => (int)($s[7] ?? 0),
         ];
     }
     gzclose($gz);

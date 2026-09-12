@@ -1,8 +1,13 @@
 <?php
-// Rebuilds the local SOTA summit name cache from the SOTA API.
+// Rebuilds the local SOTA summit name cache from SOTA's official summit list CSV.
 // Run via CLI: php rebuild_sota_cache.php
 // Run from browser: rebuild_sota_cache.php?password=sota
 // Safe to run multiple times. Takes ~30-60 seconds.
+//
+// Source: https://storage.sota.org.uk/summitslist.csv — SOTA's official worldwide
+// summit list, published for import into third-party logging/planning tools. This
+// is the only source that includes each summit's winter BonusPoints value; the
+// JSON API (api2.sota.org.uk) does not expose it.
 
 ini_set('max_execution_time', 300);
 
@@ -23,21 +28,21 @@ if (!$is_cli) {
     ob_implicit_flush(true);
 }
 
-echo "Step 1: Downloading SOTA summit list (~90 MB)...\n";
+echo "Step 1: Downloading official SOTA summit list CSV (~25 MB)...\n";
 flush();
 
-// Download to a temp file to avoid loading 90MB into PHP memory
+// Download to a temp file to avoid loading the whole file into PHP memory
 $tmp = tempnam(sys_get_temp_dir(), 'sota_');
 $fp  = fopen($tmp, 'wb');
 if (!$fp) { echo "ERROR: Cannot create temp file.\n"; exit(1); }
 
-$ch = curl_init('https://api2.sota.org.uk/api/summits/search?term=x');
+$ch = curl_init('https://storage.sota.org.uk/summitslist.csv');
 curl_setopt_array($ch, [
     CURLOPT_FILE           => $fp,
     CURLOPT_FOLLOWLOCATION => true,
     CURLOPT_TIMEOUT        => 180,
     CURLOPT_SSL_VERIFYPEER => false,
-    CURLOPT_HTTPHEADER     => ['Accept: application/json', 'User-Agent: SOTAPlanner/2.0'],
+    CURLOPT_HTTPHEADER     => ['User-Agent: SOTAPlanner/2.0'],
 ]);
 curl_exec($ch);
 $curl_err = curl_error($ch);
@@ -52,10 +57,26 @@ if ($curl_err || $http_code !== 200) {
 }
 
 $size_mb = round(filesize($tmp) / 1048576, 1);
-echo "Downloaded {$size_mb} MB. Step 2: Parsing summits one at a time...\n";
+echo "Downloaded {$size_mb} MB. Step 2: Parsing CSV...\n";
 flush();
 
-// Open output gz file
+$fh = fopen($tmp, 'rb');
+if (!$fh) { echo "ERROR: Cannot read temp file.\n"; exit(1); }
+
+// First line is a title line, e.g. "SOTA Summits List (Date=11/09/2026)" — skip it.
+fgets($fh);
+
+// Second line is the real header row — map column names to indexes so we're not
+// dependent on SOTA never reordering columns.
+$header = fgetcsv($fh);
+if (!$header) { echo "ERROR: Could not read CSV header row.\n"; exit(1); }
+$col = array_flip($header);
+
+$required = ['SummitCode', 'SummitName', 'Points', 'BonusPoints', 'AltFt', 'Latitude', 'Longitude', 'ValidTo'];
+foreach ($required as $r) {
+    if (!isset($col[$r])) { echo "ERROR: CSV is missing expected column '$r'.\n"; exit(1); }
+}
+
 $gz = @gzopen(SOTA_CACHE_FILE, 'wb6');
 if (!$gz) {
     echo "ERROR: Cannot write to " . SOTA_CACHE_FILE . "\n";
@@ -63,76 +84,41 @@ if (!$gz) {
     exit(1);
 }
 
-// Stream-parse the JSON array — reads one {object} at a time, no full decode
-$fh = fopen($tmp, 'rb');
-$written  = 0;
-$skipped  = 0;
-$buf      = '';
-$depth    = 0;
-$in_str   = false;
-$escaped  = false;
-$in_obj   = false;
-$chunk_sz = 65536;
+$now = time();
+$written = 0;
+$skipped = 0;
 
-while (!feof($fh)) {
-    $chunk = fread($fh, $chunk_sz);
-    if ($chunk === false || $chunk === '') continue;
+while (($row = fgetcsv($fh)) !== false) {
+    if (count($row) < count($header)) { $skipped++; continue; }
 
-    for ($i = 0, $len = strlen($chunk); $i < $len; $i++) {
-        $c = $chunk[$i];
+    $code = trim($row[$col['SummitCode']] ?? '');
+    $name = trim($row[$col['SummitName']] ?? '');
+    if (!$code || !$name) { $skipped++; continue; }
 
-        if (!$in_obj) {
-            if ($c === '{') { $in_obj = true; $buf = '{'; $depth = 1; }
-            continue;
-        }
-
-        $buf .= $c;
-
-        if ($escaped)      { $escaped = false; continue; }
-        if ($in_str) {
-            if ($c === '\\') $escaped = true;
-            elseif ($c === '"') $in_str = false;
-            continue;
-        }
-        if ($c === '"')  { $in_str = true;  continue; }
-        if ($c === '{')  { $depth++;         continue; }
-        if ($c === '}') {
-            $depth--;
-            if ($depth > 0) continue;
-
-            // Complete object — decode and write
-            $s = json_decode($buf, true);
-            $buf = '';
-            $in_obj = false;
-
-            if (!$s) { $skipped++; continue; }
-
-            $code = trim($s['summitCode'] ?? '');
-            $name = trim($s['name'] ?? '');
-            if (!$code || !$name) { $skipped++; continue; }
-
-            // Skip expired summits
-            if (isset($s['valid']) && $s['valid'] === false) { $skipped++; continue; }
-            $valid_to = $s['validTo'] ?? null;
-            if ($valid_to && strtotime($valid_to) < time()) { $skipped++; continue; }
-
-            $norm   = normalize_for_search($name);
-            $points = (int)($s['points'] ?? 0);
-            $alt_ft = (int)($s['altFt']  ?? 0);
-            $lat    = round((float)($s['latitude']  ?? $s['lat'] ?? 0), 6);
-            $lon    = round((float)($s['longitude'] ?? $s['lng'] ?? $s['long'] ?? 0), 6);
-
-            // Pipe-delimited: code|original_name|normalized_name|points|alt_ft|lat|lon
-            gzwrite($gz, "$code|$name|$norm|$points|$alt_ft|$lat|$lon\n");
-            $written++;
-        }
+    // ValidTo is DD/MM/YYYY (UK date format) — skip summits no longer valid for activation
+    $valid_to_raw = trim($row[$col['ValidTo']] ?? '');
+    if ($valid_to_raw) {
+        $vt = DateTime::createFromFormat('d/m/Y', $valid_to_raw);
+        if ($vt && $vt->getTimestamp() < $now) { $skipped++; continue; }
     }
+
+    $norm   = normalize_for_search($name);
+    $points = (int)($row[$col['Points']] ?? 0);
+    $bonus  = (int)($row[$col['BonusPoints']] ?? 0);
+    $alt_ft = (int)($row[$col['AltFt']] ?? 0);
+    $lat    = round((float)($row[$col['Latitude']]  ?? 0), 6);
+    $lon    = round((float)($row[$col['Longitude']] ?? 0), 6);
+
+    // Pipe-delimited: code|original_name|normalized_name|points|alt_ft|lat|lon|bonus_points
+    gzwrite($gz, "$code|$name|$norm|$points|$alt_ft|$lat|$lon|$bonus\n");
+    $written++;
 }
+
 fclose($fh);
 gzclose($gz);
 @unlink($tmp);
 
 $size_kb = round(filesize(SOTA_CACHE_FILE) / 1024);
 echo "Done! Wrote {$written} summits to cache ({$size_kb} KB gzipped).\n";
-if ($skipped) echo "Skipped {$skipped} malformed entries.\n";
-echo "Summit search is now active on the Nominate page.\n";
+if ($skipped) echo "Skipped {$skipped} malformed/expired entries.\n";
+echo "Summit search is now active on the Nominate page, and winter bonus points are available for backfill_bonus_points.php.\n";
