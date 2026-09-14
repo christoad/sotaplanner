@@ -223,6 +223,7 @@ $origin_key   = $selected_address ? ('addr:' . $current_group['id']) : 'noaddr';
 
 $leg_times = [];
 $leg_distances_mi = [];
+$leg_coords = []; // per-stop arrival leg: ['from' => 'lat,lng'|null, 'to' => 'lat,lng'|null]
 $prev_key = $origin_key;
 $prev_coord = $origin_coord;
 foreach ($stops as $i => $stop) {
@@ -230,22 +231,34 @@ foreach ($stops as $i => $stop) {
     $leg = $get_leg($prev_key, $prev_coord, 'summit:' . $stop['id'], $to_coord);
     $leg_times[$i] = $leg['min'];
     $leg_distances_mi[$i] = $leg['mi'];
+    $leg_coords[$i] = ['from' => $prev_coord, 'to' => $to_coord];
     $prev_key = 'summit:' . $stop['id'];
     $prev_coord = $to_coord;
 }
 $return_leg = $get_leg($prev_key, $prev_coord, $origin_key, $origin_coord);
 $return_leg_time = $return_leg['min'];
 $return_leg_distance_mi = $return_leg['mi'];
+$return_leg_coords = ['from' => $prev_coord, 'to' => $origin_coord];
 
 // ── Master timeline: segments (for the gantt bar) + milestones (arrival points) ──
+// Each drive leg gets its own color (cycled from this palette) so the map can
+// draw outbound and return trips over the same road in visibly different colors,
+// and so hovering a leg on the map or the gantt can highlight its counterpart.
+$LEG_COLORS = ['#2B5CA0', '#7B4FA0', '#1B8A8A', '#C08A20', '#B03A6B', '#4A56C4', '#8A5A2E', '#5C7080', '#7A7A2E', '#D46A35', '#2E9FBF', '#A83E5C'];
+$leg_color_i = 0;
+$map_legs = [];
 $segments = [];
 $milestones = [['short' => 'Depart', 'full' => 'Depart', 'min' => 0]];
 $elapsed = 0;
 foreach ($stops as $i => $stop) {
     $n = $i + 1;
     if ($leg_times[$i]) {
-        $segments[] = ['type' => 'drive', 'label' => "Drive to #$n", 'minutes' => $leg_times[$i], 'stop' => $i];
+        $leg_key = 'stop-' . $i;
+        $color = $LEG_COLORS[$leg_color_i % count($LEG_COLORS)]; $leg_color_i++;
+        $segments[] = ['type' => 'drive', 'label' => "Drive to #$n", 'minutes' => $leg_times[$i], 'stop' => $i, 'leg_key' => $leg_key, 'color' => $color];
         $elapsed += $leg_times[$i];
+        $from_label = $i === 0 ? 'Start' : $stops[$i - 1]['name'];
+        $map_legs[] = ['key' => $leg_key, 'color' => $color, 'from' => $leg_coords[$i]['from'], 'to' => $leg_coords[$i]['to'], 'label' => $from_label . ' → ' . $stop['name']];
     }
     $milestones[] = ['short' => 'Arrive', 'full' => 'Arrive at ' . $stop['name'], 'min' => $elapsed];
     if ($stop['hike_min'] > 0) {
@@ -263,8 +276,12 @@ foreach ($stops as $i => $stop) {
     }
 }
 if ($return_leg_time) {
-    $segments[] = ['type' => 'drive', 'label' => 'Return', 'minutes' => $return_leg_time, 'stop' => null];
+    $leg_key = 'return';
+    $color = $LEG_COLORS[$leg_color_i % count($LEG_COLORS)]; $leg_color_i++;
+    $segments[] = ['type' => 'drive', 'label' => 'Return', 'minutes' => $return_leg_time, 'stop' => null, 'leg_key' => $leg_key, 'color' => $color];
     $elapsed += $return_leg_time;
+    $last_stop = end($stops);
+    $map_legs[] = ['key' => $leg_key, 'color' => $color, 'from' => $return_leg_coords['from'], 'to' => $return_leg_coords['to'], 'label' => $last_stop['name'] . ' → Home'];
 }
 $milestones[] = ['short' => 'Home', 'full' => 'Arrive home', 'min' => $elapsed];
 $total_min = $elapsed;
@@ -382,6 +399,17 @@ foreach ($stops as $i => $stop) {
 }
 $map_origin = $origin_geo ? ['lat' => $origin_geo['lat'], 'lng' => $origin_geo['lng'], 'label' => $selected_address['label'] ?? $selected_address['address']] : null;
 $CURRENT_IDS = array_values($summit_ids);
+
+// Per-leg coordinates for the map's color-coded route lines (see $LEG_COLORS above)
+$MAP_LEGS = [];
+foreach ($map_legs as $leg) {
+    if (!$leg['from'] || !$leg['to']) continue;
+    $MAP_LEGS[] = [
+        'key' => $leg['key'], 'color' => $leg['color'], 'label' => $leg['label'],
+        'from' => array_map('floatval', explode(',', $leg['from'])),
+        'to' => array_map('floatval', explode(',', $leg['to'])),
+    ];
+}
 
 // Every other summit on this dashboard — for the map's "Show All Summits" toggle,
 // so the user can spot a nearby summit and add it to the route without leaving the page.
@@ -573,6 +601,65 @@ a:hover { text-decoration: underline; }
 .map-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .legend-swatch { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
 .legend-swatch.legend-dashed { height: 0; border-top: 2px dashed; width: 14px; background: none; }
+.legend-chip { cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: background 0.12s, color 0.12s; }
+.legend-chip:hover, .legend-chip.hl-active { background: var(--bg-2); color: var(--ink); font-weight: 600; }
+
+/* Map loading overlay (recalculating routes on reorder / initial load) — same
+   mountain-trace mark used elsewhere on the site (see summit_detail.php). */
+.map-loading-overlay {
+  position: absolute; inset: 0; z-index: 10;
+  background: rgba(20,19,18,0.48);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border-radius: inherit;
+  transition: opacity 0.4s;
+}
+.map-loading-overlay.hidden { opacity: 0; pointer-events: none; }
+.map-loading-card {
+  background: #fff; border-radius: var(--r-xl); padding: 1.5rem 2rem;
+  display: flex; flex-direction: column; align-items: center; gap: 0.65rem;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.22);
+}
+.map-loading-svg { width: 72px; height: 72px; overflow: visible; }
+.map-logo-path { stroke-dasharray: 116; stroke-dashoffset: 116; animation: map-path-draw 3s ease-in-out infinite; }
+@keyframes map-path-draw {
+  0%   { stroke-dashoffset: 116; opacity: 0; }
+  7%   { stroke-dashoffset: 116; opacity: 1; }
+  62%  { stroke-dashoffset: 0;   opacity: 1; }
+  80%  { stroke-dashoffset: 0;   opacity: 1; }
+  94%  { stroke-dashoffset: 0;   opacity: 0; }
+  100% { stroke-dashoffset: 116; opacity: 0; }
+}
+.map-logo-dot { fill: var(--red); transform-box: fill-box; transform-origin: center; animation: map-dot-pop 3s ease-in-out 1.2s infinite; opacity: 0; }
+@keyframes map-dot-pop {
+  0%   { transform: scale(0);   opacity: 0; }
+  15%  { transform: scale(1.4); opacity: 1; }
+  30%  { transform: scale(1);   opacity: 1; }
+  72%  { transform: scale(1);   opacity: 1; }
+  90%  { transform: scale(0.4); opacity: 0; }
+  100% { transform: scale(0);   opacity: 0; }
+}
+.map-logo-ring1 { stroke: var(--red); transform-box: fill-box; transform-origin: center; animation: map-ring-pulse 3s ease-out 1.2s infinite; opacity: 0; }
+.map-logo-ring2 { stroke: var(--red); transform-box: fill-box; transform-origin: center; animation: map-ring-pulse 3s ease-out 1.5s infinite; opacity: 0; }
+@keyframes map-ring-pulse {
+  0%   { transform: scale(0.5); opacity: 0; }
+  10%  { opacity: 0.5; }
+  68%  { transform: scale(2.4); opacity: 0; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+.map-loading-label { font-size: 0.85rem; font-weight: 500; color: var(--ink-2); text-align: center; line-height: 1.4; }
+
+/* Cross-highlight (map leg ⇄ gantt segment ⇄ tile) hover states */
+.marker-hl { transform: scale(1.35) !important; box-shadow: 0 0 0 3px #fff, 0 2px 10px rgba(0,0,0,0.5) !important; z-index: 1000 !important; }
+.lmap-num { transition: transform 0.12s, box-shadow 0.12s; }
+.time-bar-seg { transition: opacity 0.12s, box-shadow 0.12s; }
+.time-bar-seg.hl-dim { opacity: 0.35; }
+.time-bar-seg.hl-active { box-shadow: inset 0 0 0 2px rgba(255,255,255,0.9), 0 0 0 2px rgba(0,0,0,0.2); }
+.leg-span { transition: opacity 0.12s; }
+.leg-span.hl-dim { opacity: 0.35; }
+.leg-span.hl-active { border-top-color: var(--accent); border-top-width: 3px; }
+.leg-span.hl-active .leg-span-label { color: var(--accent-2); font-weight: 700; }
+.tile.hl-dim { opacity: 0.45; }
+.tile.hl-active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-border); }
 
 /* Gantt */
 .time-bar { height: 44px; border-radius: var(--r-md); overflow: hidden; display: flex; gap: 2px; margin-bottom: 6px; }
@@ -827,14 +914,19 @@ a:hover { text-decoration: underline; }
     <div class="timeline-track">
     <div class="leg-row">
       <?php foreach ($stop_spans as $sp): ?>
-        <div class="leg-span" style="left:<?= $sp['pct_start'] ?>%; width:<?= max(0, $sp['pct_end'] - $sp['pct_start']) ?>%;">
+        <div class="leg-span" data-stop="<?= $sp['n'] - 1 ?>" style="left:<?= $sp['pct_start'] ?>%; width:<?= max(0, $sp['pct_end'] - $sp['pct_start']) ?>%;">
           <span class="leg-span-label">#<?= $sp['n'] ?> <?= htmlspecialchars($sp['name']) ?></span>
         </div>
       <?php endforeach; ?>
     </div>
     <div class="time-bar">
-      <?php foreach ($segments as $seg): ?>
-        <div class="time-bar-seg" style="flex:<?= max(1, $seg['minutes']) ?>; background:<?= $SEG_COLORS[$seg['type']] ?>;" title="<?= htmlspecialchars($seg['label']) ?>: <?= formatTime($seg['minutes']) ?>">
+      <?php foreach ($segments as $seg):
+          $bg = ($seg['type'] === 'drive' && !empty($seg['color'])) ? $seg['color'] : $SEG_COLORS[$seg['type']];
+          $data_attrs = '';
+          if (!empty($seg['leg_key'])) $data_attrs .= ' data-leg-key="' . htmlspecialchars($seg['leg_key']) . '"';
+          if ($seg['stop'] !== null) $data_attrs .= ' data-stop="' . (int)$seg['stop'] . '"';
+      ?>
+        <div class="time-bar-seg"<?= $data_attrs ?> style="flex:<?= max(1, $seg['minutes']) ?>; background:<?= $bg ?>;" title="<?= htmlspecialchars($seg['label']) ?>: <?= formatTime($seg['minutes']) ?>">
           <span class="time-bar-label"><?= htmlspecialchars($seg['label']) ?></span>
           <span class="time-bar-time"><?= formatTime($seg['minutes']) ?></span>
         </div>
@@ -863,14 +955,31 @@ a:hover { text-decoration: underline; }
         <button type="button" id="btn-show-all-summits" class="btn btn-ghost btn-sm" onclick="toggleOtherSummits()">Show All Summits</button>
       <?php endif; ?>
     </div>
-    <div class="map-wrap"><div id="multi-map"></div></div>
+    <div class="map-wrap">
+      <div class="map-loading-overlay" id="map-loading-overlay">
+        <div class="map-loading-card">
+          <svg class="map-loading-svg" viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="55" cy="55" r="50" fill="none" stroke="#1c1b19" stroke-width="1.5" opacity="0.2"/>
+            <path class="map-logo-path" d="M26,79.5l17-30,7,8,12-20,22,42"
+                  fill="none" stroke="#1c1b19" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle class="map-logo-ring2" cx="62" cy="35.5" r="15" fill="none" stroke-width="0.8"/>
+            <circle class="map-logo-ring1" cx="62" cy="35.5" r="9"  fill="none" stroke-width="1.2"/>
+            <circle class="map-logo-dot"   cx="62" cy="35.5" r="3.5"/>
+          </svg>
+          <div class="map-loading-label">Calculating routes…</div>
+        </div>
+      </div>
+      <div id="multi-map"></div>
+    </div>
     <div class="map-buttons">
       <button type="button" id="btn-base-street"    class="btn btn-sm btn-map-active" onclick="switchBase('street')">Street</button>
       <button type="button" id="btn-base-topo"      class="btn btn-sm btn-secondary"  onclick="switchBase('topo')">Topo</button>
       <button type="button" id="btn-base-satellite" class="btn btn-sm btn-secondary"  onclick="switchBase('satellite')">Satellite</button>
     </div>
-    <div class="map-legend">
-      <span><span class="legend-swatch" style="background:#2B5CA0;"></span>Driving route</span>
+    <div class="map-legend" id="map-legend">
+      <?php foreach ($MAP_LEGS as $leg): ?>
+        <span class="legend-chip" data-leg-key="<?= htmlspecialchars($leg['key']) ?>" title="<?= htmlspecialchars($leg['label']) ?>"><span class="legend-swatch" style="background:<?= htmlspecialchars($leg['color']) ?>;"></span><?= htmlspecialchars($leg['label']) ?></span>
+      <?php endforeach; ?>
       <span><span class="legend-swatch" style="background:#2d7a4f;"></span>Trail (GPX)</span>
       <span><span class="legend-swatch legend-dashed" style="border-color:#CC2200;"></span>Activation zone</span>
       <?php if (!empty($other_summits)): ?>
@@ -889,6 +998,7 @@ a:hover { text-decoration: underline; }
 <script>
 const MAP_STOPS = <?= json_encode($map_stops, JSON_UNESCAPED_UNICODE) ?>;
 const MAP_ORIGIN = <?= json_encode($map_origin, JSON_UNESCAPED_UNICODE) ?>;
+const MAP_LEGS = <?= json_encode($MAP_LEGS, JSON_UNESCAPED_UNICODE) ?>;
 const OTHER_SUMMITS = <?= json_encode($other_summits, JSON_UNESCAPED_UNICODE) ?>;
 const CURRENT_IDS = <?= json_encode($CURRENT_IDS) ?>;
 const URL_BASE = <?= json_encode($url_base) ?>;
@@ -898,6 +1008,80 @@ let otherSummitsLayer = null;
 let otherSummitsVisible = false;
 let baseLayers = null;
 let activeBase = 'street';
+
+// Cross-highlight state — populated as the map builds its layers
+let legLayers = {};      // legKey -> { layer: L.Polyline, color }
+let stopMarkerEls = {};  // 0-based stop index -> the marker's DOM element
+let stopTrails = {};     // 0-based stop index -> L.Polyline (GPX trail), if any
+let hoverActive = false;
+
+function applyHighlight(legKeys, stopIndexes) {
+    hoverActive = true;
+    Object.entries(legLayers).forEach(([k, l]) => {
+        if (legKeys.includes(k)) {
+            l.layer.setStyle({ weight: 7, opacity: 1 });
+            l.layer.bringToFront();
+        } else {
+            l.layer.setStyle({ weight: 4, opacity: 0.2 });
+        }
+    });
+    Object.entries(stopMarkerEls).forEach(([idx, el]) => {
+        if (el) el.classList.toggle('marker-hl', stopIndexes.includes(parseInt(idx, 10)));
+    });
+    Object.entries(stopTrails).forEach(([idx, layer]) => {
+        if (stopIndexes.includes(parseInt(idx, 10))) {
+            layer.setStyle({ weight: 6, opacity: 1 });
+            layer.bringToFront();
+        } else {
+            layer.setStyle({ weight: 3, opacity: 0.25 });
+        }
+    });
+    document.querySelectorAll('.time-bar-seg').forEach(el => {
+        const lk = el.getAttribute('data-leg-key');
+        const st = el.getAttribute('data-stop');
+        const match = (lk && legKeys.includes(lk)) || (st !== null && stopIndexes.includes(parseInt(st, 10)));
+        el.classList.toggle('hl-active', match);
+        el.classList.toggle('hl-dim', !match);
+    });
+    document.querySelectorAll('.leg-span').forEach(el => {
+        const st = el.getAttribute('data-stop');
+        const match = st !== null && stopIndexes.includes(parseInt(st, 10));
+        el.classList.toggle('hl-active', match);
+        el.classList.toggle('hl-dim', !match);
+    });
+    document.querySelectorAll('.tile[data-pos]').forEach(el => {
+        const pos = el.getAttribute('data-pos');
+        const match = pos !== null && stopIndexes.includes(parseInt(pos, 10));
+        el.classList.toggle('hl-active', match);
+        el.classList.toggle('hl-dim', !match);
+    });
+    document.querySelectorAll('.legend-chip[data-leg-key]').forEach(el => {
+        const lk = el.getAttribute('data-leg-key');
+        el.classList.toggle('hl-active', !!lk && legKeys.includes(lk));
+    });
+}
+
+function clearHighlight() {
+    if (!hoverActive) return;
+    hoverActive = false;
+    Object.values(legLayers).forEach(l => l.layer.setStyle({ color: l.color, weight: 4, opacity: 0.85 }));
+    Object.values(stopMarkerEls).forEach(el => { if (el) el.classList.remove('marker-hl'); });
+    Object.values(stopTrails).forEach(l => l.setStyle({ weight: 3, opacity: 0.85 }));
+    document.querySelectorAll('.hl-active, .hl-dim').forEach(el => el.classList.remove('hl-active', 'hl-dim'));
+}
+
+function highlightLeg(legKey) {
+    // Drive-to-a-stop legs are keyed "stop-<i>" — highlighting one of these
+    // (from the map, the gantt drive block, or the legend) should also light up
+    // that summit's whole trip block (drive there, hike up, radio, hike down),
+    // not just the drive segment itself.
+    const m = /^stop-(\d+)$/.exec(legKey);
+    applyHighlight([legKey], m ? [parseInt(m[1], 10)] : []);
+}
+function highlightStop(stopIndex) {
+    const legKey = 'stop-' + stopIndex;
+    applyHighlight(legLayers[legKey] ? [legKey] : [], [stopIndex]);
+}
 
 function switchBase(name) {
     if (!baseLayers || name === activeBase) return;
@@ -1009,14 +1193,8 @@ function normalizeAzCoords(poly) {
     return poly.map(c => [c[1], c[0]]);
 }
 
-async function loadDrivingRoute() {
-    const coords = [];
-    if (MAP_ORIGIN) coords.push([MAP_ORIGIN.lng, MAP_ORIGIN.lat]);
-    MAP_STOPS.forEach(s => coords.push([s.lng, s.lat]));
-    if (MAP_ORIGIN) coords.push([MAP_ORIGIN.lng, MAP_ORIGIN.lat]);
-    if (coords.length < 2) return null;
-    const coordStr = coords.map(c => c[0] + ',' + c[1]).join(';');
-    const url = 'https://router.project-osrm.org/route/v1/driving/' + coordStr + '?overview=full&geometries=geojson';
+async function fetchLegGeometry(from, to) {
+    const url = 'https://router.project-osrm.org/route/v1/driving/' + from[1] + ',' + from[0] + ';' + to[1] + ',' + to[0] + '?overview=full&geometries=geojson';
     try {
         const resp = await fetch(url);
         const data = await resp.json();
@@ -1025,6 +1203,25 @@ async function loadDrivingRoute() {
         }
     } catch (e) { /* fall through to straight-line fallback */ }
     return null;
+}
+
+// One color-coded polyline per leg, fetched in parallel — lets outbound and
+// return trips over the same road show as visibly different colors, and lets
+// hovering a leg (here or in the gantt) highlight just that leg.
+async function loadLegRoutes(map) {
+    if (!MAP_LEGS.length) return;
+    const results = await Promise.all(MAP_LEGS.map(leg => fetchLegGeometry(leg.from, leg.to)));
+    MAP_LEGS.forEach((leg, i) => {
+        const driven = results[i];
+        const coords = driven && driven.length > 1 ? driven : [leg.from, leg.to];
+        const poly = L.polyline(coords, {
+            color: leg.color, weight: 4, opacity: 0.85,
+            dashArray: driven ? null : '6 6'
+        }).addTo(map).bindTooltip(leg.label);
+        poly.on('mouseover', () => highlightLeg(leg.key));
+        poly.on('mouseout', clearHighlight);
+        legLayers[leg.key] = { layer: poly, color: leg.color };
+    });
 }
 
 async function initMap() {
@@ -1041,13 +1238,11 @@ async function initMap() {
     baseLayers.street.addTo(map);
 
     const bounds = [];
-    const straightLine = [];
 
     if (MAP_ORIGIN) {
         const homeIcon = L.divIcon({ className: '', html: '<div class="lmap-home">⌂</div>', iconSize: [26, 26], iconAnchor: [13, 13] });
         L.marker([MAP_ORIGIN.lat, MAP_ORIGIN.lng], { icon: homeIcon }).addTo(map).bindTooltip(MAP_ORIGIN.label || 'Starting Point');
         bounds.push([MAP_ORIGIN.lat, MAP_ORIGIN.lng]);
-        straightLine.push([MAP_ORIGIN.lat, MAP_ORIGIN.lng]);
     }
 
     // Group stops that revisit the same summit (e.g. re-activated after UTC
@@ -1072,17 +1267,24 @@ async function initMap() {
             iconAnchor: multi ? [17, 13] : [13, 13]
         });
         const tooltip = (multi ? 'Visited as #' + orders.join(' and #') : '#' + first.order) + ' ' + first.name + ' (' + first.ref + ')';
-        L.marker([first.lat, first.lng], { icon: icon }).addTo(map).bindTooltip(tooltip);
+        const marker = L.marker([first.lat, first.lng], { icon: icon }).addTo(map).bindTooltip(tooltip);
+        const el = marker.getElement();
+        const iconEl = el ? el.querySelector('div') : null;
+        orders.forEach(o => { stopMarkerEls[o - 1] = iconEl; });
+        marker.on('mouseover', () => highlightStop(orders[0] - 1));
+        marker.on('mouseout', clearHighlight);
     });
 
     MAP_STOPS.forEach(function(s) {
         bounds.push([s.lat, s.lng]);
-        straightLine.push([s.lat, s.lng]);
 
         // GPX track for this stop, if one exists
         if (s.gpx_path && s.gpx_path.length > 1) {
-            L.polyline(s.gpx_path, { color: '#2d7a4f', weight: 3, opacity: 0.85, lineJoin: 'round', lineCap: 'round' })
+            const trail = L.polyline(s.gpx_path, { color: '#2d7a4f', weight: 3, opacity: 0.85, lineJoin: 'round', lineCap: 'round' })
                 .addTo(map).bindTooltip('Trail: ' + s.name);
+            stopTrails[s.order - 1] = trail;
+            trail.on('mouseover', () => highlightStop(s.order - 1));
+            trail.on('mouseout', clearHighlight);
         }
 
         // Activation zone for this stop
@@ -1097,24 +1299,45 @@ async function initMap() {
             .catch(() => {});
     });
 
-    if (MAP_ORIGIN) straightLine.push([MAP_ORIGIN.lat, MAP_ORIGIN.lng]);
-
     if (bounds.length > 0) {
         map.fitBounds(bounds, { padding: [40, 40] });
     } else {
         map.setView([45, -110], 5);
     }
 
-    // Real driving route, following roads — falls back to a dashed straight line if unavailable
-    if (straightLine.length > 1) {
-        const fallback = L.polyline(straightLine, { color: '#7A6858', weight: 3, opacity: 0.75, dashArray: '6 6' });
-        const driven = await loadDrivingRoute();
-        if (driven && driven.length > 1) {
-            L.polyline(driven, { color: '#2B5CA0', weight: 4, opacity: 0.85 }).addTo(map);
-        } else {
-            fallback.addTo(map);
-        }
+    // Real driving routes, one color-coded polyline per leg — falls back to a
+    // dashed straight line per leg if OSRM is unavailable for that leg.
+    await loadLegRoutes(map);
+
+    const overlay = document.getElementById('map-loading-overlay');
+    if (overlay) {
+        overlay.classList.add('hidden');
+        setTimeout(() => overlay.remove(), 500);
     }
+
+    // Wire up gantt / tile / legend hover → map cross-highlighting
+    document.querySelectorAll('.time-bar-seg').forEach(el => {
+        const legKey = el.getAttribute('data-leg-key');
+        const stop = el.getAttribute('data-stop');
+        el.addEventListener('mouseenter', () => {
+            if (legKey) highlightLeg(legKey);
+            else if (stop !== null) highlightStop(parseInt(stop, 10));
+        });
+        el.addEventListener('mouseleave', clearHighlight);
+    });
+    document.querySelectorAll('.leg-span[data-stop]').forEach(el => {
+        el.addEventListener('mouseenter', () => highlightStop(parseInt(el.getAttribute('data-stop'), 10)));
+        el.addEventListener('mouseleave', clearHighlight);
+    });
+    document.querySelectorAll('.tile[data-pos]').forEach(el => {
+        el.addEventListener('mouseenter', () => highlightStop(parseInt(el.getAttribute('data-pos'), 10)));
+        el.addEventListener('mouseleave', clearHighlight);
+    });
+    document.querySelectorAll('.legend-chip[data-leg-key]').forEach(el => {
+        const legKey = el.getAttribute('data-leg-key');
+        el.addEventListener('mouseenter', () => highlightLeg(legKey));
+        el.addEventListener('mouseleave', clearHighlight);
+    });
 }
 initMap();
 
