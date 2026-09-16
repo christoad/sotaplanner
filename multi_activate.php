@@ -465,7 +465,7 @@ h1,h2,h3,h4,h5 { font-family: var(--font-sans); font-weight: 600; line-height: 1
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-.topbar { background: var(--surface); border-bottom: 1px solid var(--border); height: 56px; display: flex; align-items: center; padding: 0 2rem; gap: 1.5rem; position: sticky; top: 0; z-index: 100; }
+.topbar { background: var(--surface); border-bottom: 1px solid var(--border); height: 56px; display: flex; align-items: center; padding: 0 2rem; gap: 1.5rem; position: sticky; top: 0; z-index: 1001; }
 .topbar-logo { display: flex; align-items: center; gap: 0.75rem; text-decoration: none; color: var(--ink); font-weight: 600; font-size: 0.95rem; letter-spacing: -0.01em; flex-shrink: 0; }
 .topbar-logo:hover { text-decoration: none; color: var(--ink); }
 .logo-mark { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -812,7 +812,7 @@ a:hover { text-decoration: underline; }
 
   <!-- Tiles: reorder (drag or arrows) / remove -->
   <div class="card">
-    <div class="card-title">Route Order <span style="font-weight:400; color:var(--ink-3); font-size:0.78rem;">— drag tiles to reorder</span></div>
+    <div class="card-title">Route Order <span id="reorder-hint" style="font-weight:400; color:var(--ink-3); font-size:0.78rem;">— drag tiles to reorder</span></div>
     <div class="tiles-row" id="tiles-row">
       <?php foreach ($stops as $i => $stop):
           $up_ids = $summit_ids;
@@ -1142,6 +1142,18 @@ document.addEventListener('click', function(e) {
     const chip = document.getElementById('userChip');
     if (chip && !chip.contains(e.target)) chip.classList.remove('open');
 });
+
+// ── Disable native HTML5 drag on touch/coarse-pointer devices. Mobile Safari
+// never fires dragstart from a single-finger touch, and worse, a draggable
+// container can swallow taps on the links nested inside it (the ◀ ▶ arrows,
+// Duplicate, Remove, trailhead-warning icon) — so on these devices reordering
+// falls back to the arrow buttons, which are real links and always work. ──
+if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
+    document.querySelectorAll('.tile[draggable]').forEach(function(el) { el.removeAttribute('draggable'); });
+    document.querySelectorAll('.tile-drag-handle').forEach(function(el) { el.style.display = 'none'; });
+    const hint = document.getElementById('reorder-hint');
+    if (hint) hint.textContent = '— tap ◀ ▶ to reorder';
+}
 
 // ── Drag-and-drop tile reorder ──
 function navigateToOrder(ids) {

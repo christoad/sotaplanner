@@ -1,18 +1,32 @@
 <?php
-if (($_GET['pw'] ?? '') !== 'sota') die('Unauthorized');
-
+// One-off migration: add multi_activations.is_expanded so the dashboard can
+// remember each route's expand/collapse state instead of always defaulting
+// to open. Delete this file after running.
 require_once 'config.php';
-$db = getDbConnection();
 
-echo "<pre style='font-family:monospace; background:#111; color:#0f0; padding:1rem;'>";
-echo "=== db_migrate.php: add winter bonus points column to summits ===\n\n";
-
-$col = $db->query("SHOW COLUMNS FROM summits LIKE 'bonus_points'")->fetchAll();
-if (empty($col)) {
-    $db->exec("ALTER TABLE summits ADD COLUMN bonus_points SMALLINT NOT NULL DEFAULT 0 AFTER points");
-    echo "✓ Added summits.bonus_points (SMALLINT, default 0)\n";
-} else {
-    echo "— summits.bonus_points already exists, skipped\n";
+if (($_GET['password'] ?? '') !== 'sota') {
+    http_response_code(403);
+    die('Forbidden');
 }
 
-echo "\nAll done. Delete this file from the server.\n</pre>";
+$db = getDbConnection();
+
+header('Content-Type: text/plain');
+
+function step($label, $fn) {
+    try {
+        $result = $fn();
+        echo "[OK] $label" . ($result ? " — $result" : '') . "\n";
+    } catch (Exception $e) {
+        echo "[ERROR] $label — " . $e->getMessage() . "\n";
+    }
+}
+
+step('Check multi_activations.is_expanded column', function () use ($db) {
+    $cols = $db->query("SHOW COLUMNS FROM multi_activations LIKE 'is_expanded'")->fetchAll();
+    if ($cols) return 'already exists, skipped';
+    $db->exec("ALTER TABLE multi_activations ADD COLUMN is_expanded TINYINT(1) NOT NULL DEFAULT 1 AFTER activation_time_min");
+    return 'column added';
+});
+
+echo "\nDone. Delete this file from the server now.\n";

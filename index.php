@@ -390,7 +390,7 @@ $summits = $stmt->fetchAll();
 // underneath — each still a normal link through to its own summit_detail.php.
 $multi_lookup = [];
 $stmt = $db->prepare("
-    SELECT ma.id AS multi_id, ma.name AS multi_name,
+    SELECT ma.id AS multi_id, ma.name AS multi_name, ma.is_expanded,
            ma.total_points, ma.total_hike_min, ma.total_drive_min, ma.total_time_min,
            ma.total_dist_mi, ma.total_elev_ft,
            mas.summit_id, mas.sort_order, s.name AS summit_name, s.sota_ref, s.points
@@ -404,6 +404,7 @@ $stmt->execute([$current_group['id']]);
 $multi_groups = [];
 foreach ($stmt->fetchAll() as $r) {
     $multi_groups[$r['multi_id']]['name'] ??= $r['multi_name'];
+    $multi_groups[$r['multi_id']]['is_expanded'] ??= ($r['is_expanded'] === null || (int)$r['is_expanded'] === 1);
     $multi_groups[$r['multi_id']]['totals'] ??= [
         'points'    => $r['total_points'],
         'hike_min'  => $r['total_hike_min'],
@@ -418,10 +419,11 @@ foreach ($multi_groups as $mid => $m) {
     if (empty($m['members'])) continue;
     $lead = $m['members'][0];
     $multi_lookup[$lead['summit_id']] = [
-        'multi_id' => $mid,
-        'name'     => $m['name'],
-        'totals'   => $m['totals'],
-        'members'  => $m['members'], // includes the lead itself at index 0
+        'multi_id'    => $mid,
+        'name'        => $m['name'],
+        'is_expanded' => $m['is_expanded'],
+        'totals'      => $m['totals'],
+        'members'     => $m['members'], // includes the lead itself at index 0
     ];
 }
 
@@ -476,7 +478,7 @@ if (!empty($missing_member_ids)) {
 
 // Renders one <tr> (+ its mobile stats cell) for a summit row — shared by both
 // normal top-level rows and the rows nested under a multi-activation summary.
-function render_dashboard_row($summit, $current_group, $user_units, $activation_time, $nested = false, $route_order = null, $multi_group_id = null) {
+function render_dashboard_row($summit, $current_group, $user_units, $activation_time, $nested = false, $route_order = null, $multi_group_id = null, $multi_expanded = true) {
     $track_type    = $summit['track_type'] ?? 'round-trip';
     $one_way       = ($track_type === 'ascent' || $track_type === 'descent');
     $has_timestamps = ($summit['gpx_hiking_time'] ?? 0) > 0;
@@ -523,7 +525,7 @@ function render_dashboard_row($summit, $current_group, $user_units, $activation_
     } else {
         $row_class = '';
     }
-    if ($nested) $row_class .= ' multi-nested-row is-open nested-summit-row';
+    if ($nested) $row_class .= ' multi-nested-row' . ($multi_expanded ? ' is-open' : '') . ' nested-summit-row';
 
     $mobile_parts = array_filter([
         $hike_time_total ? 'Hike ' . formatTime($hike_time_total) : null,
@@ -747,7 +749,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
       gap: var(--sp-4);
       position: sticky;
       top: 0;
-      z-index: 1000;
+      z-index: 1001;
     }
     .topbar-logo {
       display: flex;
@@ -1253,6 +1255,12 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
       .data-table tbody tr.row-ready { background: var(--green-bg); border-color: oklch(88% 0.06 155) !important; }
       .data-table tbody tr.row-activated { background: var(--gray-bg); opacity: 0.6; }
       .data-table tbody tr.nested-summit-row { margin-left: var(--sp-6); border-left: 3px solid var(--green-dark-border) !important; }
+      /* The generic "tr { display: grid !important }" above beats the desktop
+         ".multi-nested-row { display: none }" rule since both are unqualified
+         by specificity and !important always wins — so on mobile a collapsed
+         route's members stayed visible no matter what the caret toggle did.
+         This more specific selector (class + :not) restores the hide. */
+      .data-table tbody tr.multi-nested-row:not(.is-open) { display: none !important; }
       .data-table td { padding: 0; border: none; }
       .td-main    { grid-column: 1; grid-row: 1; }
       .td-time    { grid-column: 2; grid-row: 1; text-align: right; align-self: center; }
@@ -1723,7 +1731,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                             <input type="checkbox" class="multi-row-select" data-multi-id="<?= $ml['multi_id'] ?>" onchange="toggleMultiRowSelect(<?= $ml['multi_id'] ?>, this.checked)">
                         </td>
                         <td class="td-main" onclick="event.stopPropagation()">
-                            <button type="button" class="multi-expand-btn open" id="multi-toggle-<?= $ml['multi_id'] ?>" onclick="toggleMultiNested(<?= $ml['multi_id'] ?>)" title="Expand/collapse summits">
+                            <button type="button" class="multi-expand-btn<?= $ml['is_expanded'] ? ' open' : '' ?>" id="multi-toggle-<?= $ml['multi_id'] ?>" onclick="toggleMultiNested(<?= $ml['multi_id'] ?>)" title="Expand/collapse summits">
                                 <span class="multi-expand-caret"><svg width="11" height="7" viewBox="0 0 10 6" fill="none"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
                             </button>
                             <a href="multi_activate.php?id=<?= $ml['multi_id'] ?>&group=<?= $current_group['id'] ?>" style="text-decoration:none">
@@ -1766,7 +1774,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                     <?php foreach ($ml['members'] as $i => $mem):
                         $mem_summit = $summits_by_id[$mem['summit_id']] ?? null;
                         if (!$mem_summit) continue;
-                        render_dashboard_row($mem_summit, $current_group, $user_units, $activation_time, true, $i + 1, $ml['multi_id']);
+                        render_dashboard_row($mem_summit, $current_group, $user_units, $activation_time, true, $i + 1, $ml['multi_id'], $ml['is_expanded']);
                     endforeach; ?>
                     <?php
                             continue;
@@ -2071,6 +2079,11 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
         rows.forEach(function(r) { r.classList.toggle('is-open', nowOpen); });
         const btn = document.getElementById('multi-toggle-' + multiId);
         if (btn) btn.classList.toggle('open', nowOpen);
+        fetch('toggle_multi_expand.php', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'multi_id=' + encodeURIComponent(multiId) + '&expanded=' + (nowOpen ? '1' : '0')
+        }).catch(function() {});
     }
 
     function performBulkDelete() {
