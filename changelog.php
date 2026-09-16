@@ -266,12 +266,13 @@ session_start();
     <!-- September 2026 -->
     <div class="version-block current">
         <div class="version-header">
-            <span class="version-number">v1.9.2</span>
+            <span class="version-number">v1.9.3</span>
             <span class="version-date">September 2026</span>
             <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">A new tool for planning multi-summit activations in one trip, winter bonus points, more precise activation zones, a smarter nomination search, and easier dashboard cleanup.</p>
         <ul>
+            <li>The summit detail page now has a small copy button next to the SOTA reference for quickly copying it to your clipboard</li>
             <li>The dashboard now remembers whether you've expanded or collapsed each multi-activation route, so it stays that way the next time you visit</li>
             <li>Multi-Activate's route map now draws each leg of driving in its own color, so outbound and return trips over the same road are easy to tell apart — hover a leg on the map, the timeline, or a summit tile to highlight it everywhere else, and a loading animation now covers the map while routes recalculate after you reorder stops</li>
             <li>Summits that earn SOTA's winter bonus now show a "+3" badge next to their points on the dashboard, summit detail page, and nomination search — hover it to see when the bonus season applies</li>
