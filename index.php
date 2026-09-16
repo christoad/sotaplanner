@@ -938,14 +938,18 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     }
     .toolbar-sep { width: 1px; height: 16px; background: var(--border-2); flex-shrink: 0; }
     .toolbar-right { margin-left: auto; display: flex; align-items: center; gap: var(--sp-2); }
-    /* While bulk-selecting, the action cluster detaches and floats at the bottom
-       of the viewport so it's always reachable while scrolling through rows to
-       check off — the armed button also grows a bit once there's something to act on. */
+    /* While bulk-selecting, the action cluster detaches from the toolbar and is
+       relocated (via JS) to #select-bar-anchor, right between the filters and the
+       summit rows. It's sticky there, so it scrolls normally until it reaches the
+       topbar, then hovers just below it — always reachable while checking off rows
+       further down the list. The armed button also grows a bit once there's
+       something to act on. */
     .toolbar-right.floating {
-      position: fixed; left: 50%; bottom: var(--sp-6); transform: translateX(-50%);
-      margin-left: 0; background: var(--surface); border: 1px solid var(--border-2);
+      position: sticky; top: calc(56px + var(--sp-3)); z-index: 500;
+      width: fit-content; margin: 0 auto var(--sp-3);
+      background: var(--surface); border: 1px solid var(--border-2);
       border-radius: 100px; padding: var(--sp-2) var(--sp-3);
-      box-shadow: var(--shadow-lg); z-index: 500;
+      box-shadow: var(--shadow-lg);
     }
     .toolbar-right.floating .multi-btn.armed,
     .toolbar-right.floating .trash-btn.armed {
@@ -1624,6 +1628,12 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
         </div>
     </div>
 
+    <!-- The sticky select-bar's containing box is its immediate parent, so this
+         wrapper (not a separate small anchor div) must directly hold it — it wraps
+         everything through the end of the summit list, giving the sticky bar the
+         full list's height to hover within as the user scrolls. -->
+    <div id="select-bar-scroll-region">
+
     <div style="font-size:0.72rem; color:var(--ink-4); margin-bottom:var(--sp-4)">
         <?= count($summits) ?> summit<?= count($summits) !== 1 ? 's' : '' ?>
         <?php if (!$is_all): ?>
@@ -1794,6 +1804,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
         <a href="nominate.php" class="btn btn-primary">+ Add Summits</a>
     </div>
     </div><!-- /#list-view -->
+    </div><!-- /#select-bar-scroll-region -->
 
 </div><!-- /.page -->
 
@@ -1927,6 +1938,12 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     const selectedMultiIds = new Set();
     let _flashTimer = null;
 
+    // Remember where the action cluster normally lives in the toolbar so it can be
+    // moved back there when select mode ends.
+    const toolbarRightEl = document.querySelector('.toolbar-right');
+    const toolbarRightHome = toolbarRightEl?.parentNode;
+    const toolbarRightHomeNext = toolbarRightEl?.nextSibling;
+
     function onTrashClick() {
         if (!selectMode) {
             enterSelectMode('trash');
@@ -1955,7 +1972,9 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
         document.getElementById('btn-cancel-select').style.display = '';
         document.getElementById('btn-trash').style.display = (mode === 'trash') ? '' : 'none';
         document.getElementById('btn-multi').style.display = (mode === 'multi') ? '' : 'none';
-        document.querySelector('.toolbar-right')?.classList.add('floating');
+        const scrollRegion = document.getElementById('select-bar-scroll-region');
+        if (scrollRegion && toolbarRightEl) scrollRegion.insertBefore(toolbarRightEl, scrollRegion.firstChild);
+        toolbarRightEl?.classList.add('floating');
         const allCb = document.getElementById('select-all-rows');
         if (allCb) allCb.disabled = (mode === 'multi');
         updateActionUI();
@@ -1975,7 +1994,10 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
         document.getElementById('btn-cancel-select').style.display = 'none';
         document.getElementById('btn-trash').style.display = '';
         document.getElementById('btn-multi').style.display = '';
-        document.querySelector('.toolbar-right')?.classList.remove('floating');
+        toolbarRightEl?.classList.remove('floating');
+        if (toolbarRightEl && toolbarRightHome) {
+            toolbarRightHome.insertBefore(toolbarRightEl, toolbarRightHomeNext || null);
+        }
         updateActionUI();
     }
 
