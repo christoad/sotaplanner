@@ -1,5 +1,5 @@
 <?php
-define('APP_VERSION', '1.9.4');
+define('APP_VERSION', '1.9.5');
 
 // Enable error reporting for debugging
 error_reporting(E_ALL);
@@ -163,6 +163,63 @@ function geocodeAddress($address) {
         'lat'   => (float)$geo['results'][0]['geometry']['location']['lat'],
         'lng'   => (float)$geo['results'][0]['geometry']['location']['lng'],
         'label' => $geo['results'][0]['formatted_address'],
+    ];
+}
+
+// Turn-by-turn driving directions between two points (each a "lat,lng" string
+// or a free-text address) via the Directions API. Used only for the offline
+// multi-activation PDF export — the interactive drive-time estimates elsewhere
+// use the cheaper Distance Matrix API instead. Returns null on failure so
+// callers can fall back to a distance/time-only summary.
+function getDirectionsSteps($origin, $destination) {
+    if (!defined('GOOGLE_MAPS_API_KEY') || GOOGLE_MAPS_API_KEY === 'YOUR_API_KEY_HERE') {
+        return null;
+    }
+
+    $url = "https://maps.googleapis.com/maps/api/directions/json?" . http_build_query([
+        'origin'      => $origin,
+        'destination' => $destination,
+        'key'         => GOOGLE_MAPS_API_KEY,
+        'units'       => 'imperial',
+    ]);
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($http_code !== 200 || !$response) {
+        error_log("SOTA Maps Directions HTTP $http_code origin=$origin dest=$destination");
+        return null;
+    }
+
+    $data = json_decode($response, true);
+    $route = $data['routes'][0] ?? null;
+    $leg = $route['legs'][0] ?? null;
+    if (($data['status'] ?? '') !== 'OK' || !$leg) {
+        error_log("SOTA Maps Directions non-OK: " . ($data['status'] ?? '?') . " origin=$origin dest=$destination");
+        return null;
+    }
+
+    $steps = [];
+    foreach ($leg['steps'] as $step) {
+        $instruction = trim(html_entity_decode(strip_tags(str_replace('<', ' <', $step['html_instructions'] ?? '')), ENT_QUOTES));
+        $instruction = preg_replace('/\s+/', ' ', $instruction);
+        if ($instruction === '') continue;
+        $steps[] = [
+            'instruction' => $instruction,
+            'distance'    => $step['distance']['text'] ?? '',
+            'duration'    => $step['duration']['text'] ?? '',
+        ];
+    }
+
+    return [
+        'distance_mi'  => round(($leg['distance']['value'] ?? 0) / 1609.344, 2),
+        'duration_min' => round(($leg['duration']['value'] ?? 0) / 60),
+        'steps'        => $steps,
     ];
 }
 

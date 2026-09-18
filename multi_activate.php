@@ -752,6 +752,7 @@ a:hover { text-decoration: underline; }
       <?php if ($gmaps_url): ?>
         <a href="<?= htmlspecialchars($gmaps_url) ?>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" title="Open a round-trip driving route through every stop in Google Maps">Directions ↗</a>
       <?php endif; ?>
+      <a href="#" id="download-pdf-link" class="btn btn-ghost btn-sm" onclick="return downloadMultiPdf(this)" title="Download a printable PDF with the summit list, driving directions, and offline reference maps">Download PDF</a>
       <form method="GET" action="multi_activate.php" class="save-inline">
         <input type="hidden" name="id" value="<?= $multi_id ?>">
         <input type="hidden" name="ids" value="<?= htmlspecialchars(implode(',', $summit_ids)) ?>">
@@ -1126,6 +1127,23 @@ function updateStartTime() {
         const elapsed = parseInt(el.getAttribute('data-elapsed-min'), 10);
         el.textContent = formatClockFromMinutes(startMin + elapsed);
     });
+}
+
+// Builds the offline-PDF link with the same start time currently shown on
+// screen (localStorage, since the server never stores it — see above).
+function downloadMultiPdf(link) {
+    const params = new URLSearchParams({
+        group: URL_BASE.group,
+        ids: CURRENT_IDS.join(','),
+        activation_time: URL_BASE.activation_time,
+    });
+    if (URL_BASE.id) params.set('id', URL_BASE.id);
+    try {
+        const stored = localStorage.getItem(START_TIME_STORAGE_KEY);
+        if (stored !== null) params.set('start_time', stored);
+    } catch (e) {}
+    window.location = 'multi_activate_pdf.php?' + params.toString();
+    return false;
 }
 
 document.addEventListener('DOMContentLoaded', function() {
