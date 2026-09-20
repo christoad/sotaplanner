@@ -1292,15 +1292,23 @@ if ($tl_show) {
     }
     #coords-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-    /* Summit reference copy button */
-    .ref-copy-btn {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 20px; height: 20px; padding: 0; border: none; background: transparent;
-      color: var(--ink-3); opacity: 0.5; cursor: pointer; border-radius: var(--r-sm);
-      transition: opacity 0.15s, background 0.15s, color 0.15s;
+    /* Summit reference designator (click-to-copy) */
+    .sota-ref-designator {
+      position: relative;
+      font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-3);
+      padding: 2px 5px; margin: -2px -5px; border-radius: var(--r-sm);
+      cursor: pointer; transition: background 0.15s, color 0.15s;
     }
-    .ref-copy-btn:hover { opacity: 1; background: var(--bg-2); color: var(--ink); }
-    .ref-copy-btn.copied { opacity: 1; color: var(--green); }
+    .sota-ref-designator:hover { background: var(--bg-2); color: var(--ink); }
+    .sota-ref-designator .copied-tip {
+      position: absolute; bottom: calc(100% + 6px); left: 50%;
+      transform: translateX(-50%) translateY(4px);
+      background: var(--ink); color: #fff; font-family: var(--font-sans);
+      font-size: 0.7rem; font-weight: 600; letter-spacing: 0;
+      padding: 0.25rem 0.55rem; border-radius: var(--r-sm); white-space: nowrap;
+      opacity: 0; pointer-events: none; transition: opacity 0.15s, transform 0.15s;
+    }
+    .sota-ref-designator .copied-tip.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
     /* GPS prefs block */
     .gps-prefs { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.875rem 1rem; margin-top: 0.75rem; }
@@ -1376,10 +1384,10 @@ if ($tl_show) {
         <?php endif; ?>
         <span class="badge badge-<?= htmlspecialchars($summit['status']) ?>"><?= ucfirst($summit['status']) ?></span>
         <?php if ($summit['sota_ref']): ?>
-          <span style="font-family:var(--font-mono); font-size:0.78rem; color:var(--ink-3);"><?= htmlspecialchars($summit['sota_ref']) ?></span>
-          <button type="button" class="ref-copy-btn" title="Copy summit reference" onclick="copySotaRef(this, '<?= htmlspecialchars($summit['sota_ref'], ENT_QUOTES) ?>')">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-          </button>
+          <span class="sota-ref-designator" title="Click to copy" onclick="copySotaRef(this, '<?= htmlspecialchars($summit['sota_ref'], ENT_QUOTES) ?>')">
+            <?= htmlspecialchars($summit['sota_ref']) ?>
+            <span class="copied-tip">Copied!</span>
+          </span>
         <?php endif; ?>
       </div>
       <div class="page-title"><?= htmlspecialchars($summit['name']) ?></div>
@@ -2418,15 +2426,13 @@ map.on('contextmenu', function(e) {
 document.addEventListener('click', function() { ctxMenu.style.display = 'none'; });
 
 // Copy summit reference to clipboard
-function copySotaRef(btn, ref) {
+function copySotaRef(el, ref) {
   navigator.clipboard.writeText(ref).then(function() {
-    const original = btn.innerHTML;
-    btn.classList.add('copied');
-    btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-    setTimeout(function() {
-      btn.classList.remove('copied');
-      btn.innerHTML = original;
-    }, 1500);
+    const tip = el.querySelector('.copied-tip');
+    if (!tip) return;
+    tip.classList.add('show');
+    clearTimeout(el._copyTipTimer);
+    el._copyTipTimer = setTimeout(function() { tip.classList.remove('show'); }, 1200);
   });
 }
 
