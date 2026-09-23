@@ -269,6 +269,19 @@ function fetch_static_map($markers, $paths, $size = '640x400', $scale = 2, $mapt
     return $tmp;
 }
 
+// The Maps Static API silently caps each dimension of the "size" param at
+// 640px on our plan — a request like size=1280x456 comes back as a real
+// 640x456 PNG with no error, a different aspect ratio than we asked for. So
+// rather than trust the requested size, measure the file we actually got and
+// derive the height that keeps it undistorted at the width we're drawing it.
+function static_map_display_height($img_path, $display_w, $fallback_h) {
+    $info = @getimagesize($img_path);
+    if ($info && $info[0] > 0 && $info[1] > 0) {
+        return $display_w * $info[1] / $info[0];
+    }
+    return $fallback_h;
+}
+
 function cleanup_pdf_tmp_files() {
     global $PDF_TMP_FILES;
     foreach ($PDF_TMP_FILES as $f) { if (file_exists($f)) @unlink($f); }
@@ -297,7 +310,7 @@ class SotaPDF extends FPDF {
         if ($this->PageNo() === 1) return; // cover page has its own custom banner
         $this->SetFont('Helvetica', '', 8);
         $this->SetTextColor(140, 138, 134);
-        $this->Cell(0, 0.25, pdftext('SOTAplanner — ' . $this->docTitle), 0, 1, 'R');
+        $this->Cell(0, 0.25, pdftext('SOTAplanner · ' . $this->docTitle), 0, 1, 'R');
         $this->SetDrawColor(229, 226, 218);
         $this->Line(0.6, 0.55, $this->GetPageWidth() - 0.6, 0.55);
         $this->SetY(0.7);
@@ -309,7 +322,7 @@ class SotaPDF extends FPDF {
         $this->SetY(-0.45);
         $this->SetFont('Helvetica', '', 7.5);
         $this->SetTextColor(140, 138, 134);
-        $this->Cell(0, 0.25, pdftext('Offline reference only — verify conditions before you go'), 0, 0, 'L');
+        $this->Cell(0, 0.25, pdftext('Offline reference only. Verify conditions before you go.'), 0, 0, 'L');
         $this->Cell(0, 0.25, 'Page ' . $this->PageNo() . ' / {nb}', 0, 0, 'R');
     }
 }
@@ -333,11 +346,11 @@ $pdf->Cell(0, 0.4, pdftext($route_title), 0, 1, 'L');
 $pdf->SetX(0.6);
 $pdf->SetFont('Helvetica', '', 10);
 $pdf->SetTextColor(220, 218, 214);
-$subtitle = count($stops) . ' summits — ' . formatTime($total_min) . ' total, door-to-door';
+$subtitle = count($stops) . ' summits · ' . formatTime($total_min) . ' total, door-to-door';
 $pdf->Cell(0, 0.3, pdftext($subtitle), 0, 1, 'L');
 $pdf->SetX(0.6);
 $pdf->SetFont('Helvetica', '', 8.5);
-$pdf->Cell(0, 0.25, pdftext('Generated ' . date('F j, Y \a\t g:i A') . ' — ' . $current_group['name']), 0, 1, 'L');
+$pdf->Cell(0, 0.25, pdftext('Generated ' . date('F j, Y \a\t g:i A') . ' · ' . $current_group['name']), 0, 1, 'L');
 
 $pdf->SetY(1.65);
 $pdf->SetTextColor(28, 27, 25);
@@ -349,7 +362,7 @@ if ($selected_address) {
 } else {
     $pdf->SetFont('Helvetica', 'I', 9);
     $pdf->SetTextColor(192, 112, 32);
-    $pdf->Cell(0, 0.22, pdftext('No starting address on file — travel times below are between summits only.'), 0, 1);
+    $pdf->Cell(0, 0.22, pdftext('No starting address on file. Travel times below are between summits only.'), 0, 1);
     $pdf->SetTextColor(28, 27, 25);
 }
 $pdf->Ln(0.1);
@@ -406,14 +419,21 @@ foreach ($legs as $leg) {
     if (!$leg['from'] || !$leg['to']) continue;
     $paths[] = 'color:' . static_map_hex($leg['color']) . '|weight:4|' . $leg['from'] . '|' . $leg['to'];
 }
-$overview_img = fetch_static_map($markers, $paths, '1280x500', 1, 'roadmap');
+// Request the static map at the same aspect ratio it will be drawn at
+// ($page_w x $overview_h_in), keeping the "size" param within the API's
+// 640px-per-side cap and using scale=2 for a crisp actual resolution.
+$overview_h_in = 2.6;
+$overview_size_w = 640;
+$overview_size_h = (int)round($overview_size_w * $overview_h_in / $page_w);
+$overview_img = fetch_static_map($markers, $paths, $overview_size_w . 'x' . $overview_size_h, 2, 'roadmap');
 if ($overview_img) {
-    $pdf->Image($overview_img, 0.6, $pdf->GetY(), $page_w, 2.6, 'PNG');
-    $pdf->SetY($pdf->GetY() + 2.65);
+    $overview_draw_h = static_map_display_height($overview_img, $page_w, $overview_h_in);
+    $pdf->Image($overview_img, 0.6, $pdf->GetY(), $page_w, $overview_draw_h, 'PNG');
+    $pdf->SetY($pdf->GetY() + $overview_draw_h + 0.05);
 } else {
     $pdf->SetFont('Helvetica', 'I', 9);
     $pdf->SetTextColor(192, 48, 48);
-    $pdf->MultiCell($page_w, 0.22, pdftext('Map image unavailable — the Maps Static API may not be enabled yet on the SOTAplanner server key.'));
+    $pdf->MultiCell($page_w, 0.22, pdftext('Map image unavailable. The Maps Static API may not be enabled yet on the SOTAplanner server key.'));
     $pdf->SetTextColor(28, 27, 25);
     $pdf->Ln(0.1);
 }
@@ -428,7 +448,7 @@ foreach ($legs as $leg) {
     $y = $pdf->GetY();
     $pdf->Rect(0.6, $y + 0.03, 0.14, 0.1, 'F');
     $pdf->SetX(0.85);
-    $detail = ($leg['mi'] ? number_format(convertDistance($leg['mi'], $user_units), 1) . ' ' . getDistanceUnit($user_units) . ' — ' : '') . formatTime($leg['min']);
+    $detail = ($leg['mi'] ? number_format(convertDistance($leg['mi'], $user_units), 1) . ' ' . getDistanceUnit($user_units) . ', ' : '') . formatTime($leg['min']);
     $pdf->Cell($page_w - 0.25, 0.18, pdftext($leg['label'] . '   (' . $detail . ')'), 0, 1);
 }
 
@@ -451,7 +471,7 @@ $pdf->SetFont('Helvetica', 'B', 14);
 $pdf->Cell(0, 0.3, 'Schedule', 0, 1);
 $pdf->SetFont('Helvetica', 'I', 8.5);
 $pdf->SetTextColor(140, 138, 134);
-$pdf->MultiCell($page_w, 0.18, pdftext('Clock times assume a ' . multi_clock_label($start_time_min) . ' start and ' . $activation_time_min . ' min on the air per summit — treat them as planning estimates, not a guarantee.'));
+$pdf->MultiCell($page_w, 0.18, pdftext('Clock times assume a ' . multi_clock_label($start_time_min) . ' start and ' . $activation_time_min . ' min on the air per summit. Treat them as planning estimates, not a guarantee.'));
 $pdf->SetTextColor(28, 27, 25);
 $pdf->Ln(0.05);
 
@@ -513,7 +533,7 @@ foreach ($legs as $leg) {
     $pdf->Cell(0, 0.28, pdftext($leg['label']), 0, 1);
     $pdf->SetFont('Helvetica', '', 9.5);
     $pdf->SetTextColor(74, 72, 68);
-    $detail = ($leg['mi'] ? number_format(convertDistance($leg['mi'], $user_units), 1) . ' ' . getDistanceUnit($user_units) . ' — ' : '') . 'about ' . formatTime($leg['min']);
+    $detail = ($leg['mi'] ? number_format(convertDistance($leg['mi'], $user_units), 1) . ' ' . getDistanceUnit($user_units) . ', ' : '') . 'about ' . formatTime($leg['min']);
     $pdf->Cell(0, 0.22, pdftext($detail), 0, 1);
     $pdf->Ln(0.05);
 
@@ -530,7 +550,7 @@ foreach ($legs as $leg) {
             $pdf->SetFont('Helvetica', '', 8);
             $pdf->SetTextColor(140, 138, 134);
             $pdf->SetX(0.9);
-            $sub = trim($step['distance'] . ($step['distance'] && $step['duration'] ? ' — ' : '') . $step['duration']);
+            $sub = trim($step['distance'] . ($step['distance'] && $step['duration'] ? ', ' : '') . $step['duration']);
             if ($sub !== '') $pdf->Cell(0, 0.18, pdftext($sub), 0, 1);
             $pdf->SetTextColor(28, 27, 25);
             $pdf->Ln(0.06);
@@ -549,7 +569,7 @@ foreach ($legs as $leg) {
     $pdf->SetTextColor(74, 72, 68);
     $from_txt = $leg['from'] ? str_replace(',', ', ', $leg['from']) : 'unknown';
     $to_txt = $leg['to'] ? str_replace(',', ', ', $leg['to']) : 'unknown';
-    $pdf->Cell(0, 0.2, pdftext('GPS coordinates — from: ' . $from_txt . '   to: ' . $to_txt), 0, 1);
+    $pdf->Cell(0, 0.2, pdftext('GPS coordinates: from ' . $from_txt . ', to ' . $to_txt), 0, 1);
     $pdf->SetTextColor(28, 27, 25);
 }
 
@@ -560,7 +580,7 @@ foreach ($stops as $i => $stop) {
     $pdf->Cell(0, 0.28, pdftext('#' . ($i + 1) . '  ' . $stop['name']), 0, 1);
     $pdf->SetFont('Helvetica', '', 9.5);
     $pdf->SetTextColor(74, 72, 68);
-    $meta = $stop['ref'] . '  —  ' . $stop['points'] . ' pts' . ($stop['difficulty'] ? '  —  ' . ucwords(str_replace('-', ' ', $stop['difficulty'])) : '');
+    $meta = $stop['ref'] . '  ·  ' . $stop['points'] . ' pts' . ($stop['difficulty'] ? '  ·  ' . ucwords(str_replace('-', ' ', $stop['difficulty'])) : '');
     $pdf->Cell(0, 0.22, pdftext($meta), 0, 1);
     $pdf->SetTextColor(28, 27, 25);
     $pdf->Ln(0.1);
@@ -579,15 +599,21 @@ foreach ($stops as $i => $stop) {
         $ring = az_ring_to_latlng($az['polygon']);
         if (count($ring) >= 3) $paths[] = 'color:0xCC220090|weight:2|fillcolor:0xCC22002E|' . implode('|', $ring);
     }
-    $img = fetch_static_map($markers, $paths, '1000x700', 1, 'terrain');
+    // Request the static map at the same aspect ratio it will be drawn at
+    // ($page_w x $map_h), keeping the "size" param within the API's 640px-
+    // per-side cap and using scale=2 for a crisp actual resolution.
     $map_h = 3.6;
+    $closeup_size_w = 640;
+    $closeup_size_h = (int)round($closeup_size_w * $map_h / $page_w);
+    $img = fetch_static_map($markers, $paths, $closeup_size_w . 'x' . $closeup_size_h, 2, 'terrain');
     if ($img) {
-        $pdf->Image($img, 0.6, $pdf->GetY(), $page_w, $map_h, 'PNG');
-        $pdf->SetY($pdf->GetY() + $map_h + 0.1);
+        $closeup_draw_h = static_map_display_height($img, $page_w, $map_h);
+        $pdf->Image($img, 0.6, $pdf->GetY(), $page_w, $closeup_draw_h, 'PNG');
+        $pdf->SetY($pdf->GetY() + $closeup_draw_h + 0.1);
     } else {
         $pdf->SetFont('Helvetica', 'I', 9);
         $pdf->SetTextColor(192, 48, 48);
-        $pdf->MultiCell($page_w, 0.22, pdftext('Map image unavailable — the Maps Static API may not be enabled yet on the SOTAplanner server key.'));
+        $pdf->MultiCell($page_w, 0.22, pdftext('Map image unavailable. The Maps Static API may not be enabled yet on the SOTAplanner server key.'));
         $pdf->SetTextColor(28, 27, 25);
         $pdf->Ln(0.1);
     }
@@ -605,12 +631,12 @@ foreach ($stops as $i => $stop) {
     $pdf->Cell(0, 0.2, 'Hike', 0, 1);
     $pdf->SetFont('Helvetica', '', 9);
     if ($stop['is_drive_up']) {
-        $pdf->Cell(0, 0.2, pdftext('Drive-up summit — no hike required.'), 0, 1);
+        $pdf->Cell(0, 0.2, pdftext('Drive-up summit, no hike required.'), 0, 1);
     } elseif ($stop['dist_mi'] || $stop['elev_ft']) {
         $hike_line = ($stop['dist_mi'] ? number_format(convertDistance($stop['dist_mi'], $user_units), 1) . ' ' . getDistanceUnit($user_units) . ' round trip' : '')
-            . ($stop['elev_ft'] ? ' — ' . number_format(convertElevation($stop['elev_ft'], $user_units)) . ' ' . getElevationUnit($user_units) . ' gain' : '')
-            . ($stop['hike_min'] ? ' — about ' . formatTime($stop['hike_min']) . ' round trip' : '');
-        $pdf->Cell(0, 0.2, pdftext(trim($hike_line, " —")), 0, 1);
+            . ($stop['elev_ft'] ? ', ' . number_format(convertElevation($stop['elev_ft'], $user_units)) . ' ' . getElevationUnit($user_units) . ' gain' : '')
+            . ($stop['hike_min'] ? ', about ' . formatTime($stop['hike_min']) . ' round trip' : '');
+        $pdf->Cell(0, 0.2, pdftext(trim($hike_line, " ,")), 0, 1);
     } else {
         $pdf->SetTextColor(140, 138, 134);
         $pdf->Cell(0, 0.2, 'No hike data on file for this summit.', 0, 1);
