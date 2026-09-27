@@ -436,7 +436,7 @@ foreach ($stmt->fetchAll() as $s) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Multi-Activation — SOTAplanner</title>
+<title>Multi-Activation | SOTAplanner</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -597,6 +597,7 @@ a:hover { text-decoration: underline; }
 #btn-show-all-summits.active { background: var(--ink); color: #fff; border-color: var(--ink); }
 .lmap-add-btn { cursor: pointer; padding: 4px 10px; border-radius: 6px; border: none; background: var(--ink); color: #fff; font-size: 0.78rem; font-family: var(--font-sans); }
 .lmap-add-btn:hover { background: var(--ink-2); }
+.lmap-coords { font-family: monospace; font-size: 0.82rem; margin-bottom: 8px; user-select: all; }
 .map-legend { display: flex; gap: 1.1rem; flex-wrap: wrap; margin-top: 0.6rem; font-size: 0.76rem; color: var(--ink-3); }
 .map-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .legend-swatch { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
@@ -734,7 +735,7 @@ a:hover { text-decoration: underline; }
 
   <?php if (!empty($_GET['new'])): ?>
   <div class="msg msg-success">
-    <span>This route is saved automatically as you go. It's now nested under the first summit on your dashboard — use the trashcan to drop it.</span>
+    <span>This route is saved automatically as you go. It's now nested under the first summit on your dashboard. Use the trashcan to drop it.</span>
     <button class="msg-dismiss" onclick="this.parentElement.remove()">×</button>
   </div>
   <?php endif; ?>
@@ -744,7 +745,7 @@ a:hover { text-decoration: underline; }
       <div class="page-title"><?= htmlspecialchars($multi_name ?: 'Multi-Activation Route') ?></div>
       <div class="page-subtitle">
         <?= count($stops) ?> summits · <?= $total_min ? formatTime($total_min) : '—' ?> total, door-to-door
-        <?php if (!$selected_address): ?> · <span style="color:var(--orange)">No starting address selected — add one for travel times</span><?php endif; ?>
+        <?php if (!$selected_address): ?> · <span style="color:var(--orange)">No starting address selected. Add one for travel times</span><?php endif; ?>
       </div>
     </div>
     <div class="page-header-right">
@@ -840,7 +841,7 @@ a:hover { text-decoration: underline; }
           <div class="tile-order"><?= $i + 1 ?></div>
           <div style="display:flex; align-items:center; gap:6px;">
             <?php if (!$stop['is_drive_up'] && !$stop['has_trailhead']): ?>
-              <a href="trail_research.php?id=<?= $stop['id'] ?>&group=<?= $current_group['id'] ?>" class="tile-warn" title="No starting point saved for <?= htmlspecialchars(addslashes($stop['name'])) ?> — driving directions fall back to the summit's peak location. Add a starting point in Trail Research.">!</a>
+              <a href="trail_research.php?id=<?= $stop['id'] ?>&group=<?= $current_group['id'] ?>" class="tile-warn" title="No starting point saved for <?= htmlspecialchars(addslashes($stop['name'])) ?>. Driving directions fall back to the summit's peak location. Add a starting point in Trail Research.">!</a>
             <?php endif; ?>
             <div class="tile-drag-handle" title="Drag to reorder">⠿</div>
           </div>
@@ -860,7 +861,7 @@ a:hover { text-decoration: underline; }
           </div>
           <div class="tile-actions">
             <?php if (count($summit_ids) < $MULTI_MAX): ?>
-              <a href="<?= htmlspecialchars(multi_url($url_base, $dup_ids)) ?>" class="tile-dup" title="Add this summit again later in the route — e.g. re-activating after UTC midnight for double points">Duplicate</a>
+              <a href="<?= htmlspecialchars(multi_url($url_base, $dup_ids)) ?>" class="tile-dup" title="Add this summit again later in the route, e.g. re-activating after UTC midnight for double points">Duplicate</a>
             <?php endif; ?>
             <?php if (count($summit_ids) > 2): ?>
               <a href="<?= htmlspecialchars(multi_url($url_base, $remove_ids)) ?>" class="tile-remove" title="Remove from route" aria-label="Remove <?= htmlspecialchars(addslashes($stop['name'])) ?> from route" onclick="return confirm('Remove <?= htmlspecialchars(addslashes($stop['name'])) ?> from this route?')">
@@ -944,7 +945,7 @@ a:hover { text-decoration: underline; }
     </div>
     </div>
     <?php else: ?>
-      <p style="color:var(--ink-3); font-size:0.875rem;">Not enough data yet to build a timeline — add hike distance/elevation or a starting address.</p>
+      <p style="color:var(--ink-3); font-size:0.875rem;">Not enough data yet to build a timeline. Add hike distance/elevation or a starting address.</p>
     <?php endif; ?>
   </div>
 
@@ -1329,6 +1330,14 @@ async function initMap() {
             .catch(() => {});
     });
 
+    // Click anywhere on the map to get that spot's GPS coordinates with a Copy button
+    map.on('click', function(e) {
+        const coords = e.latlng.lat.toFixed(6) + ', ' + e.latlng.lng.toFixed(6);
+        const popupHtml = '<div class="lmap-coords">' + coords + '</div>'
+            + '<button class="lmap-add-btn" onclick="copyMapCoords(this, \'' + coords + '\')">Copy Coordinates</button>';
+        L.popup().setLatLng(e.latlng).setContent(popupHtml).openOn(map);
+    });
+
     if (bounds.length > 0) {
         map.fitBounds(bounds, { padding: [40, 40] });
     } else {
@@ -1398,6 +1407,29 @@ function toggleOtherSummits() {
         if (otherSummitsLayer) mapInstance.removeLayer(otherSummitsLayer);
         if (btn) { btn.classList.remove('active'); btn.textContent = 'Show All Summits'; }
     }
+}
+
+function copyMapCoords(btn, text) {
+    const done = function() {
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy Coordinates'; }, 1500);
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+    } else {
+        fallbackCopy(text, done);
+    }
+}
+
+function fallbackCopy(text, done) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); done(); } catch (e) {}
+    document.body.removeChild(ta);
 }
 
 function addSummitToRoute(id) {
