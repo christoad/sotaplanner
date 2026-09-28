@@ -45,7 +45,7 @@ if (isset($_POST['set_default_group'])) {
     setcookie('sota_default_group', $group_id, time() + 60 * 60 * 24 * 365, '/');
     $_COOKIE['sota_default_group'] = $group_id;
     setCurrentPlanningGroup($group_id);
-    $message = "⭐ Default dashboard saved — this dashboard will load automatically next time.";
+    $message = "⭐ Default dashboard saved. This dashboard will load automatically next time.";
 }
 
 // Handle address selection
@@ -70,7 +70,7 @@ if (isset($_POST['set_default_address'])) {
         $stmt->execute([$setting_key, $address_id]);
         setcookie('sota_default_address_' . $current_group['id'], $address_id, time() + 60 * 60 * 24 * 365, '/');
         $_COOKIE['sota_default_address_' . $current_group['id']] = $address_id;
-        $message = "⭐ Default address saved — this address will load automatically next time.";
+        $message = "⭐ Default address saved. This address will load automatically next time.";
     }
 }
 
@@ -93,6 +93,8 @@ if (isset($_POST['calculate_drive_times'])) {
             $stmt->execute([$current_group['id']]);
             $summits = $stmt->fetchAll();
             
+            $origin = addressOrigin($db, $selected_address);
+
             if (empty($summits)) {
                 $message = "No summits found for {$current_group['name']}. Nominate some summits first!";
             } else {
@@ -104,7 +106,7 @@ if (isset($_POST['calculate_drive_times'])) {
                     $dest_lat = $summit['trailhead_lat'] ?? $summit['latitude'];
                     $dest_lng = $summit['trailhead_lng'] ?? $summit['longitude'];
                     
-                    $drive_time = calculateDriveTime($selected_address['address'], $dest_lat, $dest_lng);
+                    $drive_time = calculateDriveTime($origin, $dest_lat, $dest_lng);
                     
                     if ($drive_time !== null) {
                         // Multiply by 2 for round trip
@@ -113,6 +115,8 @@ if (isset($_POST['calculate_drive_times'])) {
                         $stmt->execute([$drive_time_rt, $summit['id']]);
                         $updated++;
                     } else {
+                        // Don't leave a stale time from a previous address in place
+                        $db->prepare("UPDATE summits SET drive_time_min = NULL WHERE id = ?")->execute([$summit['id']]);
                         $failed++;
                     }
                     
@@ -123,10 +127,10 @@ if (isset($_POST['calculate_drive_times'])) {
                 if ($updated > 0) {
                     $message = "Travel times updated for $updated summit(s) in {$current_group['name']}!";
                     if ($failed > 0) {
-                        $message .= " ($failed failed - check API key)";
+                        $message .= " ($failed couldn't be reached by road from this address.)";
                     }
                 } else {
-                    $message = "Failed to calculate travel times. Check your Google Maps API key and quota.";
+                    $message = "Couldn't calculate travel times from \"" . ($selected_address['label'] ?: $selected_address['address']) . "\". Try editing the address in Manage Dashboards to include a city and state or a zip code.";
                 }
             }
         }
@@ -1539,6 +1543,15 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     </div>
     <?php endif; ?>
 
+    <?php if (isset($_GET['imported'])): ?>
+    <div class="msg <?= $_GET['imported'] ? 'msg-success' : 'msg-info' ?>" style="margin-bottom:1rem;">
+        <span><?= $_GET['imported']
+            ? 'The shared multi-summit route has been added to this dashboard, along with its summits and their trail research.'
+            : 'Sorry, the shared route could not be copied into this dashboard. Open the shared link again and try once more.' ?></span>
+        <button class="msg-dismiss" onclick="this.parentElement.remove()">×</button>
+    </div>
+    <?php endif; ?>
+
     <?php if (!empty($_GET['bulk_nominated'])): ?>
     <?php $bn = (int)$_GET['bulk_nominated']; ?>
     <div class="msg msg-success" style="margin-bottom:1rem;">
@@ -1819,23 +1832,23 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
         <h2 style="margin-bottom:var(--sp-5)">How SOTA Planner Works</h2>
 
         <p class="hiw-section">What This Tool Does</p>
-        <p style="font-size:0.9rem; color:var(--ink-2); margin-bottom:var(--sp-5); line-height:1.7">SOTA Planner helps you plan activations from door to door — not just the hike. It combines travel time, hiking time, and radio time into a single total-day estimate so you can compare summits and pick the right one for your available time.</p>
+        <p style="font-size:0.9rem; color:var(--ink-2); margin-bottom:var(--sp-5); line-height:1.7">SOTA Planner helps you plan activations from door to door, not just the hike. It combines travel time, hiking time, and radio time into a single total-day estimate so you can compare summits and pick the right one for your available time.</p>
 
         <p class="hiw-section">The Summit List</p>
         <ul class="hiw-list">
-            <li><strong>Pts</strong> — SOTA points awarded for activating this summit.</li>
-            <li><strong>Distance</strong> — round-trip hiking distance. From GPS track if one is loaded, otherwise manually entered.</li>
-            <li><strong>Gain</strong> — total elevation gained on the approach.</li>
-            <li><strong>Hike Time</strong> — round-trip hiking time. From GPS timestamps if available; otherwise Naismith's rule.</li>
-            <li><strong>Travel Time</strong> — round-trip travel from your selected address to the starting point, via Google Maps.</li>
-            <li><strong>Total Time</strong> — hike + drive + your planned activation time. Full door-to-door estimate.</li>
+            <li><strong>Pts:</strong> SOTA points awarded for activating this summit.</li>
+            <li><strong>Distance:</strong> round-trip hiking distance. From GPS track if one is loaded, otherwise manually entered.</li>
+            <li><strong>Gain:</strong> total elevation gained on the approach.</li>
+            <li><strong>Hike Time:</strong> round-trip hiking time. From GPS timestamps if available; otherwise Naismith's rule.</li>
+            <li><strong>Travel Time:</strong> round-trip travel from your selected address to the starting point, via Google Maps.</li>
+            <li><strong>Total Time:</strong> hike + drive + your planned activation time. Full door-to-door estimate.</li>
         </ul>
 
         <p class="hiw-section">Filters &amp; Settings</p>
         <ul class="hiw-list">
-            <li><strong>Activation time</strong> — how long you plan to operate from the summit. Adjusts Total Time for all summits.</li>
-            <li><strong>Status filters</strong> — show/hide summits by workflow stage.</li>
-            <li><strong>Recalculate Travel Times</strong> — re-query Google Maps for all summits in your list.</li>
+            <li><strong>Activation time:</strong> how long you plan to operate from the summit. Adjusts Total Time for all summits.</li>
+            <li><strong>Status filters:</strong> show/hide summits by workflow stage.</li>
+            <li><strong>Recalculate Travel Times:</strong> re-query Google Maps for all summits in your list.</li>
         </ul>
 
         <p class="hiw-section">Dashboards</p>
@@ -2068,7 +2081,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                 info.textContent = 'Select summits or routes to delete';
             }
         } else if (actionMode === 'multi') {
-            const editPrefix = multiEditId ? ('Editing "' + (MULTI_EDIT_NAME || 'route') + '" — ') : '';
+            const editPrefix = multiEditId ? ('Editing "' + (MULTI_EDIT_NAME || 'route') + '": ') : '';
             if (selectedIds.size >= 2) {
                 multiBtn.classList.add('armed');
                 multiBtn.title = multiEditId ? 'Update this route' : ('Plan a route for ' + selectedIds.size + ' summits');
@@ -2254,7 +2267,7 @@ if (!new URLSearchParams(window.location.search).has('tour') &&
         Show this tour again next time I visit
     </label>
     <div class="tour-actions">
-        <button class="tbtn tbtn-skip" id="tour-skip" onclick="tourSkip()">Skip — remind me next time</button>
+        <button class="tbtn tbtn-skip" id="tour-skip" onclick="tourSkip()">Skip, remind me next time</button>
         <div style="display:flex;gap:0.4rem">
             <button class="tbtn tbtn-ghost" id="tour-back" onclick="tourBack()">← Back</button>
             <button class="tbtn tbtn-primary" id="tour-next" onclick="tourNext()">Next →</button>
@@ -2273,7 +2286,7 @@ var STEPS = [
     {
         sel: '.topbar-context',
         title: "Your active dashboard",
-        body:  "Your active dashboard and starting address live here. Switch dashboards or addresses anytime — travel times and totals update automatically.",
+        body:  "Your active dashboard and starting address live here. Switch dashboards or addresses anytime. Travel times and totals update automatically.",
     },
     {
         sel: '.topbar-nav a[href="planning_groups.php"]',
@@ -2293,7 +2306,7 @@ var STEPS = [
     {
         sel: null,
         title: "You're all set!",
-        body:  "Click any summit row to open its full detail page — interactive map, elevation chart, GPX upload, and planning tools. Manage your dashboard anytime from Manage Dashboards in the nav.",
+        body:  "Click any summit row to open its full detail page: interactive map, elevation chart, GPX upload, and planning tools. Manage your dashboard anytime from Manage Dashboards in the nav.",
         final: true,
     },
 ];

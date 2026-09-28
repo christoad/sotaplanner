@@ -4,6 +4,7 @@ session_start();
 
 // Already logged in — go to dashboard (or group picker if no group set)
 if (isset($_SESSION['sota_callsign'])) {
+    if (!empty($_SESSION['pending_multi_import'])) { header('Location: onboarding.php'); exit; }
     header('Location: ' . (isset($_SESSION['current_planning_group_id']) ? 'index.php' : 'planning_groups.php'));
     exit;
 }
@@ -17,6 +18,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($callsign !== '' && preg_match('/^[A-Z0-9]{3,10}$/', $callsign)) {
             $_SESSION['sota_callsign']   = $callsign;
             $_SESSION['sota_login_type'] = 'early_access';
+
+            // Came from "Add this Multi-Summit to your own dashboard" on a shared route
+            if (!empty($_SESSION['pending_multi_import'])) {
+                header('Location: onboarding.php');
+                exit;
+            }
 
             // Determine redirect based on group membership
             try {
@@ -90,7 +97,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOTA Planner — Plan Your Activations</title>
+    <title>SOTA Planner | Plan Your Activations</title>
     <link href="https://fonts.googleapis.com/css2?family=Overpass:wght@300;600;800&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -599,7 +606,7 @@ try {
           </g>
         </svg>
     </div>
-    <p class="tagline hero-reveal" style="opacity:0;">Trail research from activators who've already been there — get to the summit faster, with less research effort.</p>
+    <p class="tagline hero-reveal" style="opacity:0;">Trail research from activators who've already been there. Get to the summit faster, with less research effort.</p>
     <?php if ($ready_count > 0): ?>
     <div class="hero-reveal hero-stat-row" style="opacity:0;">
         <svg class="scroll-cue-arrow" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -630,17 +637,17 @@ try {
     <div class="feature" style="opacity:0; transform:translateX(-140px);">
         <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="16" r="11"/><path d="M8 20 Q12 8 16 14 Q20 20 24 10"/><circle cx="8" cy="20" r="2" fill="#1E3A5F"/><circle cx="24" cy="10" r="2" fill="#1E3A5F"/></svg></span>
         <h3>Community Trail Data</h3>
-        <p>Routes, starting points, and real-world hiking times contributed by hams who've already activated these summits — preloaded for thousands of peaks. No research required.</p>
+        <p>Routes, starting points, and real-world hiking times contributed by hams who've already activated these summits, preloaded for thousands of peaks. No research required.</p>
     </div>
     <div class="feature" style="opacity:0; transform:translateY(90px);">
         <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="17" r="12"/><polyline points="16,10 16,17 21,17"/><path d="M16,5 L16,3"/><path d="M14,3 L18,3"/></svg></span>
         <h3>Total Activation Time Estimates</h3>
-        <p>Travel time + hiking time + radio time = one number. Know exactly what a summit requires — even one you've never visited — before you commit to the day.</p>
+        <p>Travel time + hiking time + radio time = one number. Know exactly what a summit requires, even one you've never visited, before you commit to the day.</p>
     </div>
     <div class="feature" style="opacity:0; transform:translateX(140px);">
         <span class="feature-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="13" r="5"/><path d="M16 18 C10 18 5 24 5 28 L27 28 C27 24 22 18 16 18"/><path d="M22 8 C24 6 28 8 26 12"/><path d="M10 8 C8 6 4 8 6 12"/></svg></span>
         <h3>Plan From Anywhere</h3>
-        <p>Traveling somewhere new? Search summits near any location — a destination city, a vacation spot — and instantly see what the community knows about each hike.</p>
+        <p>Traveling somewhere new? Search summits near any location (a destination city, a vacation spot) and instantly see what the community knows about each hike.</p>
     </div>
 </div>
 
@@ -657,7 +664,7 @@ try {
             </a>
         <?php else: ?>
             <button class="sota-btn sota-btn-disabled login-card-item" style="opacity:0; transform:translateY(24px);" disabled>
-                ⛰️ SOTA SSO — Coming Soon
+                ⛰️ SOTA SSO: Coming Soon
             </button>
             <p class="coming-soon-note">OAuth client registration pending with SOTA team</p>
         <?php endif; ?>
@@ -667,7 +674,7 @@ try {
             <span style="font-size:1.1rem; line-height:1.3; flex-shrink:0; color:#16a34a;">✓</span>
             <div>
                 <strong style="font-size:0.88rem; color:#166534; display:block; margin-bottom:0.15rem;">No new account to create</strong>
-                <p style="font-size:0.8rem; color:#166534; line-height:1.45; margin:0;">Use your official SOTA account — the same login you use on sotadata.org.uk. Already registered? You're all set — click above to sign in with your existing SOTA credentials.</p>
+                <p style="font-size:0.8rem; color:#166534; line-height:1.45; margin:0;">Use your official SOTA account, the same login you use on sotadata.org.uk. Already registered? You're all set. Click above to sign in with your existing SOTA credentials.</p>
             </div>
         </div>
     </div>

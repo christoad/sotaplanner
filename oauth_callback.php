@@ -37,6 +37,13 @@ if (isset($_GET['action']) && $_GET['action'] === 'login') {
     $db->prepare("INSERT INTO app_settings (setting_key, setting_value, updated_at) VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=NOW()")
        ->execute(['oauth_state_' . $state, time() + 600]);
 
+    // Carry a pending "Add this Multi-Summit to your own dashboard" route across the SSO round trip
+    // the same way (keyed by state), in case the session doesn't survive it.
+    if (!empty($_SESSION['pending_multi_import'])) {
+        $db->prepare("INSERT INTO app_settings (setting_key, setting_value, updated_at) VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=NOW()")
+           ->execute(['oauth_import_' . $state, (int)$_SESSION['pending_multi_import']]);
+    }
+
     $params = [
         'response_type' => 'code',
         'client_id'     => SOTA_CLIENT_ID,
@@ -75,6 +82,13 @@ if (isset($_GET['code'])) {
         die('OAuth state invalid or expired. Please try logging in again.');
     }
     $db->prepare("DELETE FROM app_settings WHERE setting_key = ?")->execute(['oauth_state_' . $incoming_state]);
+
+    $stmt = $db->prepare("SELECT setting_value FROM app_settings WHERE setting_key = ?");
+    $stmt->execute(['oauth_import_' . $incoming_state]);
+    $pending_import = (int)$stmt->fetchColumn();
+    if ($pending_import) {
+        $db->prepare("DELETE FROM app_settings WHERE setting_key = ?")->execute(['oauth_import_' . $incoming_state]);
+    }
 
     if (!defined('SOTA_CLIENT_ID')) {
         die('SOTA OAuth credentials are not configured.');
@@ -174,6 +188,14 @@ if (isset($_GET['code'])) {
         VALUES (?, 1, ?)
         ON DUPLICATE KEY UPDATE callsign_confirmed = 1, sso_sub = VALUES(sso_sub)
     ")->execute([$callsign, $id_payload['sub'] ?? null]);
+
+    // Arrived via "Add this Multi-Summit to your own dashboard" on a shared route: onboarding
+    // builds a new dashboard for it, whether or not this user already has one.
+    if ($pending_import) $_SESSION['pending_multi_import'] = $pending_import;
+    if (!empty($_SESSION['pending_multi_import'])) {
+        header('Location: onboarding.php');
+        exit;
+    }
 
     // Find user's planning groups
     $stmt = $db->prepare("

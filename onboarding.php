@@ -1,5 +1,6 @@
 <?php
 require_once 'config.php';
+require_once 'multi_import_lib.php';
 session_start();
 requireLogin();
 
@@ -7,6 +8,80 @@ $db = getDbConnection();
 $callsign = getCurrentCallsign();
 
 $error = '';
+
+// Arrived via "Add this Multi-Summit to your own dashboard" on a shared multi-activation route
+// (multi_add_to_dashboard.php). Users who already have dashboards first choose
+// one of them or a new one ("choose" step). A new dashboard skips the crew step,
+// and the route is imported once its starting address is saved (or skipped).
+$pending_import = (int)($_SESSION['pending_multi_import'] ?? 0);
+$import_route = null;
+if ($pending_import) {
+    $stmt = $db->prepare("
+        SELECT ma.name, ma.created_by, COUNT(mas.summit_id) AS stops
+        FROM multi_activations ma
+        LEFT JOIN multi_activation_summits mas ON mas.multi_activation_id = ma.id
+        WHERE ma.id = ? GROUP BY ma.id
+    ");
+    $stmt->execute([$pending_import]);
+    $import_route = $stmt->fetch() ?: null;
+    if (!$import_route) {
+        unset($_SESSION['pending_multi_import'], $_SESSION['import_group_id']);
+        $pending_import = 0;
+    }
+}
+
+function finishPendingImport(PDO $db, array $group, string $callsign, bool $allow_tour = true): void {
+    $source_id = (int)($_SESSION['pending_multi_import'] ?? 0);
+    $new_id = $source_id ? importMultiActivationIntoGroup($db, $source_id, (int)$group['id'], $callsign) : null;
+    if ($new_id) logActivity($db, 'Multi-activation imported', 'shared route #' . $source_id, "new id=$new_id", $group['name']);
+    unset($_SESSION['pending_multi_import'], $_SESSION['import_group_id'], $_SESSION['import_choose_new'], $_SESSION['onboarding_crew_done']);
+
+    // Only a user's very first dashboard gets the dashboard tour
+    $stmt = $db->prepare("
+        SELECT COUNT(DISTINCT pg.id) FROM planning_groups pg
+        LEFT JOIN planning_group_members pgm ON pg.id = pgm.planning_group_id
+        WHERE pg.owner_callsign = ? OR pgm.callsign = ?
+    ");
+    $stmt->execute([$callsign, $callsign]);
+    $qs = ['imported' => $new_id ? 1 : 0];
+    if ($allow_tour && (int)$stmt->fetchColumn() <= 1) $qs['tour'] = 1;
+    header('Location: index.php?' . http_build_query($qs));
+    exit;
+}
+
+// Existing user importing a shared route: every dashboard they can add it to,
+// with its selected starting address (drive times are calculated from it)
+$user_groups = [];
+if ($pending_import) {
+    $stmt = $db->prepare("
+        SELECT DISTINCT pg.id, pg.name, a.label AS addr_label, a.address AS addr
+        FROM planning_groups pg
+        LEFT JOIN planning_group_members pgm ON pg.id = pgm.planning_group_id
+        LEFT JOIN app_settings st ON st.setting_key = CONCAT('selected_address_group_', pg.id)
+        LEFT JOIN addresses a ON a.id = st.setting_value AND a.planning_group_id = pg.id
+        WHERE pg.owner_callsign = ? OR pgm.callsign = ?
+        ORDER BY pg.name
+    ");
+    $stmt->execute([$callsign, $callsign]);
+    $user_groups = $stmt->fetchAll();
+}
+
+if ($pending_import && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_existing'])) {
+    $pick = (int)($_POST['group_id'] ?? 0);
+    $chosen = null;
+    foreach ($user_groups as $g) { if ((int)$g['id'] === $pick) $chosen = $g; }
+    if ($chosen) {
+        setCurrentPlanningGroup($chosen['id']);
+        finishPendingImport($db, $chosen, $callsign, false);
+    }
+    $error = 'Please pick one of your dashboards.';
+}
+
+if ($pending_import && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_new'])) {
+    $_SESSION['import_choose_new'] = true;
+    header('Location: onboarding.php');
+    exit;
+}
 
 // Check if user already has a group
 $stmt = $db->prepare("
@@ -20,7 +95,7 @@ $stmt->execute([$callsign, $callsign]);
 $existing_group = $stmt->fetch();
 
 // If user has a group with an address already, send them to the dashboard
-if ($existing_group) {
+if ($existing_group && !$pending_import) {
     $addr_stmt = $db->prepare("SELECT COUNT(*) FROM addresses WHERE planning_group_id = ?");
     $addr_stmt->execute([$existing_group['id']]);
     if ((int)$addr_stmt->fetchColumn() > 0) {
@@ -54,7 +129,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_group'])) {
             $stmt->execute([$new_group_id, $callsign]);
 
             setCurrentPlanningGroup($new_group_id);
-            unset($_SESSION['onboarding_crew_done']);
+            if ($pending_import) {
+                $_SESSION['import_group_id'] = (int)$new_group_id;
+                $_SESSION['onboarding_crew_done'] = true;
+            } else {
+                unset($_SESSION['onboarding_crew_done']);
+            }
             header('Location: onboarding.php');
             exit;
         } catch (PDOException $e) {
@@ -67,7 +147,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_group'])) {
     }
 }
 
-// Handle: add crew callsigns (step 2) — submit or skip
+// Handle: add crew callsigns (step 2), submit or skip
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_crew'])) {
     $group = getCurrentPlanningGroup($db);
     $raw = trim($_POST['crew_callsigns'] ?? '');
@@ -97,18 +177,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_address'])) {
     $label   = trim($_POST['label']   ?? '');
     $address = trim($_POST['address'] ?? '');
 
+    $addr_check = $address !== '' ? validateStartingAddress($address) : null;
+
     if ($address === '') {
         $error = 'Please enter a starting location.';
+    } elseif (!$addr_check['ok']) {
+        $error = $addr_check['error'];
     } elseif ($group) {
         try {
-            $stmt = $db->prepare("INSERT INTO addresses (planning_group_id, label, address) VALUES (?, ?, ?)");
-            $stmt->execute([$group['id'], $label, $address]);
+            $stmt = $db->prepare("INSERT INTO addresses (planning_group_id, label, address, lat, lng) VALUES (?, ?, ?, ?, ?)");
+            $stmt->execute([$group['id'], $label, $address, $addr_check['lat'] ?? null, $addr_check['lng'] ?? null]);
             $new_addr_id = $db->lastInsertId();
 
             $setting_key = 'selected_address_group_' . $group['id'];
             $stmt = $db->prepare("INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
             $stmt->execute([$setting_key, $new_addr_id]);
 
+            if ($pending_import && (int)($_SESSION['import_group_id'] ?? 0) === (int)$group['id']) {
+                finishPendingImport($db, $group, $callsign);
+            }
             unset($_SESSION['onboarding_crew_done']);
             header('Location: index.php?tour=1');
             exit;
@@ -118,9 +205,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_address'])) {
     }
 }
 
+// Import mode: "Skip for now" on the address step still brings the route along
+if ($pending_import && isset($_GET['skip_address'])) {
+    $group = getCurrentPlanningGroup($db);
+    if ($group && (int)($_SESSION['import_group_id'] ?? 0) === (int)$group['id']) {
+        finishPendingImport($db, $group, $callsign);
+    }
+}
+
 // Determine current step (1 = no group, 2 = crew, 3 = address)
 $current_group = getCurrentPlanningGroup($db);
-if (!$current_group) {
+if ($pending_import) {
+    if ($current_group && (int)($_SESSION['import_group_id'] ?? 0) === (int)$current_group['id']) {
+        $step = 3;
+    } elseif (!empty($user_groups) && empty($_SESSION['import_choose_new'])) {
+        $step = 'choose';
+    } else {
+        $step = 1;
+    }
+} elseif (!$current_group) {
     $step = 1;
 } elseif (empty($_SESSION['onboarding_crew_done'])) {
     $step = 2;
@@ -133,7 +236,7 @@ if (!$current_group) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Get Started — SOTA Planner</title>
+    <title>Get Started | SOTA Planner</title>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
 :root {
@@ -412,6 +515,30 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--ink); 
 .btn-submit:hover { background: var(--ink-2); }
 .btn-submit:active { transform: scale(0.99); }
 
+.btn-alt {
+    display: block; width: 100%; margin-top: 0.75rem;
+    padding: 0.8rem 1.5rem;
+    background: transparent; border: 1.5px solid var(--border-2);
+    border-radius: var(--r-md); cursor: pointer;
+    font-family: var(--font-sans); font-size: 0.95rem; font-weight: 500;
+    color: var(--ink-2); text-align: center; transition: border-color 0.15s, color 0.15s;
+}
+.btn-alt:hover { border-color: var(--ink-3); color: var(--ink); }
+
+.dash-choices { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
+.dash-choice {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.8rem 1rem; cursor: pointer;
+    border: 1.5px solid var(--border-2); border-radius: var(--r-md);
+    transition: border-color 0.15s, background 0.15s;
+}
+.dash-choice:hover { border-color: var(--ink-3); }
+.dash-choice:has(input:checked) { border-color: var(--ink); background: var(--bg); }
+.dash-choice input { accent-color: var(--ink); width: 1.05rem; height: 1.05rem; flex-shrink: 0; }
+.dash-choice-body { display: flex; flex-direction: column; min-width: 0; }
+.dash-choice-name { font-weight: 600; font-size: 0.95rem; color: var(--ink); }
+.dash-choice-addr { font-size: 0.8rem; color: var(--ink-3); overflow-wrap: anywhere; }
+
 .btn-skip {
     display: block; text-align: center;
     font-size: 0.825rem; color: var(--ink-4);
@@ -482,9 +609,10 @@ window.addEventListener('pageshow', snapTopAndFocus);
     <span class="user-note"><?= htmlspecialchars($callsign) ?></span>
 </div>
 
+<?php if ($step !== 'choose'): ?>
 <!-- Step indicator -->
 <div class="setup-header">
-    <div class="setup-title">3 steps to get started</div>
+    <div class="setup-title"><?= $pending_import ? '2 steps to add this route' : '3 steps to get started' ?></div>
 </div>
 <div class="step-bar">
 
@@ -500,6 +628,7 @@ window.addEventListener('pageshow', snapTopAndFocus);
         <div class="step-sublabel <?= $step === 1 ? 'active' : '' ?>">Name your dashboard</div>
     </div>
 
+    <?php if (!$pending_import): ?>
     <div class="step-connector-wrap">
         <div class="step-connector-line <?= $step > 1 ? 'done' : '' ?>"></div>
     </div>
@@ -515,18 +644,20 @@ window.addEventListener('pageshow', snapTopAndFocus);
         <div class="step-label <?= $step === 2 ? 'active' : ($step > 2 ? 'done' : '') ?>">Add Crew</div>
         <div class="step-sublabel <?= $step === 2 ? 'active' : '' ?>">Optional</div>
     </div>
+    <?php endif; ?>
 
     <div class="step-connector-wrap">
         <div class="step-connector-line <?= $step > 2 ? 'done' : '' ?>"></div>
     </div>
 
     <div class="step-item">
-        <div class="step-circle <?= $step >= 3 ? 'active' : '' ?>">3</div>
+        <div class="step-circle <?= $step >= 3 ? 'active' : '' ?>"><?= $pending_import ? 2 : 3 ?></div>
         <div class="step-label <?= $step >= 3 ? 'active' : '' ?>">Set Location</div>
         <div class="step-sublabel <?= $step === 3 ? 'active' : '' ?>">For travel times</div>
     </div>
 
 </div>
+<?php endif; ?>
 
 <!-- Main content -->
 <div class="onboarding-wrap">
@@ -535,13 +666,9 @@ window.addEventListener('pageshow', snapTopAndFocus);
         <div class="error-msg"><?= htmlspecialchars($error) ?></div>
     <?php endif; ?>
 
-    <?php if ($step === 1): ?>
-    <!-- ═══════════════════════════════════════════════════════════════ -->
-    <!-- STEP 1: Create a Dashboard                                     -->
-    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <?php if ($step === 'choose'): ?>
+    <!-- Existing user: add the shared route to one of their dashboards, or a new one -->
     <div class="hero-card">
-
-        <div class="step-badge">Step 1 of 3</div>
 
         <span class="hero-icon">
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -550,12 +677,67 @@ window.addEventListener('pageshow', snapTopAndFocus);
             </svg>
         </span>
 
-        <h1 class="hero-title">Create your dashboard</h1>
+        <h1 class="hero-title">Where should this route go?</h1>
+
+        <div class="hero-note">
+            You're adding <strong><?= htmlspecialchars($import_route['name'] ?: 'a multi-summit route') ?></strong>
+            (<?= (int)$import_route['stops'] ?> stops<?= $import_route['created_by'] ? ', shared by ' . htmlspecialchars($import_route['created_by']) : '' ?>).
+            Its summits and their trail research come along with it. Drive times are calculated from the dashboard's starting location.
+        </div>
+
+        <form method="POST">
+            <div class="form-section">
+                <div class="form-section-title">Add to one of your dashboards</div>
+                <div class="dash-choices">
+                    <?php foreach ($user_groups as $i => $g): ?>
+                    <label class="dash-choice">
+                        <input type="radio" name="group_id" value="<?= (int)$g['id'] ?>"<?= $i === 0 ? ' checked' : '' ?>>
+                        <span class="dash-choice-body">
+                            <span class="dash-choice-name"><?= htmlspecialchars($g['name']) ?></span>
+                            <span class="dash-choice-addr"><?= $g['addr'] ? 'Starting from ' . htmlspecialchars($g['addr_label'] ?: $g['addr']) : 'No starting location yet' ?></span>
+                        </span>
+                    </label>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <button type="submit" name="import_existing" class="btn-submit">Add Route to This Dashboard &nbsp;→</button>
+        </form>
+
+        <form method="POST" style="margin:0">
+            <button type="submit" name="import_new" class="btn-alt">Create a new dashboard for it instead</button>
+        </form>
+
+    </div>
+
+    <?php elseif ($step === 1): ?>
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- STEP 1: Create a Dashboard                                     -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <div class="hero-card">
+
+        <div class="step-badge">Step 1 of <?= $pending_import ? 2 : 3 ?></div>
+
+        <span class="hero-icon">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="4,38 16,18 23,28 30,12 44,38"/>
+                <line x1="4" y1="38" x2="44" y2="38"/>
+            </svg>
+        </span>
+
+        <h1 class="hero-title"><?= $pending_import ? 'Create a dashboard for this route' : 'Create your dashboard' ?></h1>
+
+        <?php if ($pending_import): ?>
+        <div class="hero-note">
+            You're adding <strong><?= htmlspecialchars($import_route['name'] ?: 'a multi-summit route') ?></strong>
+            (<?= (int)$import_route['stops'] ?> stops<?= $import_route['created_by'] ? ', shared by ' . htmlspecialchars($import_route['created_by']) : '' ?>).
+            It will be waiting on your new dashboard, along with the trail research for each summit.
+        </div>
+        <?php endif; ?>
 
         <p class="hero-body">
             A <strong>dashboard</strong> is a single activator, or a team of activators, who
             collaborate together to find and research summits. Everyone on the dashboard shares the
-            same wishlist — nominating peaks, uploading GPX tracks, adding trail notes, and
+            same wishlist: nominating peaks, uploading GPX tracks, adding trail notes, and
             building up research side by side.
         </p>
 
@@ -566,7 +748,7 @@ window.addEventListener('pageshow', snapTopAndFocus);
         </p>
 
         <div class="hero-note">
-            After setup, you can add co-activators by callsign from the <strong>Manage Dashboards</strong> page — they'll see all the shared research the next time they log in.
+            After setup, you can add co-activators by callsign from the <strong>Manage Dashboards</strong> page. They'll see all the shared research the next time they log in.
         </div>
 
         <form method="POST">
@@ -636,13 +818,13 @@ window.addEventListener('pageshow', snapTopAndFocus);
 
         <p class="hero-body">
             Add the callsigns of anyone who shares this dashboard with you. <strong>The next time
-            they log in to SOTA Planner, this dashboard will already be there</strong> — they'll
+            they log in to SOTA Planner, this dashboard will already be there</strong>, and they'll
             see all the shared research, summit wishlist, and notes without any extra setup
             on their end.
         </p>
 
         <p class="hero-body">
-            Going solo? No problem — skip this and move on.
+            Going solo? No problem. Skip this and move on.
         </p>
 
         <div class="hero-note">
@@ -683,7 +865,7 @@ window.addEventListener('pageshow', snapTopAndFocus);
                 text-align: center; transition: border-color 0.15s, color 0.15s;
             " onmouseover="this.style.borderColor='var(--ink-3)';this.style.color='var(--ink)'"
                onmouseout="this.style.borderColor='var(--border-2)';this.style.color='var(--ink-3)'">
-                I'm a solo activator — skip this step
+                I'm a solo activator, skip this step
             </button>
         </form>
 
@@ -695,7 +877,7 @@ window.addEventListener('pageshow', snapTopAndFocus);
     <!-- ═══════════════════════════════════════════════════════════════ -->
     <div class="hero-card">
 
-        <div class="step-badge">Step 3 of 3</div>
+        <div class="step-badge"><?= $pending_import ? 'Step 2 of 2' : 'Step 3 of 3' ?></div>
 
         <span class="hero-icon">
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -713,7 +895,7 @@ window.addEventListener('pageshow', snapTopAndFocus);
         </p>
 
         <p class="hero-body">
-            Enter your home neighborhood, a nearby cross street, a zip code — anything
+            Enter your home neighborhood, a nearby cross street, a zip code, anything
             Google Maps can find. You don't need to use your exact address.
         </p>
 
@@ -733,11 +915,11 @@ window.addEventListener('pageshow', snapTopAndFocus);
                         id="addr_address"
                         name="address"
                         class="form-input"
-                        placeholder="e.g., 91601, Biloxi &amp; Burbank Blvd, Moby's Coffee &amp; Tea"
+                        placeholder="e.g., 91601, Biloxi &amp; Burbank Blvd North Hollywood, 123 Main St Bend OR"
                         value="<?= htmlspecialchars($_POST['address'] ?? '') ?>"
                         required
                     >
-                    <div class="form-hint">Anything Google Maps can find works — a zip code, a local business, cross streets, or a full address.</div>
+                    <div class="form-hint">A zip code, cross streets with a city, or a street address. Business names are unreliable with Google Maps, so use the street address instead.</div>
                 </div>
 
                 <div class="form-group">
@@ -754,11 +936,11 @@ window.addEventListener('pageshow', snapTopAndFocus);
             </div>
 
             <button type="submit" name="add_address" class="btn-submit">
-                Save &amp; Go to Dashboard &nbsp;→
+                <?= $pending_import ? 'Save &amp; Add Route' : 'Save &amp; Go to Dashboard' ?> &nbsp;→
             </button>
         </form>
 
-        <a href="index.php" class="btn-skip">Skip for now — I'll add an address later</a>
+        <a href="<?= $pending_import ? 'onboarding.php?skip_address=1' : 'index.php' ?>" class="btn-skip">Skip for now. I'll add an address later</a>
 
     </div>
 

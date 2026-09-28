@@ -118,10 +118,15 @@ if (isset($_POST['select_group'])) {
         $address = trim($_POST['address']);
         $group_id = $_SESSION['manage_group_id'];
 
-        if (!empty($address)) {
+        $addr_check = !empty($address) ? validateStartingAddress($address) : null;
+
+        if (!empty($address) && !$addr_check['ok']) {
+            $error = $addr_check['error'];
+            $open_address_modal = true;
+        } elseif (!empty($address)) {
             try {
-                $stmt = $db->prepare("INSERT INTO addresses (planning_group_id, label, address) VALUES (?, ?, ?)");
-                $stmt->execute([$group_id, $label, $address]);
+                $stmt = $db->prepare("INSERT INTO addresses (planning_group_id, label, address, lat, lng) VALUES (?, ?, ?, ?, ?)");
+                $stmt->execute([$group_id, $label, $address, $addr_check['lat'] ?? null, $addr_check['lng'] ?? null]);
                 $new_address_id = $db->lastInsertId();
 
                 // If this is the only address for the group, auto-select it
@@ -139,7 +144,9 @@ if (isset($_POST['select_group'])) {
                     header('Location: index.php');
                     exit;
                 }
-                $message = "Address added successfully!";
+                $message = $addr_check['found']
+                    ? "Address added. Google Maps found it at: " . $addr_check['found']
+                    : "Address added successfully!";
             } catch (PDOException $e) {
                 $error = "Error adding address: " . $e->getMessage();
             }
@@ -275,7 +282,7 @@ if (isset($_POST['select_group'])) {
                     $db->prepare("DELETE FROM gpx_tracks WHERE summit_id IN ($ph)")->execute($ids);
                     $db->prepare("DELETE FROM summit_notes WHERE summit_id IN ($ph)")->execute($ids);
                     $db->prepare("DELETE FROM activations WHERE summit_id IN ($ph)")->execute($ids);
-                    // planned_activations may not exist on all installs — suppress errors
+                    // planned_activations may not exist on all installs, suppress errors
                     try { $db->prepare("DELETE FROM planned_activations WHERE summit_id IN ($ph)")->execute($ids); } catch (PDOException $e) {}
                     // Clear source_group_id references in other groups' shared summits
                     $db->prepare("UPDATE summits SET source_group_id = NULL, uses_shared_data = 0 WHERE source_group_id = ?")->execute([$group_id]);
@@ -316,7 +323,7 @@ try {
     }
 } catch (PDOException $e) {}
 
-// Get selected group — auto-select if user only belongs to one group
+// Get selected group, auto-select if user only belongs to one group
 $managing_group_id = $_SESSION['manage_group_id'] ?? null;
 if (!$managing_group_id && count($all_groups) === 1) {
     $managing_group_id = $all_groups[0]['id'];
@@ -345,7 +352,7 @@ if ($managing_group_id) {
         ");
         $stmt->execute([$managing_group_id, $current_callsign, $current_callsign]);
         if (!$stmt->fetch()) {
-            $managing_group = null; // No access — treat as unselected
+            $managing_group = null; // No access, treat as unselected
             $_SESSION['manage_group_id'] = null;
         }
     }
@@ -378,7 +385,7 @@ $is_first_visit = !$managing_group_id;
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Dashboards — SOTA Planner</title>
+    <title>Manage Dashboards | SOTA Planner</title>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
 :root {
@@ -525,7 +532,7 @@ a:hover { text-decoration: underline; }
 }
 .user-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
 
-/* Hamburger menu (mobile nav — topbar-nav links are hidden below 640px) */
+/* Hamburger menu (mobile nav: topbar-nav links are hidden below 640px) */
 .hamburger-menu { display: none; position: relative; }
 .hamburger-btn {
     display: flex; align-items: center; justify-content: center;
@@ -829,14 +836,14 @@ a:hover { text-decoration: underline; }
         <div style="flex: 1; min-width: 200px;">
             <div style="font-size: 1rem; font-weight: 800; color: #1E3A5F; margin-bottom: 0.35rem;">Welcome to SOTA Planner, <?= htmlspecialchars($current_callsign) ?>!</div>
             <div style="font-size: 0.875rem; color: #444; line-height: 1.55; margin-bottom: 1rem;">
-                You don't have any dashboards yet. Dashboards are how you organize your summit wishlist — each dashboard can have its own members, addresses, and summits.
+                You don't have any dashboards yet. Dashboards are how you organize your summit wishlist. Each dashboard can have its own members, addresses, and summits.
             </div>
             <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
                 <button class="btn btn-primary" onclick="document.getElementById('createGroupModal').classList.add('open')" style="font-size: 0.875rem;">
                     + Create my first dashboard
                 </button>
                 <div style="font-size: 0.82rem; color: #666; line-height: 1.4;">
-                    Or, ask a dashboard owner to add your callsign (<strong><?= htmlspecialchars($current_callsign) ?></strong>) to their dashboard — it'll appear here automatically next time you sign in.
+                    Or, ask a dashboard owner to add your callsign (<strong><?= htmlspecialchars($current_callsign) ?></strong>) to their dashboard. It'll appear here automatically next time you sign in.
                 </div>
             </div>
         </div>
@@ -1135,16 +1142,19 @@ a:hover { text-decoration: underline; }
         <?php if ($managing_group): ?>
             <p class="modal-subtitle">For <strong><?= htmlspecialchars($managing_group['name']) ?></strong></p>
         <?php endif; ?>
-        <p style="font-size: 0.85rem; color: var(--ink-2); margin-bottom: 1rem; line-height: 1.5;">SOTA Planner uses this to calculate accurate travel time estimates from this address to each summit's starting point — so you can see the full door-to-door time for an activation.</p>
+        <p style="font-size: 0.85rem; color: var(--ink-2); margin-bottom: 1rem; line-height: 1.5;">SOTA Planner uses this to calculate accurate travel time estimates from this address to each summit's starting point, so you can see the full door-to-door time for an activation.</p>
         <form method="POST">
             <div class="form-group">
                 <label class="form-label">Label (optional)</label>
-                <input type="text" name="label" class="form-input" placeholder="e.g., Home, Work, Cabin">
+                <input type="text" name="label" class="form-input" placeholder="e.g., Home, Work, Cabin" value="<?= !empty($error) && isset($_POST['add_address']) ? htmlspecialchars($_POST['label'] ?? '') : '' ?>">
             </div>
             <div class="form-group">
                 <label class="form-label">Address</label>
-                <input type="text" name="address" class="form-input" placeholder="e.g., 97201, Oak & Main Portland, Starbucks Bend OR" required>
-                <div class="form-hint">Anything Google Maps can find — zip code, cross streets, a business name, or a full address. No need to use your home address.</div>
+                <input type="text" name="address" class="form-input" placeholder="e.g., 97201, Oak & Main Portland OR, 123 Main St Bend OR" value="<?= !empty($error) && isset($_POST['add_address']) ? htmlspecialchars($_POST['address'] ?? '') : '' ?>" required>
+                <div class="form-hint">A zip code, cross streets with a city, or a street address. Business names are unreliable with Google Maps, so use the street address instead. No need to use your home address.</div>
+                <?php if (!empty($error) && isset($_POST['add_address'])): ?>
+                    <div class="form-hint" style="color: var(--red); margin-top: 0.4rem;"><?= htmlspecialchars($error) ?></div>
+                <?php endif; ?>
             </div>
             <div style="display: flex; gap: 0.75rem;">
                 <button type="submit" name="add_address" class="btn btn-primary" style="flex: 1;">Add Address</button>
@@ -1205,7 +1215,7 @@ a:hover { text-decoration: underline; }
         <div class="modal-title" style="color:var(--red);">Delete Dashboard</div>
         <p style="font-size:0.875rem; color:var(--ink-2); margin-bottom:1rem; line-height:1.5;">
             This will permanently delete <strong><?= htmlspecialchars($managing_group['name'] ?? '') ?></strong>
-            and all of its data — <?= ($counts ? (int)$counts['total'] : 0) ?> summit<?= ($counts && (int)$counts['total'] !== 1 ? 's' : '') ?>,
+            and all of its data: <?= ($counts ? (int)$counts['total'] : 0) ?> summit<?= ($counts && (int)$counts['total'] !== 1 ? 's' : '') ?>,
             all addresses, and all members. This cannot be undone.
         </p>
         <form method="POST">

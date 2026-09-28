@@ -1,5 +1,5 @@
 <?php
-define('APP_VERSION', '1.9.6');
+define('APP_VERSION', '1.9.7');
 
 // Enable error reporting for debugging
 error_reporting(E_ALL);
@@ -68,6 +68,24 @@ function formatTime($minutes) {
     return $hours . "h " . $mins . "m";
 }
 
+// Distance Matrix / Directions do their own address lookup, which is weaker
+// than the Geocoding API: business names like "Moby's Coffee Shop N Hollywood"
+// geocode fine but come back NOT_FOUND as a Distance Matrix origin. So resolve
+// free-text addresses to "lat,lng" first (cached per request). Coordinates pass
+// through untouched; if geocoding fails the original text is used as before.
+function resolveMapsPoint($point) {
+    static $cache = [];
+    $point = trim((string)$point);
+    if ($point === '' || preg_match('/^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/', $point)) {
+        return $point;
+    }
+    if (!array_key_exists($point, $cache)) {
+        $geo = geocodeAddress($point);
+        $cache[$point] = $geo ? ($geo['lat'] . ',' . $geo['lng']) : $point;
+    }
+    return $cache[$point];
+}
+
 // Calculate drive time using Google Maps Distance Matrix API
 function calculateDriveTime($origin_address, $dest_lat, $dest_lng, &$element_status = null) {
     if (GOOGLE_MAPS_API_KEY === 'YOUR_API_KEY_HERE') {
@@ -75,7 +93,7 @@ function calculateDriveTime($origin_address, $dest_lat, $dest_lng, &$element_sta
     }
 
     $url = "https://maps.googleapis.com/maps/api/distancematrix/json?" . http_build_query([
-        'origins'      => $origin_address,
+        'origins'      => resolveMapsPoint($origin_address),
         'destinations' => $dest_lat . ',' . $dest_lng,
         'key'          => GOOGLE_MAPS_API_KEY,
         'units'        => 'imperial',
@@ -112,8 +130,8 @@ function calculateDriveTimeBetween($origin, $destination, &$distance_mi = null) 
     }
 
     $url = "https://maps.googleapis.com/maps/api/distancematrix/json?" . http_build_query([
-        'origins'      => $origin,
-        'destinations' => $destination,
+        'origins'      => resolveMapsPoint($origin),
+        'destinations' => resolveMapsPoint($destination),
         'key'          => GOOGLE_MAPS_API_KEY,
         'units'        => 'imperial',
     ]);
@@ -144,17 +162,22 @@ function calculateDriveTimeBetween($origin, $destination, &$distance_mi = null) 
 
 // Geocode a free-text address to lat/lng using the server-side Maps key.
 // Returns ['lat'=>float, 'lng'=>float, 'label'=>string] or null on failure.
-function geocodeAddress($address) {
+// $status receives Google's status string (OK, ZERO_RESULTS, OVER_QUERY_LIMIT...)
+// or 'UNAVAILABLE' if the request itself failed, so callers can tell "not found"
+// apart from "couldn't check".
+function geocodeAddress($address, &$status = null) {
+    $status = 'UNAVAILABLE';
     if (!defined('GOOGLE_MAPS_API_KEY') || GOOGLE_MAPS_API_KEY === 'YOUR_API_KEY_HERE') {
         return null;
     }
-    if (trim($address) === '') return null;
+    if (trim($address) === '') { $status = 'ZERO_RESULTS'; return null; }
 
     $url = 'https://maps.googleapis.com/maps/api/geocode/json?address=' . urlencode($address) . '&key=' . GOOGLE_MAPS_API_KEY;
     $resp = @file_get_contents($url);
     if (!$resp) return null;
 
     $geo = json_decode($resp, true);
+    if ($geo) $status = $geo['status'] ?? 'UNAVAILABLE';
     if (!$geo || ($geo['status'] ?? '') !== 'OK' || empty($geo['results'])) {
         return null;
     }
@@ -166,9 +189,58 @@ function geocodeAddress($address) {
     ];
 }
 
+// Check a user-entered starting address before saving it, so a typo or vague
+// entry doesn't silently produce blank travel times later. Returns
+// ['ok'=>bool, 'found'=>formatted address or null, 'error'=>message or null].
+// If Google can't be reached (quota, outage) the address is allowed through
+// rather than blocking the user; 'found' is null in that case.
+function validateStartingAddress($address) {
+    $status = null;
+    $geo = geocodeAddress($address, $status);
+    if ($geo) {
+        return ['ok' => true, 'found' => $geo['label'], 'error' => null, 'lat' => $geo['lat'], 'lng' => $geo['lng']];
+    }
+    if (in_array($status, ['ZERO_RESULTS', 'INVALID_REQUEST'], true)) {
+        return ['ok' => false, 'found' => null,
+                'error' => "Google Maps couldn't find \"" . $address . "\". Try a street address, cross streets with a city, or a zip code (for example \"10513 Burbank Blvd, North Hollywood CA\" or \"91601\"). Business names often can't be found."];
+    }
+    error_log("SOTA validateStartingAddress: geocode status=$status for '$address' (allowed through)");
+    return ['ok' => true, 'found' => null, 'error' => null];
+}
+
+// Coordinates for a saved starting address (a row from the addresses table).
+// Uses the lat/lng stored when the address was added; older rows without them
+// are geocoded once and saved, so drive times never depend on a repeat lookup
+// (Google's text lookup of business names can stop working from one day to
+// the next). Returns ['lat','lng','label'] or null.
+function addressGeo($db, $addr) {
+    if (!$addr) return null;
+    if (isset($addr['lat'], $addr['lng'])) {
+        return ['lat' => (float)$addr['lat'], 'lng' => (float)$addr['lng'], 'label' => $addr['address']];
+    }
+    $geo = geocodeAddress($addr['address']);
+    if ($geo && !empty($addr['id'])) {
+        try {
+            $db->prepare("UPDATE addresses SET lat = ?, lng = ? WHERE id = ?")
+               ->execute([$geo['lat'], $geo['lng'], $addr['id']]);
+        } catch (PDOException $e) {
+            // lat/lng columns not migrated yet; still use the fresh lookup
+        }
+    }
+    return $geo;
+}
+
+// Origin string for drive-time calls: stored "lat,lng" when available,
+// otherwise the address text as a last resort.
+function addressOrigin($db, $addr) {
+    if (!$addr) return '';
+    $geo = addressGeo($db, $addr);
+    return $geo ? ($geo['lat'] . ',' . $geo['lng']) : $addr['address'];
+}
+
 // Turn-by-turn driving directions between two points (each a "lat,lng" string
 // or a free-text address) via the Directions API. Used only for the offline
-// multi-activation PDF export — the interactive drive-time estimates elsewhere
+// multi-activation PDF export; the interactive drive-time estimates elsewhere
 // use the cheaper Distance Matrix API instead. Returns null on failure so
 // callers can fall back to a distance/time-only summary.
 function getDirectionsSteps($origin, $destination) {
@@ -177,8 +249,8 @@ function getDirectionsSteps($origin, $destination) {
     }
 
     $url = "https://maps.googleapis.com/maps/api/directions/json?" . http_build_query([
-        'origin'      => $origin,
-        'destination' => $destination,
+        'origin'      => resolveMapsPoint($origin),
+        'destination' => resolveMapsPoint($destination),
         'key'         => GOOGLE_MAPS_API_KEY,
         'units'       => 'imperial',
     ]);

@@ -161,6 +161,11 @@ Users can upload a recorded GPX track from a past activation. The app parses it 
 ### Shared Summit Data
 When a new group is created, the owner can choose to "adopt" summit research from an existing group. The summit record gets `uses_shared_data = true` and `source_group_id` pointing to the original group. Shared summits inherit trail data, GPX tracks, and notes from the source group, so new groups don't have to re-research summits from scratch.
 
+### Shared Multi-Activation Routes (added 2026-09-26)
+A saved route's link `multi_activate.php?id=N` is public. Members of the route's dashboard get the normal editable page (plus a "Share Link" button that copies that URL); anyone else, signed out or signed in to a different dashboard, gets a read-only view. The public view deliberately hides the owner's starting address (no home marker, drive legs between summits only), the owner's other dashboard summits, the PDF export, and all edit controls, and it never auto-saves. IDs are sequential with no share token, same as `activation_invite.php`.
+
+The large centered "Add this Multi-Summit to your own dashboard" button (above the stat tiles, public view only) goes to `multi_add_to_dashboard.php`, which stores `$_SESSION['pending_multi_import']` and sends signed-out visitors to SOTA SSO (on sotaplanner.com) or `login.php` (staging). `oauth_callback.php` carries the pending route across the SSO round trip in `app_settings` as `oauth_import_<state>` (same reason as the OAuth state itself: sessions are unreliable across the redirect in Safari). `onboarding.php` then shows existing users a "Where should this route go?" screen listing their dashboards (each with its starting location) plus a "Create a new dashboard for it instead" option; brand-new users go straight to creating one (name, then starting address; the crew step is skipped). Either way `multi_import_lib.php` copies the summits (research + GPX, not status/history) and the route into it before landing on `index.php?imported=1`. The SSO leg of this can only be tested on production.
+
 ### Planned Activations
 Users can schedule an activation for a specific summit — date, start time, activation time duration, notes. Each planned activation generates a **shareable invitation page** (no login required) that shows a timeline Gantt chart, the summit map with elevation profile, driving directions, cell coverage overlay, and safety/location sharing info. Designed to be shared with non-ham hiking partners and guests.
 
@@ -345,7 +350,7 @@ Key tables:
 - `planning_groups` — groups (id, name, units, owner_callsign)
 - `planning_group_members` — join table (planning_group_id, callsign)
 - `summits` — one row per summit per group (or shared via source_group_id)
-- `addresses` — starting addresses per group
+- `addresses` — starting addresses per group, with `lat`/`lng` (added 2026-09-27, backfilled for all 36 existing rows). Coordinates are saved when an address is added (`validateStartingAddress()` in config.php rejects anything Google's Geocoding API can't find). All drive-time code must use `addressOrigin($db, $addr)` / `addressGeo($db, $addr)`, never the raw `address` text. **Why:** Distance Matrix does its own weaker lookup of text origins and returned NOT_FOUND for "Moby's Coffee Shop N Hollywood", and even the Geocoding API found that business name one hour and returned ZERO_RESULTS the next. Street addresses and zips are consistent; business names are not.
 - `activations` — logged past activations per summit
 - `gpx_tracks` — uploaded/analyzed GPX files with parsed stats; `from_global_library=1` means the row points to a shared file in `gpx_files/global/`
 - `summit_notes` — free-text notes per summit per user

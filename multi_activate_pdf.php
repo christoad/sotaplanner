@@ -50,13 +50,7 @@ if (!isset($_SESSION['multi_directions_cache']) || !is_array($_SESSION['multi_di
 $selected_address = getSelectedAddress($db);
 $origin_geo = null;
 if ($selected_address) {
-    $geo_key = 'geo:' . $current_group['id'] . ':' . md5($selected_address['address']);
-    if (array_key_exists($geo_key, $_SESSION['multi_drive_cache'])) {
-        $origin_geo = $_SESSION['multi_drive_cache'][$geo_key];
-    } else {
-        $origin_geo = geocodeAddress($selected_address['address']);
-        $_SESSION['multi_drive_cache'][$geo_key] = $origin_geo;
-    }
+    $origin_geo = addressGeo($db, $selected_address);
 }
 
 $activation_time_min = isset($_GET['activation_time']) ? max(10, min(240, (int)$_GET['activation_time'])) : 30;

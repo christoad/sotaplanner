@@ -339,13 +339,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $dest_lng = !empty($summit_data['trailhead_lng']) ? $summit_data['trailhead_lng'] : $summit_data['longitude'];
 
             $element_status = null;
-            $drive_time = calculateDriveTime($selected_address['address'], $dest_lat, $dest_lng, $element_status);
+            $drive_time = calculateDriveTime(addressOrigin($db, $selected_address), $dest_lat, $dest_lng, $element_status);
 
             // Trailhead coords can land on inaccessible road segments — retry with summit coords
             if ($drive_time === null && $element_status === 'ZERO_RESULTS'
                 && !empty($summit_data['trailhead_lat'])
                 && ($dest_lat != $summit_data['latitude'] || $dest_lng != $summit_data['longitude'])) {
-                $drive_time = calculateDriveTime($selected_address['address'], $summit_data['latitude'], $summit_data['longitude']);
+                $drive_time = calculateDriveTime(addressOrigin($db, $selected_address), $summit_data['latitude'], $summit_data['longitude']);
             }
 
             if ($drive_time !== null) {
@@ -660,10 +660,10 @@ if (empty($summit['drive_time_min']) && $selected_address && !empty($summit['lat
     $dest_lat = !empty($summit['trailhead_lat']) ? $summit['trailhead_lat'] : $summit['latitude'];
     $dest_lng = !empty($summit['trailhead_lng']) ? $summit['trailhead_lng'] : $summit['longitude'];
     $auto_el   = null;
-    $auto_drive = calculateDriveTime($selected_address['address'], $dest_lat, $dest_lng, $auto_el);
+    $auto_drive = calculateDriveTime(addressOrigin($db, $selected_address), $dest_lat, $dest_lng, $auto_el);
     // Retry with summit coords if trailhead landed on an inaccessible road segment
     if ($auto_drive === null && $auto_el === 'ZERO_RESULTS' && !empty($summit['trailhead_lat'])) {
-        $auto_drive = calculateDriveTime($selected_address['address'], $summit['latitude'], $summit['longitude']);
+        $auto_drive = calculateDriveTime(addressOrigin($db, $selected_address), $summit['latitude'], $summit['longitude']);
     }
     if ($auto_drive !== null) {
         $auto_drive_rt = $auto_drive * 2;
@@ -1405,7 +1405,7 @@ if ($tl_show) {
         <a href="<?= htmlspecialchars($summit['trail_link']) ?>" target="_blank" class="btn btn-ghost btn-sm">Trail ↗</a>
       <?php endif; ?>
       <?php if ($selected_address && $directions_lat && $directions_lng): ?>
-        <a href="https://www.google.com/maps/dir/?api=1&origin=<?= urlencode($selected_address['address']) ?>&destination=<?= $directions_lat ?>,<?= $directions_lng ?>" target="_blank" class="btn btn-ghost btn-sm">Directions ↗</a>
+        <a href="https://www.google.com/maps/dir/?api=1&origin=<?= urlencode(addressOrigin($db, $selected_address)) ?>&destination=<?= $directions_lat ?>,<?= $directions_lng ?>" target="_blank" class="btn btn-ghost btn-sm">Directions ↗</a>
       <?php endif; ?>
       <?php if (!empty($planned_activations_list)): ?>
         <?php
@@ -1623,7 +1623,7 @@ if ($tl_show) {
           <span class="map-divider"></span>
           <a href="https://www.google.com/maps/search/?api=1&query=<?= $summit['latitude'] ?>,<?= $summit['longitude'] ?>" target="_blank" class="btn btn-sm btn-ghost">Maps ↗</a>
           <?php if ($selected_address && $directions_lat && $directions_lng): ?>
-            <a href="https://www.google.com/maps/dir/?api=1&origin=<?= urlencode($selected_address['address']) ?>&destination=<?= $directions_lat ?>,<?= $directions_lng ?>" target="_blank" class="btn btn-sm btn-ghost">Directions ↗</a>
+            <a href="https://www.google.com/maps/dir/?api=1&origin=<?= urlencode(addressOrigin($db, $selected_address)) ?>&destination=<?= $directions_lat ?>,<?= $directions_lng ?>" target="_blank" class="btn btn-sm btn-ghost">Directions ↗</a>
           <?php endif; ?>
         </div>
       </div>

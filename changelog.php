@@ -266,9 +266,24 @@ session_start();
     <!-- September 2026 -->
     <div class="version-block current">
         <div class="version-header">
-            <span class="version-number">v1.9.6</span>
+            <span class="version-number">v1.9.7</span>
             <span class="version-date">September 2026</span>
             <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Share a Multi-Activate route with anyone, and starting addresses that reliably produce travel times.</p>
+        <ul>
+            <li>Saved Multi-Activate routes can now be shared: a "Share Link" button copies the route's link, and anyone who opens it sees a read-only view of the route (your starting address and other summits stay private)</li>
+            <li>People viewing a shared route can click "Add this Multi-Summit to your own dashboard" to copy its summits and route into one of their dashboards, or into a brand-new one. New users are walked through signing in and setting up a dashboard first</li>
+            <li>Starting addresses are now checked with Google Maps when you add them. If Google can't find the location you'll be asked to try a street address, cross streets with a city, or a zip code, and when it can you'll see exactly which address it matched</li>
+            <li>Travel times now use the exact map location saved with your starting address, so an address that worked once keeps working. This fixes starting locations entered as a business name (like a coffee shop) that produced no travel times</li>
+            <li>If travel times can't be calculated for some summits, those summits now show a blank instead of an old time left over from a different starting address, and the message explains how to fix the address</li>
+        </ul>
+    </div>
+
+    <div class="version-block">
+        <div class="version-header">
+            <span class="version-number">v1.9.6</span>
+            <span class="version-date">September 2026</span>
         </div>
         <p class="version-desc">Grab GPS coordinates straight from the Multi-Activate map.</p>
         <ul>

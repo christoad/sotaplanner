@@ -5,11 +5,53 @@ ini_set('display_errors', 1);
 require_once 'config.php';
 require_once 'sota_cache_helper.php'; // haversine_miles()
 session_start();
-requireLogin();
 
 $db = getDbConnection();
-$current_group = getCurrentPlanningGroup($db);
-if (!$current_group) { header('Location: index.php'); exit; }
+
+// ── Public (shared) view ────────────────────────────────────────────────────
+// A saved route's link (multi_activate.php?id=N) opens for anyone. Members of
+// the route's dashboard get the normal editable page; everyone else (signed
+// out, or signed in to a different dashboard) gets a read-only copy with an
+// "Add this Multi-Summit to your own dashboard" button. The public copy never shows the owner's
+// starting address: no home marker, and drive legs run between summits only.
+$public_view = false;
+$multi_row = null;
+if (isset($_GET['id'])) {
+    $stmt = $db->prepare("SELECT * FROM multi_activations WHERE id = ?");
+    $stmt->execute([(int)$_GET['id']]);
+    $multi_row = $stmt->fetch();
+    if (!$multi_row) { header('Location: ' . (getCurrentCallsign() ? 'index.php' : 'login.php')); exit; }
+
+    $viewer = getCurrentCallsign();
+    $is_member = false;
+    if ($viewer) {
+        $stmt = $db->prepare("
+            SELECT 1 FROM planning_groups pg
+            LEFT JOIN planning_group_members pgm ON pg.id = pgm.planning_group_id
+            WHERE pg.id = ? AND (pg.owner_callsign = ? OR pgm.callsign = ?)
+            LIMIT 1
+        ");
+        $stmt->execute([$multi_row['planning_group_id'], $viewer, $viewer]);
+        $is_member = (bool)$stmt->fetch();
+    }
+    if ($is_member) {
+        setCurrentPlanningGroup((int)$multi_row['planning_group_id']);
+    } else {
+        $public_view = true;
+    }
+} else {
+    requireLogin();
+}
+
+if ($public_view) {
+    $stmt = $db->prepare("SELECT * FROM planning_groups WHERE id = ?");
+    $stmt->execute([$multi_row['planning_group_id']]);
+    $current_group = $stmt->fetch();
+    if (!$current_group) { header('Location: login.php'); exit; }
+} else {
+    $current_group = getCurrentPlanningGroup($db);
+    if (!$current_group) { header('Location: index.php'); exit; }
+}
 $user_units = getUserUnits($db);
 
 $MULTI_MAX = 11;
@@ -17,7 +59,7 @@ $MULTI_MAX = 11;
 // ── POST actions ──────────────────────────────────────────────────────────
 // Saving the route itself is automatic (see the auto-save block below) — the
 // only remaining mutating POST action is dropping the whole route.
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if (!$public_view && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['delete_multi'])) {
         $mid = (int)($_POST['multi_id'] ?? 0);
         $db->prepare("DELETE FROM multi_activations WHERE id = ? AND planning_group_id = ?")->execute([$mid, $current_group['id']]);
@@ -34,15 +76,16 @@ $is_saved = false;
 $saved_activation_time = 30;
 
 if ($multi_id) {
-    $stmt = $db->prepare("SELECT * FROM multi_activations WHERE id = ? AND planning_group_id = ?");
-    $stmt->execute([$multi_id, $current_group['id']]);
-    $multi_row = $stmt->fetch();
-    if (!$multi_row) { header('Location: index.php'); exit; }
     $is_saved = true;
     $multi_name = $multi_row['name'] ?? '';
     $saved_activation_time = (int)$multi_row['activation_time_min'];
 
-    if (!isset($_GET['ids'])) {
+    if ($public_view) {
+        // Always the route as saved; visitors can't reorder or edit it
+        $stmt = $db->prepare("SELECT summit_id FROM multi_activation_summits WHERE multi_activation_id = ? ORDER BY sort_order");
+        $stmt->execute([$multi_id]);
+        $summit_ids = array_map('intval', array_column($stmt->fetchAll(), 'summit_id'));
+    } elseif (!isset($_GET['ids'])) {
         $stmt = $db->prepare("SELECT summit_id FROM multi_activation_summits WHERE multi_activation_id = ? ORDER BY sort_order");
         $stmt->execute([$multi_id]);
         $stored_ids = array_column($stmt->fetchAll(), 'summit_id');
@@ -50,8 +93,9 @@ if ($multi_id) {
         if (isset($_GET['activation_time'])) $qs['activation_time'] = $_GET['activation_time'];
         header('Location: multi_activate.php?' . http_build_query($qs));
         exit;
+    } else {
+        $summit_ids = array_values(array_filter(array_map('intval', explode(',', $_GET['ids']))));
     }
-    $summit_ids = array_values(array_filter(array_map('intval', explode(',', $_GET['ids']))));
 } else {
     $ids_param = $_GET['ids'] ?? '';
     $summit_ids = array_values(array_filter(array_map('intval', explode(',', $ids_param))));
@@ -75,22 +119,16 @@ $summits_by_id = [];
 foreach ($stmt->fetchAll() as $r) $summits_by_id[$r['id']] = $r;
 
 $summit_ids = array_values(array_filter($summit_ids, fn($id) => isset($summits_by_id[$id])));
-if (count($summit_ids) < 2) { header('Location: index.php'); exit; }
+if (count($summit_ids) < 2) { header('Location: ' . ($public_view && !getCurrentCallsign() ? 'login.php' : 'index.php')); exit; }
 
 if (!isset($_SESSION['multi_drive_cache']) || !is_array($_SESSION['multi_drive_cache'])) {
     $_SESSION['multi_drive_cache'] = [];
 }
 
-$selected_address = getSelectedAddress($db);
+$selected_address = $public_view ? null : getSelectedAddress($db);
 $origin_geo = null;
 if ($selected_address) {
-    $geo_key = 'geo:' . $current_group['id'] . ':' . md5($selected_address['address']);
-    if (array_key_exists($geo_key, $_SESSION['multi_drive_cache'])) {
-        $origin_geo = $_SESSION['multi_drive_cache'][$geo_key];
-    } else {
-        $origin_geo = geocodeAddress($selected_address['address']);
-        $_SESSION['multi_drive_cache'][$geo_key] = $origin_geo;
-    }
+    $origin_geo = addressGeo($db, $selected_address);
 }
 
 // Light-effort auto-order (nearest neighbor) — only on first arrival for a brand-new plan
@@ -283,7 +321,12 @@ if ($return_leg_time) {
     $last_stop = end($stops);
     $map_legs[] = ['key' => $leg_key, 'color' => $color, 'from' => $return_leg_coords['from'], 'to' => $return_leg_coords['to'], 'label' => $last_stop['name'] . ' → Home'];
 }
-$milestones[] = ['short' => 'Home', 'full' => 'Arrive home', 'min' => $elapsed];
+$milestones[] = $public_view
+    ? ['short' => 'Finish', 'full' => 'Last activation done', 'min' => $elapsed]
+    : ['short' => 'Home', 'full' => 'Arrive home', 'min' => $elapsed];
+// With no drive to the first stop (no starting address, or the public view),
+// "Depart" and the first "Arrive" land on the same spot; keep just the later one.
+$milestones = array_values(array_filter($milestones, fn($m, $k) => !isset($milestones[$k + 1]) || $milestones[$k + 1]['min'] !== $m['min'], ARRAY_FILTER_USE_BOTH));
 $total_min = $elapsed;
 foreach ($milestones as &$m) { $m['pct'] = $total_min > 0 ? round($m['min'] / $total_min * 100, 1) : 0; }
 unset($m);
@@ -341,11 +384,13 @@ $total_drive_dist_mi_sum = array_sum(array_filter($leg_distances_mi)) + ($return
 // the totals snapshot) to the DB. Naming is the only separate, explicit action
 // (a small GET form in the header) — see $_GET['name'] below.
 $is_saved = true;
-$renaming = array_key_exists('name', $_GET);
+$renaming = !$public_view && array_key_exists('name', $_GET);
 if ($renaming) $multi_name = trim($_GET['name']);
 $was_new = !$multi_id;
 
-if ($multi_id) {
+if ($public_view) {
+    // Read-only: nothing to save
+} elseif ($multi_id) {
     $db->prepare("
         UPDATE multi_activations
         SET name = ?, activation_time_min = ?, total_points = ?, total_hike_min = ?,
@@ -366,9 +411,11 @@ if ($multi_id) {
     $multi_id = (int)$db->lastInsertId();
     logActivity($db, 'Multi-activation saved', $multi_name ?: (count($summit_ids) . '-summit route'), count($summit_ids) . ' summits', $current_group['name']);
 }
-$ins = $db->prepare("INSERT INTO multi_activation_summits (multi_activation_id, summit_id, sort_order, leg_drive_time_min) VALUES (?, ?, ?, ?)");
-foreach ($summit_ids as $i => $sid) {
-    $ins->execute([$multi_id, $sid, $i, $leg_times[$i] ?? null]);
+if (!$public_view) {
+    $ins = $db->prepare("INSERT INTO multi_activation_summits (multi_activation_id, summit_id, sort_order, leg_drive_time_min) VALUES (?, ?, ?, ?)");
+    foreach ($summit_ids as $i => $sid) {
+        $ins->execute([$multi_id, $sid, $i, $leg_times[$i] ?? null]);
+    }
 }
 
 // Canonicalize the URL after a fresh save or a rename, so a reload/bookmark
@@ -413,6 +460,9 @@ foreach ($map_legs as $leg) {
 
 // Every other summit on this dashboard — for the map's "Show All Summits" toggle,
 // so the user can spot a nearby summit and add it to the route without leaving the page.
+// Not shown on the public view: that's the owner's private wishlist.
+$other_summits = [];
+if (!$public_view):
 $other_ph = implode(',', array_fill(0, count($summit_ids), '?'));
 $stmt = $db->prepare("
     SELECT id, name, sota_ref, points, latitude, longitude, trailhead_lat, trailhead_lng
@@ -430,6 +480,9 @@ foreach ($stmt->fetchAll() as $s) {
         'lat' => (float)$lat, 'lng' => (float)$lng,
     ];
 }
+endif;
+
+$share_url = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'sotaplanner.com') . rtrim(dirname($_SERVER['PHP_SELF']), '/') . '/multi_activate.php?id=' . $multi_id;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -699,6 +752,9 @@ a:hover { text-decoration: underline; }
 .save-inline { display: flex; align-items: center; gap: 0.4rem; }
 .save-inline .form-input { width: 150px; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
 .btn-icon { width: 36px; padding: 0; flex-shrink: 0; }
+.import-cta { display: flex; justify-content: center; margin: 0.5rem 0 1.5rem; }
+.import-cta-btn { height: auto; padding: 0.9rem 2rem; font-size: 1.05rem; font-weight: 600; border-radius: var(--r-md); box-shadow: 0 4px 12px rgba(28,27,25,0.18); text-align: center; white-space: normal; }
+.import-cta-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(28,27,25,0.24); }
 
 @media (max-width: 768px) {
   .page { padding: 1rem; }
@@ -718,22 +774,28 @@ a:hover { text-decoration: underline; }
   </a>
   <div class="topbar-divider"></div>
   <div class="topbar-nav">
+    <?php if (getCurrentCallsign()): ?>
     <a href="index.php">Dashboard</a>
     <a href="planning_groups.php">Manage Dashboards</a>
+    <?php endif; ?>
     <a href="about.php">About</a>
   </div>
   <div class="topbar-right">
+    <?php if (getCurrentCallsign()): ?>
     <div class="user-chip" id="userChip" onclick="this.classList.toggle('open')">
       <?= htmlspecialchars(getCurrentCallsign()) ?>
       <svg class="user-chip-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="2,3.5 5,6.5 8,3.5"/></svg>
       <div class="user-dropdown"><a href="logout.php">Sign Out</a></div>
     </div>
+    <?php else: ?>
+    <a href="login.php" class="btn btn-ghost btn-sm">Sign In</a>
+    <?php endif; ?>
   </div>
 </nav>
 
 <div class="page">
 
-  <?php if (!empty($_GET['new'])): ?>
+  <?php if (!$public_view && !empty($_GET['new'])): ?>
   <div class="msg msg-success">
     <span>This route is saved automatically as you go. It's now nested under the first summit on your dashboard. Use the trashcan to drop it.</span>
     <button class="msg-dismiss" onclick="this.parentElement.remove()">×</button>
@@ -744,11 +806,20 @@ a:hover { text-decoration: underline; }
     <div>
       <div class="page-title"><?= htmlspecialchars($multi_name ?: 'Multi-Activation Route') ?></div>
       <div class="page-subtitle">
-        <?= count($stops) ?> summits · <?= $total_min ? formatTime($total_min) : '—' ?> total, door-to-door
-        <?php if (!$selected_address): ?> · <span style="color:var(--orange)">No starting address selected. Add one for travel times</span><?php endif; ?>
+        <?= count($stops) ?> summits · <?= $total_min ? formatTime($total_min) : '—' ?> total<?= $public_view ? "" : ", door-to-door" ?>
+        <?php if ($public_view): ?>
+          <?php if (!empty($multi_row['created_by'])): ?> · Shared by <?= htmlspecialchars($multi_row['created_by']) ?><?php endif; ?>
+          · <span style="color:var(--ink-3)">Drive times shown between summits only. Add it to your own dashboard for times from your starting point.</span>
+        <?php elseif (!$selected_address): ?> · <span style="color:var(--orange)">No starting address selected. Add one for travel times</span><?php endif; ?>
       </div>
     </div>
     <div class="page-header-right">
+      <?php if ($public_view): ?>
+      <?php if ($gmaps_url): ?>
+        <a href="<?= htmlspecialchars($gmaps_url) ?>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" title="Open a driving route through every stop in Google Maps">Directions ↗</a>
+      <?php endif; ?>
+      <?php else: ?>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="copyShareLink(this)" title="Copy a public link to this route that anyone can open">Share Link</button>
       <a href="<?= htmlspecialchars('multi_activate.php?' . http_build_query(array_merge($url_base, ['ids' => implode(',', $summit_ids), 'ordered' => 1, 'recalc' => 1]))) ?>" class="btn btn-ghost btn-sm">Recalculate Travel Times</a>
       <?php if ($gmaps_url): ?>
         <a href="<?= htmlspecialchars($gmaps_url) ?>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" title="Open a round-trip driving route through every stop in Google Maps">Directions ↗</a>
@@ -770,8 +841,15 @@ a:hover { text-decoration: underline; }
               onclick="if(confirm('Delete this saved multi-activation route? The individual summits will stay on your dashboard.')) document.getElementById('delete-form').submit();">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M5.5 4V2.5A1 1 0 0 1 6.5 1.5h3a1 1 0 0 1 1 1V4M6.5 7.5v4M9.5 7.5v4M3.5 4l.7 8.4A1 1 0 0 0 5.2 13.5h5.6a1 1 0 0 0 1-1.1L12.5 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
+      <?php endif; ?>
     </div>
   </div>
+
+  <?php if ($public_view): ?>
+  <div class="import-cta">
+    <a href="multi_add_to_dashboard.php?id=<?= (int)$multi_id ?>" class="btn btn-primary import-cta-btn">Add this Multi-Summit to your own dashboard</a>
+  </div>
+  <?php endif; ?>
 
   <!-- Stat tiles -->
   <div class="stat-grid-4">
@@ -794,7 +872,7 @@ a:hover { text-decoration: underline; }
       <div class="stat-cell-label">Drive Distance</div>
       <?php if ($total_drive_dist_mi_sum): ?>
         <div class="stat-cell-val"><?= number_format(convertDistance($total_drive_dist_mi_sum, $user_units), 2) ?> <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3);"><?= getDistanceUnit($user_units) ?></span></div>
-        <div class="stat-cell-sub">round trip</div>
+        <div class="stat-cell-sub"><?= $public_view ? 'between summits' : 'round trip' ?></div>
       <?php else: ?>
         <div class="stat-cell-val" style="color:var(--ink-3); font-size:0.875rem;">—</div>
         <div class="stat-cell-sub"><?= $selected_address ? 'No route yet' : 'Add a starting address' ?></div>
@@ -804,7 +882,7 @@ a:hover { text-decoration: underline; }
       <div class="stat-cell-label" style="color:rgba(255,255,255,0.45);">Total Time</div>
       <?php if ($total_min): ?>
         <div class="stat-cell-val" style="color:#fff;"><?= formatTime($total_min) ?></div>
-        <div class="stat-cell-sub" style="color:rgba(255,255,255,0.4);">doorstep to doorstep</div>
+        <div class="stat-cell-sub" style="color:rgba(255,255,255,0.4);"><?= $public_view ? 'first trailhead to last' : 'doorstep to doorstep' ?></div>
       <?php else: ?>
         <div class="stat-cell-val" style="color:rgba(255,255,255,0.35); font-size:0.875rem;">—</div>
         <div class="stat-cell-sub" style="color:rgba(255,255,255,0.3);">add distances first</div>
@@ -814,7 +892,7 @@ a:hover { text-decoration: underline; }
 
   <!-- Tiles: reorder (drag or arrows) / remove -->
   <div class="card">
-    <div class="card-title">Route Order <span id="reorder-hint" style="font-weight:400; color:var(--ink-3); font-size:0.78rem;">— drag tiles to reorder</span></div>
+    <div class="card-title">Route Order<?php if (!$public_view): ?> <span id="reorder-hint" style="font-weight:400; color:var(--ink-3); font-size:0.78rem;">(drag tiles to reorder)</span><?php endif; ?></div>
     <div class="tiles-row" id="tiles-row">
       <?php foreach ($stops as $i => $stop):
           $up_ids = $summit_ids;
@@ -831,19 +909,23 @@ a:hover { text-decoration: underline; }
           array_splice($dup_ids, $i + 1, 0, [$stop['id']]);
       ?>
       <?php if ($i > 0): ?><div class="tile-arrow">→</div><?php endif; ?>
+      <?php if ($public_view): ?>
+      <div class="tile" data-pos="<?= $i ?>">
+      <?php else: ?>
       <div class="tile" draggable="true" data-pos="<?= $i ?>"
            ondragstart="onTileDragStart(event, <?= $i ?>)"
            ondragover="onTileDragOver(event)"
            ondragleave="onTileDragLeave(event)"
            ondrop="onTileDrop(event, <?= $i ?>)"
            ondragend="onTileDragEnd(event)">
+      <?php endif; ?>
         <div class="tile-head">
           <div class="tile-order"><?= $i + 1 ?></div>
           <div style="display:flex; align-items:center; gap:6px;">
-            <?php if (!$stop['is_drive_up'] && !$stop['has_trailhead']): ?>
+            <?php if (!$public_view && !$stop['is_drive_up'] && !$stop['has_trailhead']): ?>
               <a href="trail_research.php?id=<?= $stop['id'] ?>&group=<?= $current_group['id'] ?>" class="tile-warn" title="No starting point saved for <?= htmlspecialchars(addslashes($stop['name'])) ?>. Driving directions fall back to the summit's peak location. Add a starting point in Trail Research.">!</a>
             <?php endif; ?>
-            <div class="tile-drag-handle" title="Drag to reorder">⠿</div>
+            <?php if (!$public_view): ?><div class="tile-drag-handle" title="Drag to reorder">⠿</div><?php endif; ?>
           </div>
         </div>
         <div class="tile-name"><?= htmlspecialchars($stop['name']) ?></div>
@@ -854,6 +936,7 @@ a:hover { text-decoration: underline; }
           <div><span class="lbl">Hike (RT):</span> <?= $stop['hike_min'] ? formatTime($stop['hike_min']) : ($stop['is_drive_up'] ? 'Drive up' : '—') ?></div>
           <div><span class="lbl">Status:</span> <span class="badge badge-<?= htmlspecialchars($stop['status']) ?>"><?= ucfirst($stop['status']) ?></span></div>
         </div>
+        <?php if (!$public_view): ?>
         <div class="tile-controls">
           <div class="tile-reorder">
             <?php if ($i > 0): ?><a href="<?= htmlspecialchars(multi_url($url_base, $up_ids)) ?>" title="Move earlier">◀</a><?php else: ?><span>◀</span><?php endif; ?>
@@ -870,9 +953,10 @@ a:hover { text-decoration: underline; }
             <?php endif; ?>
           </div>
         </div>
+        <?php endif; ?>
       </div>
       <?php endforeach; ?>
-      <?php if (count($summit_ids) < $MULTI_MAX):
+      <?php if (!$public_view && count($summit_ids) < $MULTI_MAX):
           $add_qs = ['group' => $current_group['id'], 'multi_select' => implode(',', $summit_ids)];
           if ($multi_id) $add_qs['multi_edit_id'] = $multi_id;
           $add_summit_url = 'index.php?' . http_build_query($add_qs);
@@ -891,7 +975,7 @@ a:hover { text-decoration: underline; }
     <div class="card-title" style="display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
       <span>Outing Timeline</span>
       <?php if (!empty($segments)): ?>
-        <span style="font-size:0.78rem; font-weight:500; color:var(--ink-3);">Total: <strong style="color:var(--ink); font-weight:600;"><?= formatTime($total_min) ?></strong> door-to-door, round trip</span>
+        <span style="font-size:0.78rem; font-weight:500; color:var(--ink-3);">Total: <strong style="color:var(--ink); font-weight:600;"><?= formatTime($total_min) ?></strong> <?= $public_view ? 'first trailhead to last' : 'door-to-door, round trip' ?></span>
       <?php endif; ?>
     </div>
     <div class="timeline-controls">
@@ -1171,7 +1255,7 @@ if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
     document.querySelectorAll('.tile[draggable]').forEach(function(el) { el.removeAttribute('draggable'); });
     document.querySelectorAll('.tile-drag-handle').forEach(function(el) { el.style.display = 'none'; });
     const hint = document.getElementById('reorder-hint');
-    if (hint) hint.textContent = '— tap ◀ ▶ to reorder';
+    if (hint) hint.textContent = '(tap ◀ ▶ to reorder)';
 }
 
 // ── Drag-and-drop tile reorder ──
@@ -1406,6 +1490,19 @@ function toggleOtherSummits() {
     } else {
         if (otherSummitsLayer) mapInstance.removeLayer(otherSummitsLayer);
         if (btn) { btn.classList.remove('active'); btn.textContent = 'Show All Summits'; }
+    }
+}
+
+const SHARE_URL = <?= json_encode($share_url) ?>;
+function copyShareLink(btn) {
+    const done = function() {
+        btn.textContent = 'Link Copied!';
+        setTimeout(() => { btn.textContent = 'Share Link'; }, 1800);
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(SHARE_URL).then(done).catch(() => fallbackCopy(SHARE_URL, done));
+    } else {
+        fallbackCopy(SHARE_URL, done);
     }
 }
 

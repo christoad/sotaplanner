@@ -383,7 +383,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'bulk_drive_times') {
             continue;
         }
 
-        $drive_time = calculateDriveTime($selected_address['address'], $summit['trailhead_lat'], $summit['trailhead_lng']);
+        $drive_time = calculateDriveTime(addressOrigin($db, $selected_address), $summit['trailhead_lat'], $summit['trailhead_lng']);
         if ($drive_time !== null) {
             // Round trip, matching the manual "Calculate Drive Times" convention on index.php
             $db->prepare("UPDATE summits SET drive_time_min = ? WHERE id = ?")->execute([$drive_time * 2, $summit['id']]);
@@ -418,8 +418,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'add_starting_point') {
         echo json_encode(['error' => 'Location not found. Try a more specific address, city, or landmark.']); exit;
     }
 
-    $stmt = $db->prepare("INSERT INTO addresses (planning_group_id, label, address) VALUES (?, ?, ?)");
-    $stmt->execute([$current_group['id'], 'Starting Point', $location]);
+    $loc = $geo['results'][0]['geometry']['location'];
+    $stmt = $db->prepare("INSERT INTO addresses (planning_group_id, label, address, lat, lng) VALUES (?, ?, ?, ?, ?)");
+    $stmt->execute([$current_group['id'], 'Starting Point', $location, (float)$loc['lat'], (float)$loc['lng']]);
     $new_address_id = (int)$db->lastInsertId();
 
     $setting_key = 'selected_address_group_' . $current_group['id'];
