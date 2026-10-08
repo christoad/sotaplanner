@@ -388,6 +388,10 @@ $stmt = $db->prepare("
 $stmt->execute([$current_group['id'], $current_group['id'], $current_group['id']]);
 $summits = $stmt->fetchAll();
 
+// Truly blank dashboard (no summits and no filter hiding any): the empty state's
+// own "Nominate Your First Summit" button is the only add button shown.
+$dashboard_blank = empty($summits) && count($active_filters) === 7;
+
 // Saved multi-activations for this group, keyed by the first (lead) summit's id.
 // A saved route replaces its member summits' individual dashboard rows with one
 // summary row (aggregate stats, precomputed on save), with the members nested
@@ -1503,7 +1507,9 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                 <a href="#" onclick="document.getElementById('howModal').style.display='flex'; document.getElementById('hamburgerMenu').classList.remove('open'); return false;">How It Works</a>
             </div>
         </div>
+        <?php if (!$dashboard_blank): ?>
         <a href="nominate.php" class="btn btn-primary btn-sm">+ Add Summits</a>
+        <?php endif; ?>
         <div class="topbar-divider"></div>
         <div class="user-chip" id="userChip">
             <?= htmlspecialchars(getCurrentCallsign()) ?>
@@ -1813,9 +1819,11 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
         </div>
     <?php endif; ?>
 
+    <?php if (!$dashboard_blank): ?>
     <div class="add-summits-footer">
         <a href="nominate.php" class="btn btn-primary">+ Add Summits</a>
     </div>
+    <?php endif; ?>
     </div><!-- /#list-view -->
     </div><!-- /#select-bar-scroll-region -->
 
@@ -2296,7 +2304,7 @@ var STEPS = [
     {
         sel: 'a[href="nominate.php"].btn',
         title: "Add your first summit",
-        body:  "Click '+ Add Summits' and enter a SOTA reference code (like W7O/NC-001). SOTA Planner pulls the name, elevation, and coordinates automatically.",
+        body:  <?= json_encode(($dashboard_blank ? "Click 'Nominate Your First Summit'" : "Click '+ Add Summits'") . " and enter a SOTA reference code (like W7O/NC-001). SOTA Planner pulls the name, elevation, and coordinates automatically.") ?>,
     },
     {
         sel: '.toolbar',

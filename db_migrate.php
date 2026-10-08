@@ -1,8 +1,8 @@
 <?php
-// One-off migration: store coordinates on starting addresses so drive times
-// use a fixed point instead of re-looking up the address text every time
-// (Google's lookup of business names can stop working from day to day).
-// Adds addresses.lat / addresses.lng, then backfills existing rows.
+// One-off migration: tables for Multi-Activate "alternate hike start" pins.
+//   multi_alt_starts         shared (community) pin for an ordered summit pair
+//   multi_alt_start_optouts  a user's personal "ignore the shared pin" choice
+//   multi_alt_start_log      history of every set/reset, so a bad pin can be undone
 // Safe to run twice. Delete this file after running.
 require_once 'config.php';
 
@@ -24,43 +24,52 @@ function step($label, $fn) {
     }
 }
 
-step('Check addresses.lat column', function () use ($db) {
-    $cols = $db->query("SHOW COLUMNS FROM addresses LIKE 'lat'")->fetchAll();
-    if ($cols) return 'already exists, skipped';
-    $db->exec("ALTER TABLE addresses ADD COLUMN lat DECIMAL(10,7) NULL AFTER address");
-    return 'column added';
+step('Create multi_alt_starts', function () use ($db) {
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS multi_alt_starts (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            from_ref VARCHAR(32) NOT NULL,
+            to_ref VARCHAR(32) NOT NULL,
+            lat DECIMAL(10,7) NOT NULL,
+            lng DECIMAL(10,7) NOT NULL,
+            set_by VARCHAR(20) NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_pair (from_ref, to_ref)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ");
+    return 'table ready';
 });
 
-step('Check addresses.lng column', function () use ($db) {
-    $cols = $db->query("SHOW COLUMNS FROM addresses LIKE 'lng'")->fetchAll();
-    if ($cols) return 'already exists, skipped';
-    $db->exec("ALTER TABLE addresses ADD COLUMN lng DECIMAL(10,7) NULL AFTER lat");
-    return 'column added';
+step('Create multi_alt_start_optouts', function () use ($db) {
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS multi_alt_start_optouts (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            callsign VARCHAR(20) NOT NULL,
+            from_ref VARCHAR(32) NOT NULL,
+            to_ref VARCHAR(32) NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_user_pair (callsign, from_ref, to_ref)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ");
+    return 'table ready';
 });
 
-step('Backfill coordinates for existing addresses', function () use ($db) {
-    $rows = $db->query("SELECT id, planning_group_id, address FROM addresses WHERE lat IS NULL OR lng IS NULL")->fetchAll();
-    if (!$rows) return 'all addresses already have coordinates, skipped';
-
-    $upd = $db->prepare("UPDATE addresses SET lat = ?, lng = ? WHERE id = ?");
-    $found = 0;
-    $missing = [];
-    foreach ($rows as $r) {
-        $status = null;
-        $geo = geocodeAddress($r['address'], $status);
-        if ($geo) {
-            $upd->execute([$geo['lat'], $geo['lng'], $r['id']]);
-            $found++;
-        } else {
-            $missing[] = "    address #{$r['id']} (dashboard #{$r['planning_group_id']}): \"{$r['address']}\" [$status]";
-        }
-        usleep(100000);
-    }
-    $out = "$found of " . count($rows) . " filled in";
-    if ($missing) {
-        $out .= "\n  Not found by Google (these will keep using the address text until edited):\n" . implode("\n", $missing);
-    }
-    return $out;
+step('Create multi_alt_start_log', function () use ($db) {
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS multi_alt_start_log (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            from_ref VARCHAR(32) NOT NULL,
+            to_ref VARCHAR(32) NOT NULL,
+            action VARCHAR(16) NOT NULL,
+            lat DECIMAL(10,7) NULL,
+            lng DECIMAL(10,7) NULL,
+            by_callsign VARCHAR(20) NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_pair (from_ref, to_ref)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ");
+    return 'table ready';
 });
 
-echo "\nDone. Delete this file from the server now.\n";
+echo "\nDone. Delete db_migrate.php from the server now.\n";

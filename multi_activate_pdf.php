@@ -5,6 +5,7 @@ set_time_limit(180);
 
 require_once 'config.php';
 require_once __DIR__ . '/lib/fpdf.php';
+require_once __DIR__ . '/multi_alt_lib.php';
 session_start();
 requireLogin();
 
@@ -94,9 +95,14 @@ foreach ($summit_ids as $sid) {
         'elevation_m' => $s['elevation_m'],
         'hike_min' => (int)$hike_min, 'dist_mi' => $dist, 'elev_ft' => $elev,
         'is_drive_up' => $is_drive_up,
+        'gpx_file' => $s['gpx_file_path'] ?? null, 'track_type' => $track_type,
         'has_trailhead' => ($s['trailhead_lat'] !== null && $s['trailhead_lng'] !== null),
     ];
 }
+
+// Alternate hike starts (see multi_alt_lib.php): rewrites hike numbers in place
+$alt_lookup = multi_alt_lookup($db, $stops, getCurrentCallsign());
+multi_alt_apply($stops, $alt_lookup['active'], $current_group['pace_multiplier'] ?? 1.0);
 
 // ── Per-leg drive times + distances — reuses the same session cache the
 // interactive page warms, so regenerating the PDF right after viewing the
@@ -118,7 +124,16 @@ $origin_key   = $selected_address ? ('addr:' . $current_group['id']) : 'noaddr';
 
 $leg_times = []; $leg_distances_mi = []; $leg_coords = [];
 $prev_key = $origin_key; $prev_coord = $origin_coord;
+$prev_name = $selected_address['label'] ?? $selected_address['address'] ?? 'Start';
+$leg_from_name = [];
 foreach ($stops as $i => $stop) {
+    $leg_from_name[$i] = $prev_name;
+    if ($stop['chained']) {
+        // Reached on foot from the previous summit: the car doesn't move
+        $leg_times[$i] = 0; $leg_distances_mi[$i] = 0;
+        $leg_coords[$i] = ['from' => null, 'to' => null, 'from_key' => null, 'to_key' => null];
+        continue;
+    }
     $to_coord = ($stop['lat'] !== null && $stop['lng'] !== null) ? ($stop['lat'] . ',' . $stop['lng']) : null;
     $leg = $get_leg($prev_key, $prev_coord, 'summit:' . $stop['id'], $to_coord);
     $leg_times[$i] = $leg['min'];
@@ -126,6 +141,7 @@ foreach ($stops as $i => $stop) {
     $leg_coords[$i] = ['from' => $prev_coord, 'to' => $to_coord, 'from_key' => $prev_key, 'to_key' => 'summit:' . $stop['id']];
     $prev_key = 'summit:' . $stop['id'];
     $prev_coord = $to_coord;
+    $prev_name = $stop['name'];
 }
 $return_leg = $get_leg($prev_key, $prev_coord, $origin_key, $origin_coord);
 $return_leg_time = $return_leg['min'];
@@ -141,7 +157,7 @@ $elapsed = 0;
 foreach ($stops as $i => $stop) {
     if ($leg_times[$i]) {
         $color = $LEG_COLORS[$leg_color_i % count($LEG_COLORS)]; $leg_color_i++;
-        $from_label = $i === 0 ? ($selected_address['label'] ?? $selected_address['address'] ?? 'Start') : $stops[$i - 1]['name'];
+        $from_label = $leg_from_name[$i];
         $legs[] = [
             'label' => $from_label . ' → ' . $stop['name'], 'color' => $color,
             'from' => $leg_coords[$i]['from'], 'to' => $leg_coords[$i]['to'],
@@ -151,23 +167,18 @@ foreach ($stops as $i => $stop) {
         $elapsed += $leg_times[$i];
     }
     $milestones[] = ['short' => 'Arrive', 'full' => 'Arrive at ' . $stop['name'], 'min' => $elapsed, 'stop_i' => $i];
-    if ($stop['hike_min'] > 0) {
-        $up = intval(round($stop['hike_min'] * 0.6));
-        $elapsed += $up;
+    if ($stop['up_min'] > 0) {
+        $elapsed += $stop['up_min'];
         $milestones[] = ['short' => 'On Summit', 'full' => 'On summit: ' . $stop['name'], 'min' => $elapsed, 'stop_i' => $i];
     }
     $elapsed += $activation_time_min;
-    if ($stop['hike_min'] > 0) {
-        $down = $stop['hike_min'] - $up;
-        $elapsed += $down;
-    }
+    $elapsed += $stop['down_min'];
     $milestones[] = ['short' => 'Depart', 'full' => 'Depart ' . $stop['name'], 'min' => $elapsed, 'stop_i' => $i];
 }
 if ($return_leg_time) {
     $color = $LEG_COLORS[$leg_color_i % count($LEG_COLORS)]; $leg_color_i++;
-    $last_stop = end($stops);
     $legs[] = [
-        'label' => $last_stop['name'] . ' → Home', 'color' => $color,
+        'label' => $prev_name . ' → Home', 'color' => $color,
         'from' => $return_leg_coords['from'], 'to' => $return_leg_coords['to'],
         'from_key' => $return_leg_coords['from_key'], 'to_key' => $return_leg_coords['to_key'],
         'min' => $return_leg_time, 'mi' => $return_leg_distance_mi, 'stop_i' => null,
@@ -582,7 +593,10 @@ foreach ($stops as $i => $stop) {
     $markers = []; $paths = [];
     $label = leg_label_char($i);
     $color = static_map_marker_hex($LEG_COLORS[$i % count($LEG_COLORS)]);
-    if ($stop['has_trailhead']) {
+    if ($stop['chained']) {
+        $markers[] = 'color:0x2D8653|label:S|' . $stop['alt']['lat'] . ',' . $stop['alt']['lng'];
+        $markers[] = 'color:' . $color . '|label:' . $label . '|' . $stop['summit_lat'] . ',' . $stop['summit_lng'];
+    } elseif ($stop['has_trailhead']) {
         $markers[] = 'color:0x2D8653|label:T|' . $stop['lat'] . ',' . $stop['lng'];
         $markers[] = 'color:' . $color . '|label:' . $label . '|' . $stop['summit_lat'] . ',' . $stop['summit_lng'];
     } else {
@@ -615,7 +629,11 @@ foreach ($stops as $i => $stop) {
     $pdf->SetFont('Helvetica', 'B', 9);
     $pdf->Cell(0, 0.2, 'Coordinates', 0, 1);
     $pdf->SetFont('Helvetica', '', 9);
-    if ($stop['has_trailhead']) {
+    if ($stop['chained'] && (($stop['alt']['mode'] ?? '') === 'return')) {
+        $pdf->Cell(0, 0.2, pdftext('Reached on foot on the way down from #' . $i . ', no separate hike up.'), 0, 1);
+    } elseif ($stop['chained']) {
+        $pdf->Cell(0, 0.2, pdftext('Hike starts at (on foot from #' . $i . '): ' . round($stop['alt']['lat'], 5) . ', ' . round($stop['alt']['lng'], 5)), 0, 1);
+    } elseif ($stop['has_trailhead']) {
         $pdf->Cell(0, 0.2, pdftext('Trailhead / start point: ' . round($stop['lat'], 5) . ', ' . round($stop['lng'], 5)), 0, 1);
     }
     $pdf->Cell(0, 0.2, pdftext('Summit: ' . round($stop['summit_lat'], 5) . ', ' . round($stop['summit_lng'], 5)), 0, 1);
@@ -627,9 +645,10 @@ foreach ($stops as $i => $stop) {
     if ($stop['is_drive_up']) {
         $pdf->Cell(0, 0.2, pdftext('Drive-up summit, no hike required.'), 0, 1);
     } elseif ($stop['dist_mi'] || $stop['elev_ft']) {
-        $hike_line = ($stop['dist_mi'] ? number_format(convertDistance($stop['dist_mi'], $user_units), 1) . ' ' . getDistanceUnit($user_units) . ' round trip' : '')
+        $trip_word = $stop['chained'] ? 'including the walk back to the car' : ($stop['continues'] ? 'up only, you continue on to the next summit' : 'round trip');
+        $hike_line = ($stop['dist_mi'] ? number_format(convertDistance($stop['dist_mi'], $user_units), 1) . ' ' . getDistanceUnit($user_units) . ' ' . $trip_word : '')
             . ($stop['elev_ft'] ? ', ' . number_format(convertElevation($stop['elev_ft'], $user_units)) . ' ' . getElevationUnit($user_units) . ' gain' : '')
-            . ($stop['hike_min'] ? ', about ' . formatTime($stop['hike_min']) . ' round trip' : '');
+            . ($stop['hike_min'] ? ', about ' . formatTime($stop['hike_min']) . ' ' . ($stop['chained'] || $stop['continues'] ? '' : 'round trip') : '');
         $pdf->Cell(0, 0.2, pdftext(trim($hike_line, " ,")), 0, 1);
     } else {
         $pdf->SetTextColor(140, 138, 134);
