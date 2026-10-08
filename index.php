@@ -284,12 +284,17 @@ $hike_time_sql = "CASE WHEN g.use_for_hike_time = 1 AND COALESCE(g.hiking_time, 
     THEN $gps_time_sql
     ELSE $naismith_sql END";
 
+// Time columns treat "no data" (0) as NULL so those summits always sort last,
+// in either direction, instead of clumping at the short end.
 $sort_expr = match($sort_by) {
-    'hike_time'  => "($hike_time_sql)",
-    'total_time' => "($hike_time_sql) + COALESCE(s.drive_time_min, 0)",
-    'drive_time' => 's.drive_time_min',
+    'hike_time'  => "NULLIF(($hike_time_sql), 0)",
+    'total_time' => "CASE WHEN ($hike_time_sql) > 0 THEN ($hike_time_sql) + COALESCE(s.drive_time_min, 0)
+                          WHEN s.difficulty = 'drive-up' AND COALESCE(s.drive_time_min, 0) > 0 THEN s.drive_time_min
+                          ELSE NULL END",
+    'drive_time' => 'NULLIF(s.drive_time_min, 0)',
     default      => "s.$sort_by"
 };
+$sort_nulls_last = in_array($sort_by, ['hike_time', 'total_time', 'drive_time'], true) ? "($sort_expr) IS NULL," : '';
 
 // Get summits for CURRENT group ONLY (not all groups!)
 // Also get GPX data if available for this group
@@ -383,6 +388,7 @@ $stmt = $db->prepare("
              WHEN s.status = 'activated' THEN 1
              WHEN s.status = 'researched' THEN 2
              ELSE 3 END,
+        $sort_nulls_last
         $sort_expr $sort_order
 ");
 $stmt->execute([$current_group['id'], $current_group['id'], $current_group['id']]);
@@ -486,7 +492,9 @@ if (!empty($missing_member_ids)) {
 
 // Renders one <tr> (+ its mobile stats cell) for a summit row — shared by both
 // normal top-level rows and the rows nested under a multi-activation summary.
-function render_dashboard_row($summit, $current_group, $user_units, $activation_time, $nested = false, $route_order = null, $multi_group_id = null, $multi_expanded = true) {
+// Distance (mi), elevation gain (ft) and round-trip hike minutes for a summit row,
+// from its GPX track when enabled, else the manually entered numbers.
+function dashboard_hike_stats($summit, $current_group) {
     $track_type    = $summit['track_type'] ?? 'round-trip';
     $one_way       = ($track_type === 'ascent' || $track_type === 'descent');
     $has_timestamps = ($summit['gpx_hiking_time'] ?? 0) > 0;
@@ -516,9 +524,23 @@ function render_dashboard_row($summit, $current_group, $user_units, $activation_
             ? calculateHikeTime($distance_display_mi ?? 0, $elevation_for_display ?? 0, $current_group['pace_multiplier'] ?? 1.0)
             : 0;
     }
+    return [$distance_display_mi, $elevation_for_display, $hike_time_total];
+}
+
+// Total time is only meaningful with hike data (travel + hike + on-summit time),
+// or for a drive-up summit, which has no hike: travel + on-summit time. Anything
+// else would be a guess that just echoes the assumptions, so it shows nothing.
+function dashboard_has_total($summit, $hike_time_total, $drive_time) {
+    if ($hike_time_total > 0) return true;
+    return ($summit['difficulty'] ?? '') === 'drive-up' && $drive_time > 0;
+}
+
+function render_dashboard_row($summit, $current_group, $user_units, $activation_time, $nested = false, $route_order = null, $multi_group_id = null, $multi_expanded = true) {
+    [$distance_display_mi, $elevation_for_display, $hike_time_total] = dashboard_hike_stats($summit, $current_group);
 
     $drive_time = $summit['drive_time'] ?? 0;
     $total_time = $hike_time_total + $drive_time + $activation_time;
+    $has_time_data = dashboard_has_total($summit, $hike_time_total, $drive_time);
 
     $activated_this_year = false;
     if ($summit['last_activated_date']) {
@@ -601,7 +623,11 @@ function render_dashboard_row($summit, $current_group, $user_units, $activation_
             <span class="stat-val"><?= $drive_time ? formatTime($drive_time) : '—' ?></span>
         </td>
         <td class="td-time text-right">
-            <span class="total-time"><?= formatTime($total_time) ?></span>
+            <?php if ($has_time_data): ?>
+                <span class="total-time"><?= formatTime($total_time) ?></span>
+            <?php else: ?>
+                <span style="color:var(--ink-4)">—</span>
+            <?php endif; ?>
         </td>
         <td class="td-hide-mobile td-last-activated">
             <?php if ($summit['last_activated_date']): ?>
@@ -1126,22 +1152,30 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     /* ── Multi-activation summary row + nested member rows ──
        Deliberately a darker green than the plain "Ready" rows (--green-bg),
        so a saved route reads as its own distinct-but-related status at a glance. */
-    .multi-summary-row { background: var(--green-dark-bg) !important; border-left: 3px solid var(--green-dark); }
+    .multi-summary-row { background: var(--green-dark-bg) !important; border-left: 3px solid var(--green-dark); cursor: pointer; }
     .multi-summary-row:hover { background: oklch(83% 0.08 155) !important; }
     .multi-summary-row .summit-name { color: var(--green-dark-2); }
+    /* Round button with a larger invisible halo, so the arrow is easy to hit without making the row taller */
     .multi-expand-btn {
+      position: relative;
       display: inline-flex; align-items: center; justify-content: center;
-      width: 22px; height: 22px; margin-right: 4px; vertical-align: middle;
-      border: none; border-radius: var(--r-sm); background: transparent;
+      width: 24px; height: 24px; margin: -3px 4px -3px 0; vertical-align: middle;
+      border: none; border-radius: 50%; background: transparent;
       cursor: pointer; color: var(--green-dark-2); padding: 0; flex-shrink: 0;
+      transition: background 0.12s;
     }
+    .multi-expand-btn::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; }
     .multi-expand-btn:hover { background: oklch(80% 0.09 155); }
+    .multi-expand-btn:focus-visible { outline: 2px solid var(--green-dark); outline-offset: 1px; }
     .multi-expand-caret { transition: transform 0.15s; display: inline-flex; line-height: 1; }
     .multi-expand-btn.open .multi-expand-caret { transform: rotate(180deg); }
     .badge-multi { background: var(--green-dark-bg); color: var(--green-dark-2); border: 1px solid var(--green-dark-border); }
-    .data-table tbody tr.nested-summit-row { background: oklch(94% 0.045 155) !important; opacity: 1 !important; }
-    .data-table tbody tr.nested-summit-row:hover { background: oklch(91% 0.055 155) !important; }
-    .nested-summit-row .td-main { border-left: 3px solid var(--green-dark-border); }
+    /* Nested rows are green only for summits that are themselves ready */
+    .data-table tbody tr.nested-summit-row { opacity: 1 !important; }
+    .data-table tbody tr.nested-summit-row.row-ready { background: oklch(94% 0.045 155) !important; }
+    .data-table tbody tr.nested-summit-row.row-ready:hover { background: oklch(91% 0.055 155) !important; }
+    .nested-summit-row .td-main { border-left: 3px solid var(--border-2); }
+    .nested-summit-row.row-ready .td-main { border-left-color: var(--green-dark-border); }
     .nested-summit-row .td-main a { padding-left: var(--sp-8); }
     .route-order-chip {
       display: inline-flex; align-items: center; justify-content: center;
@@ -1166,7 +1200,16 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     .multi-summary-row .stat-val, .multi-summary-row .total-time { font-size: 0.72rem; }
     .multi-summary-row .badge { padding: 0 5px; font-size: 0.56rem; }
     .multi-summary-row .points-dot { width: 15px; height: 15px; font-size: 0.55rem; }
-    .multi-summary-row .multi-expand-btn { width: 17px; height: 17px; }
+    .multi-summary-row .multi-expand-btn { width: 22px; height: 22px; margin-top: -4px; margin-bottom: -4px; }
+
+    /* A route with any summit not yet ready to hike stays neutral: green means ready to go */
+    .multi-summary-row.multi-not-ready { background: var(--bg-2) !important; border-left-color: var(--ink-4); }
+    .multi-summary-row.multi-not-ready:hover { background: var(--bg-3) !important; }
+    .multi-summary-row.multi-not-ready .summit-name { color: var(--ink-2); }
+    .multi-summary-row.multi-not-ready .multi-expand-btn { color: var(--ink-2); }
+    .multi-summary-row.multi-not-ready .multi-expand-btn:hover { background: var(--bg-3); }
+    .multi-not-ready .badge-multi { background: var(--gray-bg); color: var(--gray-badge); border: 1px solid var(--border-2); }
+
 
     /* ── Empty state ── */
     .add-summits-footer { text-align: center; padding: var(--sp-6) 0 var(--sp-2); }
@@ -1267,6 +1310,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
       .data-table tbody tr.row-ready { background: var(--green-bg); border-color: oklch(88% 0.06 155) !important; }
       .data-table tbody tr.row-activated { background: var(--gray-bg); opacity: 0.6; }
       .data-table tbody tr.nested-summit-row { margin-left: var(--sp-6); border-left: 3px solid var(--green-dark-border) !important; }
+      .data-table tbody tr.nested-summit-row:not(.row-ready) { border-left-color: var(--border-2) !important; }
       /* The generic "tr { display: grid !important }" above beats the desktop
          ".multi-nested-row { display: none }" rule since both are unqualified
          by specificity and !important always wins — so on mobile a collapsed
@@ -1748,6 +1792,21 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                             $t_dist   = (float)($t['dist_mi'] ?? 0);
                             $t_elev   = (int)($t['elev_ft'] ?? 0);
                             $route_label = $ml['name'] ?: (count($ml['members']) . '-Summit Route');
+                            // Green only when every member is ready to hike (same rule as the plain rows)
+                            $multi_ready = true;
+                            foreach ($ml['members'] as $mem) {
+                                $ms = $summits_by_id[$mem['summit_id']] ?? null;
+                                $m_act_year = $ms && !empty($ms['last_activated_date']) && date('Y', strtotime($ms['last_activated_date'])) == gmdate('Y');
+                                if (!$ms || $m_act_year || !($ms['status'] === 'ready' || $ms['status'] === 'activated')) { $multi_ready = false; break; }
+                            }
+                            // The route's total needs every member to have hike data (or be drive-up)
+                            $t_has_time = $t_total > 0;
+                            foreach ($ml['members'] as $mem) {
+                                $ms = $summits_by_id[$mem['summit_id']] ?? null;
+                                if (!$ms) { $t_has_time = false; break; }
+                                [, , $m_hike] = dashboard_hike_stats($ms, $current_group);
+                                if (!dashboard_has_total($ms, $m_hike, (int)($ms['drive_time'] ?? 0))) { $t_has_time = false; break; }
+                            }
                             $multi_mobile_parts = array_filter([
                                 $t_hike  ? 'Hike ' . formatTime($t_hike) : null,
                                 $t_drive ? 'Travel ' . formatTime($t_drive) : null,
@@ -1755,12 +1814,12 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                                 $t_elev  ? number_format(convertElevation($t_elev, $user_units)) . ' ' . getElevationUnit($user_units) . ' gain' : null,
                             ]);
                     ?>
-                    <tr class="multi-summary-row" data-multi-id="<?= $ml['multi_id'] ?>" onclick="window.location='multi_activate.php?id=<?= $ml['multi_id'] ?>&group=<?= $current_group['id'] ?>'">
+                    <tr class="multi-summary-row<?= $multi_ready ? '' : ' multi-not-ready' ?>" data-multi-id="<?= $ml['multi_id'] ?>" onclick="window.location='multi_activate.php?id=<?= $ml['multi_id'] ?>&group=<?= $current_group['id'] ?>'">
                         <td class="td-select" onclick="event.stopPropagation()">
                             <input type="checkbox" class="multi-row-select" data-multi-id="<?= $ml['multi_id'] ?>" onchange="toggleMultiRowSelect(<?= $ml['multi_id'] ?>, this.checked)">
                         </td>
-                        <td class="td-main" onclick="event.stopPropagation()">
-                            <button type="button" class="multi-expand-btn<?= $ml['is_expanded'] ? ' open' : '' ?>" id="multi-toggle-<?= $ml['multi_id'] ?>" onclick="toggleMultiNested(<?= $ml['multi_id'] ?>)" title="Expand/collapse summits">
+                        <td class="td-main">
+                            <button type="button" class="multi-expand-btn<?= $ml['is_expanded'] ? ' open' : '' ?>" id="multi-toggle-<?= $ml['multi_id'] ?>" onclick="event.stopPropagation(); toggleMultiNested(<?= $ml['multi_id'] ?>)" title="Expand/collapse summits">
                                 <span class="multi-expand-caret"><svg width="11" height="7" viewBox="0 0 10 6" fill="none"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
                             </button>
                             <a href="multi_activate.php?id=<?= $ml['multi_id'] ?>&group=<?= $current_group['id'] ?>" style="text-decoration:none">
@@ -1794,7 +1853,11 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                             <span class="stat-val"><?= $t_drive ? formatTime($t_drive) : '—' ?></span>
                         </td>
                         <td class="td-time text-right">
-                            <span class="total-time"><?= $t_total ? formatTime($t_total) : '—' ?></span>
+                            <?php if ($t_has_time): ?>
+                                <span class="total-time"><?= formatTime($t_total) ?></span>
+                            <?php else: ?>
+                                <span style="color:var(--ink-4)">—</span>
+                            <?php endif; ?>
                         </td>
                         <td class="td-hide-mobile td-last-activated"><span style="color:var(--ink-4)">—</span></td>
                         <td class="td-status"><span class="badge badge-multi">Planned Route</span></td>
