@@ -266,9 +266,21 @@ session_start();
     <!-- September 2026 -->
     <div class="version-block current">
         <div class="version-header">
+            <span class="version-number">v1.9.8</span>
+            <span class="version-date">October 2026</span>
+            <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">The offline PDF for Multi-Activate routes now shows the same maps you see on the site.</p>
+        <ul>
+            <li>The route overview map in the PDF now follows the real driving roads for each leg, with your hiking trails, activation zones and numbered stops drawn on top, just like the Multi-Activate page</li>
+            <li>Each summit page in the PDF now has a topographic map with the hike trail (when one is available), the activation zone, and clearly marked Summit and Start points</li>
+        </ul>
+    </div>
+
+    <div class="version-block">
+        <div class="version-header">
             <span class="version-number">v1.9.7</span>
             <span class="version-date">September 2026</span>
-            <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Share a Multi-Activate route with anyone, and starting addresses that reliably produce travel times.</p>
         <ul>

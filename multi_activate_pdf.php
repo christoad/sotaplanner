@@ -6,6 +6,7 @@ set_time_limit(180);
 require_once 'config.php';
 require_once __DIR__ . '/lib/fpdf.php';
 require_once __DIR__ . '/multi_alt_lib.php';
+require_once __DIR__ . '/pdf_map_lib.php';
 session_start();
 requireLogin();
 
@@ -14,7 +15,7 @@ $current_group = getCurrentPlanningGroup($db);
 if (!$current_group) { header('Location: index.php'); exit; }
 $user_units = getUserUnits($db);
 
-// ── Resolve which summits, in what order (read-only — this page never mutates
+// ── Resolve which summits, in what order (read-only, this page never mutates
 // the saved route; it always renders exactly the ids/order passed in) ──
 $multi_id = isset($_GET['id']) ? (int)$_GET['id'] : null;
 $multi_name = '';
@@ -104,7 +105,7 @@ foreach ($summit_ids as $sid) {
 $alt_lookup = multi_alt_lookup($db, $stops, getCurrentCallsign());
 multi_alt_apply($stops, $alt_lookup['active'], $current_group['pace_multiplier'] ?? 1.0);
 
-// ── Per-leg drive times + distances — reuses the same session cache the
+// ── Per-leg drive times + distances: reuses the same session cache the
 // interactive page warms, so regenerating the PDF right after viewing the
 // route costs no extra Distance Matrix calls. ──
 $drive_cache = &$_SESSION['multi_drive_cache'];
@@ -193,6 +194,26 @@ $total_dist_mi_sum = array_sum(array_map(fn($s) => $s['dist_mi'] ?? 0, $stops));
 $total_elev_ft_sum = array_sum(array_map(fn($s) => $s['elev_ft'] ?? 0, $stops));
 $total_drive_dist_mi_sum = array_sum(array_filter($leg_distances_mi)) + ($return_leg_distance_mi ?: 0);
 
+// ── Map data shared by the overview and per-summit maps (same sources as the
+// on-screen pages: GPX trail, activation zone, OSRM road geometry) ──
+foreach ($stops as $i => $stop) {
+    // A summit only gets its community GPX linked once its detail page is opened,
+    // so fall back to the shared library track (read-only) for the map.
+    $gpx_file = $stop['gpx_file'];
+    if (!$gpx_file && !empty($stop['ref'])) {
+        $gl = $db->prepare("SELECT file_path FROM global_gpx_tracks WHERE sota_ref = ?");
+        $gl->execute([$stop['ref']]);
+        $gpx_file = $gl->fetchColumn() ?: null;
+    }
+    $stops[$i]['gpx_pts'] = pdfmap_gpx_points($gpx_file, 1500);
+    $az_row = get_activation_zone_from_api($stop['ref'], $stop['summit_lat'], $stop['summit_lng'], $stop['elevation_m']);
+    $stops[$i]['az'] = $az_row;
+    $stops[$i]['az_ring'] = ($az_row && !empty($az_row['polygon'])) ? pdfmap_az_ring($az_row['polygon']) : [];
+}
+foreach ($legs as $li => $leg) {
+    $legs[$li]['geom'] = pdfmap_osrm_route($leg['from'], $leg['to']);
+}
+
 function multi_clock_label($minutes_from_midnight) {
     $m = (($minutes_from_midnight % 1440) + 1440) % 1440;
     $days = intdiv($minutes_from_midnight, 1440);
@@ -205,7 +226,7 @@ function multi_clock_label($minutes_from_midnight) {
 // PDF-only helpers
 // ══════════════════════════════════════════════════════════════════════════
 
-// FPDF's core fonts only support Windows-1252 — transliterate UTF-8 input
+// FPDF's core fonts only support Windows-1252, so transliterate UTF-8 input
 // (summit names, addresses, arrows) down to that so nothing throws or garbles.
 function pdftext($s) {
     if ($s === null) return '';
@@ -219,7 +240,7 @@ function hex2rgb($hex) {
     return [hexdec(substr($hex, 0, 2)), hexdec(substr($hex, 2, 2)), hexdec(substr($hex, 4, 2))];
 }
 
-// Single alphanumeric marker label Static Maps will accept — 1-9 then A,B for
+// Single alphanumeric marker label Static Maps will accept: 1-9 then A,B for
 // the rare 10th/11th stop (MULTI_MAX is 11).
 function leg_label_char($zero_based_index) {
     $n = $zero_based_index + 1;
@@ -227,7 +248,7 @@ function leg_label_char($zero_based_index) {
 }
 
 // GeoJSON polygon coordinates come as [[lon,lat],...] optionally wrapped in a
-// ring array — normalize to a flat, downsampled list of "lat,lng" pairs.
+// ring array, so normalize to a flat, downsampled list of "lat,lng" pairs.
 function az_ring_to_latlng($polygon, $max_points = 40) {
     if (!$polygon) return [];
     $ring = (isset($polygon[0][0]) && is_array($polygon[0][0])) ? $polygon[0] : $polygon;
@@ -275,7 +296,7 @@ function fetch_static_map($markers, $paths, $size = '640x400', $scale = 2, $mapt
 }
 
 // The Maps Static API silently caps each dimension of the "size" param at
-// 640px on our plan — a request like size=1280x456 comes back as a real
+// 640px on our plan. A request like size=1280x456 comes back as a real
 // 640x456 PNG with no error, a different aspect ratio than we asked for. So
 // rather than trust the requested size, measure the file we actually got and
 // derive the height that keeps it undistorted at the width we're drawing it.
@@ -408,37 +429,86 @@ for ($i = 0; $i < 4; $i++) {
 }
 $pdf->SetY($tile_y + 1.0);
 
-// Overview map — markers for the address (if any) + every stop, auto-fit by
+// Overview map: markers for the address (if any) + every stop, auto-fit by
 // Static Maps to whatever bounding box contains them; one colored path per leg.
 $pdf->SetFont('Helvetica', 'B', 10);
 $pdf->SetTextColor(28, 27, 25);
 $pdf->Cell(0, 0.25, 'Route Overview', 0, 1);
-$markers = []; $paths = [];
-if ($origin_geo) $markers[] = 'color:0x1C1B19|label:H|' . $origin_geo['lat'] . ',' . $origin_geo['lng'];
-foreach ($stops as $i => $stop) {
-    if ($stop['lat'] === null || $stop['lng'] === null) continue;
-    $color = static_map_marker_hex($LEG_COLORS[$i % count($LEG_COLORS)]);
-    $markers[] = 'color:' . $color . '|label:' . leg_label_char($i) . '|' . $stop['lat'] . ',' . $stop['lng'];
+// Same picture as the Multi-Activate page: road routes, GPX trails, activation
+// zones and numbered stops on OpenStreetMap. Falls back to a Google Static Maps
+// image (straight lines) only if the map tiles can't be fetched.
+$overview_h_in = 4.4;
+$overview_img = null;
+{
+    $fit = []; $lines = []; $polys = []; $mk = [];
+    if ($origin_geo) { $fit[] = [(float)$origin_geo['lat'], (float)$origin_geo['lng']]; $mk[] = ['lat' => (float)$origin_geo['lat'], 'lng' => (float)$origin_geo['lng'], 'color' => '#1C1B19', 'text' => 'H']; }
+    foreach ($stops as $stop) {
+        if (!empty($stop['az_ring'])) $polys[] = ['pts' => $stop['az_ring'], 'color' => '#CC2200', 'fill' => 0.15, 'weight' => 2];
+        if (!empty($stop['gpx_pts'])) $lines[] = ['pts' => $stop['gpx_pts'], 'color' => '#2d7a4f', 'weight' => 3];
+        if (!empty($stop['alt']) && ($stop['alt']['mode'] ?? '') !== 'return') {
+            $lines[] = ['pts' => [[$stop['alt']['lat'], $stop['alt']['lng']], [$stop['summit_lat'], $stop['summit_lng']]], 'color' => '#2D8653', 'weight' => 3, 'dash' => true];
+        }
+    }
+    foreach ($legs as $leg) {
+        if (!$leg['from'] || !$leg['to']) continue;
+        $straight = [array_map('floatval', explode(',', $leg['from'])), array_map('floatval', explode(',', $leg['to']))];
+        $pts = !empty($leg['geom']) ? $leg['geom'] : $straight;
+        $lines[] = ['pts' => $pts, 'color' => $leg['color'], 'weight' => 4, 'dash' => empty($leg['geom'])];
+        foreach ($pts as $p) $fit[] = $p;
+    }
+    // One marker per distinct summit; a summit visited twice shows "1 & 3"
+    $groups = [];
+    foreach ($stops as $i => $stop) {
+        $chained = !empty($stop['chained']);
+        $mlat = $chained ? $stop['summit_lat'] : $stop['lat'];
+        $mlng = $chained ? $stop['summit_lng'] : $stop['lng'];
+        if ($mlat === null || $mlng === null) continue;
+        $groups[$stop['id']]['orders'][] = $i + 1;
+        $groups[$stop['id']]['lat'] = (float)$mlat; $groups[$stop['id']]['lng'] = (float)$mlng;
+        $groups[$stop['id']]['color'] = $LEG_COLORS[$i % count($LEG_COLORS)];
+        $fit[] = [(float)$mlat, (float)$mlng];
+        if (!empty($stop['alt']) && ($stop['alt']['mode'] ?? '') !== 'return') {
+            $fit[] = [(float)$stop['alt']['lat'], (float)$stop['alt']['lng']];
+            $mk[] = ['lat' => (float)$stop['alt']['lat'], 'lng' => (float)$stop['alt']['lng'], 'color' => '#2D8653', 'text' => (string)($i + 1), 'r' => 11];
+        }
+    }
+    foreach ($groups as $g) $mk[] = ['lat' => $g['lat'], 'lng' => $g['lng'], 'color' => '#1C1B19', 'text' => implode(' & ', $g['orders'])];
+    $ov_w = 1200;
+    $overview_path = $fit ? pdfmap_render([
+        'w' => $ov_w, 'h' => (int)round($ov_w * $overview_h_in / $page_w), 'style' => 'street', 'fit' => $fit,
+        'min_pad' => 50, 'max_zoom' => 15, 'polygons' => $polys, 'lines' => $lines, 'markers' => $mk,
+    ]) : null;
+    if ($overview_path) { $PDF_TMP_FILES[] = $overview_path; $overview_img = $overview_path; }
 }
-foreach ($legs as $leg) {
-    if (!$leg['from'] || !$leg['to']) continue;
-    $paths[] = 'color:' . static_map_hex($leg['color']) . '|weight:4|' . $leg['from'] . '|' . $leg['to'];
+$overview_type = 'JPG';
+if (!$overview_img) {
+    $markers = []; $paths = [];
+    if ($origin_geo) $markers[] = 'color:0x1C1B19|label:H|' . $origin_geo['lat'] . ',' . $origin_geo['lng'];
+    foreach ($stops as $i => $stop) {
+        if ($stop['lat'] === null || $stop['lng'] === null) continue;
+        $markers[] = 'color:' . static_map_marker_hex($LEG_COLORS[$i % count($LEG_COLORS)]) . '|label:' . leg_label_char($i) . '|' . $stop['lat'] . ',' . $stop['lng'];
+    }
+    foreach ($legs as $leg) {
+        if (!$leg['from'] || !$leg['to']) continue;
+        $paths[] = 'color:' . static_map_hex($leg['color']) . '|weight:4|' . $leg['from'] . '|' . $leg['to'];
+    }
+    $overview_size_w = 640;
+    $overview_img = fetch_static_map($markers, $paths, $overview_size_w . 'x' . (int)round($overview_size_w * $overview_h_in / $page_w), 2, 'roadmap');
+    $overview_type = 'PNG';
 }
-// Request the static map at the same aspect ratio it will be drawn at
-// ($page_w x $overview_h_in), keeping the "size" param within the API's
-// 640px-per-side cap and using scale=2 for a crisp actual resolution.
-$overview_h_in = 2.6;
-$overview_size_w = 640;
-$overview_size_h = (int)round($overview_size_w * $overview_h_in / $page_w);
-$overview_img = fetch_static_map($markers, $paths, $overview_size_w . 'x' . $overview_size_h, 2, 'roadmap');
 if ($overview_img) {
     $overview_draw_h = static_map_display_height($overview_img, $page_w, $overview_h_in);
-    $pdf->Image($overview_img, 0.6, $pdf->GetY(), $page_w, $overview_draw_h, 'PNG');
+    $pdf->Image($overview_img, 0.6, $pdf->GetY(), $page_w, $overview_draw_h, $overview_type);
     $pdf->SetY($pdf->GetY() + $overview_draw_h + 0.05);
+    $pdf->SetFont('Helvetica', 'I', 7.5);
+    $pdf->SetTextColor(140, 138, 134);
+    $pdf->Cell(0, 0.16, pdftext('Colored lines are the driving legs, green lines are hiking trails, red areas are activation zones.'), 0, 1);
+    $pdf->SetTextColor(28, 27, 25);
+    $pdf->Ln(0.05);
 } else {
     $pdf->SetFont('Helvetica', 'I', 9);
     $pdf->SetTextColor(192, 48, 48);
-    $pdf->MultiCell($page_w, 0.22, pdftext('Map image unavailable. The Maps Static API may not be enabled yet on the SOTAplanner server key.'));
+    $pdf->MultiCell($page_w, 0.22, pdftext('Map image unavailable.'));
     $pdf->SetTextColor(28, 27, 25);
     $pdf->Ln(0.1);
 }
@@ -459,9 +529,9 @@ foreach ($legs as $leg) {
 
 // ── Function: static map color helper (defined after use above via hoisting is
 // not available in PHP for closures assigned to vars, but plain functions
-// declared anywhere in the file are hoisted — see below) ──
+// declared anywhere in the file are hoisted, see below) ──
 // Path colors accept an 8-digit hex with alpha; marker colors accept only a
-// plain 6-digit hex (no alpha) — Static Maps rejects/ignores the marker style
+// plain 6-digit hex (no alpha). Static Maps rejects/ignores the marker style
 // if given 8 digits, so these are deliberately separate helpers.
 function static_map_hex($hex) {
     return '0x' . ltrim($hex, '#') . 'FF';
@@ -590,38 +660,60 @@ foreach ($stops as $i => $stop) {
     $pdf->SetTextColor(28, 27, 25);
     $pdf->Ln(0.1);
 
-    $markers = []; $paths = [];
-    $label = leg_label_char($i);
-    $color = static_map_marker_hex($LEG_COLORS[$i % count($LEG_COLORS)]);
-    if ($stop['chained']) {
-        $markers[] = 'color:0x2D8653|label:S|' . $stop['alt']['lat'] . ',' . $stop['alt']['lng'];
-        $markers[] = 'color:' . $color . '|label:' . $label . '|' . $stop['summit_lat'] . ',' . $stop['summit_lng'];
-    } elseif ($stop['has_trailhead']) {
-        $markers[] = 'color:0x2D8653|label:T|' . $stop['lat'] . ',' . $stop['lng'];
-        $markers[] = 'color:' . $color . '|label:' . $label . '|' . $stop['summit_lat'] . ',' . $stop['summit_lng'];
+    // Same view as the Summit Detail page: GPX trail in brown, activation zone,
+    // red summit dot, green starting-point dot, fitted to the trail.
+    $az = $stop['az'];
+    $map_h = 4.4;
+    $fit = [[$stop['summit_lat'], $stop['summit_lng']]];
+    $mk = [['lat' => $stop['summit_lat'], 'lng' => $stop['summit_lng'], 'color' => '#C03030', 'r' => 8, 'label' => 'Summit']];
+    $start_pt = null;
+    if ($stop['chained']) $start_pt = [(float)$stop['alt']['lat'], (float)$stop['alt']['lng']];
+    elseif ($stop['has_trailhead']) $start_pt = [(float)$stop['lat'], (float)$stop['lng']];
+    if ($start_pt) {
+        $fit[] = $start_pt;
+        $mk[] = ['lat' => $start_pt[0], 'lng' => $start_pt[1], 'color' => '#2D8653', 'r' => 7, 'label' => 'Start', 'side' => 'left'];
+    }
+    $lines = [];
+    if (!empty($stop['gpx_pts'])) {
+        $lines[] = ['pts' => $stop['gpx_pts'], 'color' => '#9B6328', 'weight' => 3];
+        foreach ($stop['gpx_pts'] as $p) $fit[] = $p;
+    } elseif ($start_pt) {
+        $lines[] = ['pts' => [$start_pt, [$stop['summit_lat'], $stop['summit_lng']]], 'color' => '#2D8653', 'weight' => 3, 'dash' => true];
+    }
+    $polys = [];
+    if (!empty($stop['az_ring'])) {
+        $polys[] = ['pts' => $stop['az_ring'], 'color' => '#CC2200', 'fill' => 0.18, 'weight' => 2];
+        if (empty($stop['gpx_pts'])) foreach ($stop['az_ring'] as $p) $fit[] = $p;
+    }
+    $cu_w = 1200;
+    $img = pdfmap_render([
+        'w' => $cu_w, 'h' => (int)round($cu_w * $map_h / $page_w), 'style' => 'topo', 'fit' => $fit,
+        'min_pad' => 60, 'max_zoom' => 16, 'polygons' => $polys, 'lines' => $lines, 'markers' => $mk,
+    ]);
+    $img_type = 'JPG';
+    if ($img) {
+        $PDF_TMP_FILES[] = $img;
     } else {
-        $markers[] = 'color:' . $color . '|label:' . $label . '|' . $stop['summit_lat'] . ',' . $stop['summit_lng'];
+        // Tiles unavailable: fall back to the old Google Static Maps image
+        $markers = []; $paths = [];
+        $color = static_map_marker_hex($LEG_COLORS[$i % count($LEG_COLORS)]);
+        if ($start_pt) $markers[] = 'color:0x2D8653|label:T|' . $start_pt[0] . ',' . $start_pt[1];
+        $markers[] = 'color:' . $color . '|label:' . leg_label_char($i) . '|' . $stop['summit_lat'] . ',' . $stop['summit_lng'];
+        if (!empty($stop['az_ring'])) {
+            $ring = az_ring_to_latlng($az['polygon']);
+            if (count($ring) >= 3) $paths[] = 'color:0xCC220090|weight:2|fillcolor:0xCC22002E|' . implode('|', $ring);
+        }
+        $img = fetch_static_map($markers, $paths, '640x' . (int)round(640 * $map_h / $page_w), 2, 'terrain');
+        $img_type = 'PNG';
     }
-    $az = get_activation_zone_from_api($stop['ref'], $stop['summit_lat'], $stop['summit_lng'], $stop['elevation_m']);
-    if ($az && !empty($az['polygon'])) {
-        $ring = az_ring_to_latlng($az['polygon']);
-        if (count($ring) >= 3) $paths[] = 'color:0xCC220090|weight:2|fillcolor:0xCC22002E|' . implode('|', $ring);
-    }
-    // Request the static map at the same aspect ratio it will be drawn at
-    // ($page_w x $map_h), keeping the "size" param within the API's 640px-
-    // per-side cap and using scale=2 for a crisp actual resolution.
-    $map_h = 3.6;
-    $closeup_size_w = 640;
-    $closeup_size_h = (int)round($closeup_size_w * $map_h / $page_w);
-    $img = fetch_static_map($markers, $paths, $closeup_size_w . 'x' . $closeup_size_h, 2, 'terrain');
     if ($img) {
         $closeup_draw_h = static_map_display_height($img, $page_w, $map_h);
-        $pdf->Image($img, 0.6, $pdf->GetY(), $page_w, $closeup_draw_h, 'PNG');
+        $pdf->Image($img, 0.6, $pdf->GetY(), $page_w, $closeup_draw_h, $img_type);
         $pdf->SetY($pdf->GetY() + $closeup_draw_h + 0.1);
     } else {
         $pdf->SetFont('Helvetica', 'I', 9);
         $pdf->SetTextColor(192, 48, 48);
-        $pdf->MultiCell($page_w, 0.22, pdftext('Map image unavailable. The Maps Static API may not be enabled yet on the SOTAplanner server key.'));
+        $pdf->MultiCell($page_w, 0.22, pdftext('Map image unavailable.'));
         $pdf->SetTextColor(28, 27, 25);
         $pdf->Ln(0.1);
     }
