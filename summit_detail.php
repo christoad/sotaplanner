@@ -2544,6 +2544,28 @@ function toggleCarrier(name) {
   }
 }
 
+<?php
+$drive_origin_geo = ($selected_address && $directions_lat && $directions_lng) ? addressGeo($db, $selected_address) : null;
+if ($drive_origin_geo): ?>
+// Driving route (OSRM) from the selected starting address to the starting point.
+// Drawn after the initial view is set and never touches fitBounds, so the map
+// stays focused on the hike and summit; the line may run off-screen.
+(function() {
+  const from = [<?= (float)$drive_origin_geo['lat'] ?>, <?= (float)$drive_origin_geo['lng'] ?>];
+  const to = [<?= (float)$directions_lat ?>, <?= (float)$directions_lng ?>];
+  fetch('https://router.project-osrm.org/route/v1/driving/' + from[1] + ',' + from[0] + ';' + to[1] + ',' + to[0] + '?overview=full&geometries=geojson')
+    .then(r => r.json())
+    .then(data => {
+      if (data.code !== 'Ok' || !data.routes || !data.routes[0]) return;
+      const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+      L.polyline(coords, { color: '#2563EB', weight: 4, opacity: 0.8, lineJoin: 'round', lineCap: 'round' })
+        .bindPopup('<strong>Driving route</strong><br>from <?= htmlspecialchars(addslashes($selected_address['label'] ?: $selected_address['address']), ENT_QUOTES) ?>')
+        .addTo(map);
+    })
+    .catch(() => {});
+})();
+<?php endif; ?>
+
 function initActivationZone(poly, source) {
   let coords;
   if (Array.isArray(poly[0]) && Array.isArray(poly[0][0]) && Array.isArray(poly[0][0][0])) coords = poly[0][0].map(c => [c[1], c[0]]);
