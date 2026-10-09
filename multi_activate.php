@@ -650,7 +650,14 @@ a:hover { text-decoration: underline; }
 .alt-help { font-size: 0.8rem; color: var(--ink-3); line-height: 1.5; margin-top: 0.85rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
 .alt-banner { display: none; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; background: var(--accent-bg); border: 1px solid var(--accent-border); color: var(--accent-2); border-radius: var(--r-md); padding: 0.6rem 0.85rem; font-size: 0.85rem; font-weight: 500; margin-bottom: 0.75rem; }
 .alt-banner.on { display: flex; }
-#multi-map.picking { cursor: crosshair; }
+#multi-map.picking,
+#multi-map.picking .leaflet-interactive,
+#multi-map.picking.leaflet-grab,
+#multi-map.picking.leaflet-dragging,
+#multi-map.picking .leaflet-grab,
+#multi-map.picking .leaflet-marker-icon { cursor: crosshair !important; }
+/* While choosing a point, clicks on stop markers fall through to the map */
+#multi-map.picking .leaflet-marker-icon { pointer-events: none; }
 .lmap-flag { width: 22px; height: 22px; border-radius: 50%; background: var(--green); color: #fff; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; }
 .tile-dup { font-size: 0.72rem; color: var(--ink-3); text-decoration: none; }
 .tile-dup:hover { color: var(--ink); text-decoration: underline; }
