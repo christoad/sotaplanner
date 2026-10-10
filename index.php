@@ -394,6 +394,21 @@ $stmt = $db->prepare("
 $stmt->execute([$current_group['id'], $current_group['id'], $current_group['id']]);
 $summits = $stmt->fetchAll();
 
+// The SQL groups rows by stored status, but "Ready" is shown only when a summit has
+// complete planning data (see dashboard_is_ready). Re-group by what is displayed so
+// a previously-activated summit with no data sorts with Needs Research, not Ready.
+// usort is stable, so the chosen column sort is kept within each group.
+usort($summits, function ($a, $b) use ($current_group) {
+    $group = function ($sm) use ($current_group) {
+        $act_yr = !empty($sm['last_activated_date']) && date('Y', strtotime($sm['last_activated_date'])) == gmdate('Y');
+        if ($act_yr) return 4;
+        [, , $hike] = dashboard_hike_stats($sm, $current_group);
+        if (dashboard_is_ready($sm, $hike, (int)($sm['drive_time'] ?? 0), false)) return 1;
+        return $sm['status'] === 'researched' ? 2 : 3;
+    };
+    return $group($a) <=> $group($b);
+});
+
 // Truly blank dashboard (no summits and no filter hiding any): the empty state's
 // own "Nominate Your First Summit" button is the only add button shown.
 $dashboard_blank = empty($summits) && count($active_filters) === 7;
@@ -530,9 +545,19 @@ function dashboard_hike_stats($summit, $current_group) {
 // Total time is only meaningful with hike data (travel + hike + on-summit time),
 // or for a drive-up summit, which has no hike: travel + on-summit time. Anything
 // else would be a guess that just echoes the assumptions, so it shows nothing.
+// Travel time is required too: a failed or missing Google Maps lookup would
+// otherwise produce a total that silently leaves out the drive.
 function dashboard_has_total($summit, $hike_time_total, $drive_time) {
-    if ($hike_time_total > 0) return true;
-    return ($summit['difficulty'] ?? '') === 'drive-up' && $drive_time > 0;
+    if ($drive_time <= 0) return false;
+    return $hike_time_total > 0 || ($summit['difficulty'] ?? '') === 'drive-up';
+}
+
+// A summit is only "ready" (green) when it has complete planning data. Being
+// activated by someone else, or a stale status, is not enough.
+function dashboard_is_ready($summit, $hike_time_total, $drive_time, $activated_this_year) {
+    if ($activated_this_year) return false;
+    if (!in_array($summit['status'], ['ready', 'activated'], true)) return false;
+    return dashboard_has_total($summit, $hike_time_total, $drive_time);
 }
 
 function render_dashboard_row($summit, $current_group, $user_units, $activation_time, $nested = false, $route_order = null, $multi_group_id = null, $multi_expanded = true) {
@@ -550,7 +575,7 @@ function render_dashboard_row($summit, $current_group, $user_units, $activation_
 
     if ($activated_this_year) {
         $row_class = 'row-activated';
-    } elseif ($summit['status'] === 'ready' || ($summit['status'] === 'activated' && !$activated_this_year)) {
+    } elseif (dashboard_is_ready($summit, $hike_time_total, $drive_time, $activated_this_year)) {
         $row_class = 'row-ready';
     } else {
         $row_class = '';
@@ -645,8 +670,10 @@ function render_dashboard_row($summit, $current_group, $user_units, $activation_
             <?php if ($summit['status'] === 'activated'): ?>
                 <?php if ($activated_this_year): ?>
                     <span class="badge badge-activated">Activated <?= date('Y', strtotime($summit['last_activated_date'])) ?></span>
-                <?php else: ?>
+                <?php elseif ($row_class !== '' && strpos($row_class, 'row-ready') !== false): ?>
                     <span class="badge badge-ready">Ready</span>
+                <?php else: ?>
+                    <span class="badge badge-nominated">Needs Research</span>
                 <?php endif; ?>
             <?php else: ?>
                 <span class="badge badge-<?= htmlspecialchars($summit['status']) ?>"><?= ucfirst($summit['status']) ?></span>
@@ -683,10 +710,10 @@ foreach ($summits as $sm) {
     $tot = $hike_min + $drv + $activation_time;
     $is_drive_up = ($sm['difficulty'] ?? '') === 'drive-up';
     // Drive-up summits need no hike research — travel + activation time alone is enough to plan.
-    $has_data = ($dist > 0 || $elev > 0 || $is_drive_up);
+    $has_data = dashboard_has_total($sm, $hike_min, $drv);
     $act_yr = $sm['last_activated_date'] && (date('Y', strtotime($sm['last_activated_date'])) == gmdate('Y'));
     if ($act_yr) $badge = 'gray';
-    elseif ($sm['status'] === 'ready' || ($sm['status'] === 'activated' && !$act_yr)) $badge = 'green';
+    elseif (dashboard_is_ready($sm, $hike_min, $drv, $act_yr)) $badge = 'green';
     elseif ($sm['status'] === 'researched') $badge = 'orange';
     else $badge = 'blue';
     $map_summits[] = [
@@ -1060,13 +1087,18 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     /* ── Table ── */
     .table-wrap {
       background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shadow-sm);
+      border-radius: var(--r-lg); overflow: clip; box-shadow: var(--shadow-sm);
     }
     table.data-table {
       width: 100%; border-collapse: collapse; font-size: 0.875rem;
     }
     .data-table thead {
       background: var(--bg-2); border-bottom: 1px solid var(--border);
+    }
+    /* Column headers stay pinned under the 56px topbar while scrolling long lists */
+    .data-table thead th {
+      position: sticky; top: 56px; z-index: 10; background: var(--bg-2);
+      box-shadow: inset 0 -1px 0 var(--border);
     }
     .data-table th {
       padding: var(--sp-3) var(--sp-4); text-align: left;
@@ -1797,7 +1829,9 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                             foreach ($ml['members'] as $mem) {
                                 $ms = $summits_by_id[$mem['summit_id']] ?? null;
                                 $m_act_year = $ms && !empty($ms['last_activated_date']) && date('Y', strtotime($ms['last_activated_date'])) == gmdate('Y');
-                                if (!$ms || $m_act_year || !($ms['status'] === 'ready' || $ms['status'] === 'activated')) { $multi_ready = false; break; }
+                                if (!$ms) { $multi_ready = false; break; }
+                                [, , $m_hike_r] = dashboard_hike_stats($ms, $current_group);
+                                if (!dashboard_is_ready($ms, $m_hike_r, (int)($ms['drive_time'] ?? 0), $m_act_year)) { $multi_ready = false; break; }
                             }
                             // The route's total needs every member to have hike data (or be drive-up)
                             $t_has_time = $t_total > 0;
@@ -2249,6 +2283,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     })();
 </script>
 
+<?php if (!isDemoOnboarding($db)): // demo mode: no tour at all ?>
 <script>
 // Auto-launch tour if the user checked "show again next time"
 if (!new URLSearchParams(window.location.search).has('tour') &&
@@ -2259,8 +2294,9 @@ if (!new URLSearchParams(window.location.search).has('tour') &&
     window.location.replace(u.toString());
 }
 </script>
+<?php endif; ?>
 
-<?php if (isset($_GET['tour']) && $_GET['tour'] === '1'): ?>
+<?php if (isset($_GET['tour']) && $_GET['tour'] === '1' && !isDemoOnboarding($db)): ?>
 <!-- ═══ NEW USER TOUR ═══ -->
 <style>
 #tour-svg {

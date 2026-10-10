@@ -197,6 +197,13 @@ if (isset($_GET['code'])) {
         exit;
     }
 
+    // Demo mode (God Mode switch): run KI6CR through the new-user wizard
+    if (isDemoOnboarding($db, $callsign)) {
+        unset($_SESSION['demo_onboarding_active']);
+        header('Location: onboarding.php');
+        exit;
+    }
+
     // Find user's planning groups
     $stmt = $db->prepare("
         SELECT pg.id FROM planning_groups pg

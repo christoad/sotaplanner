@@ -9,6 +9,15 @@ $callsign = getCurrentCallsign();
 
 $error = '';
 
+// Demo mode (God Mode switch, KI6CR only): behave as if this were a brand-new user.
+// The session is reset once per login so the wizard starts at step 1, and any
+// dashboard created here is a real, separate one; existing dashboards are untouched.
+$demo = isDemoOnboarding($db, $callsign);
+if ($demo && empty($_SESSION['demo_onboarding_active'])) {
+    $_SESSION['demo_onboarding_active'] = true;
+    unset($_SESSION['current_planning_group_id'], $_SESSION['onboarding_crew_done']);
+}
+
 // Arrived via "Add this Multi-Summit to your own dashboard" on a shared multi-activation route
 // (multi_add_to_dashboard.php). Users who already have dashboards first choose
 // one of them or a new one ("choose" step). A new dashboard skips the crew step,
@@ -44,7 +53,7 @@ function finishPendingImport(PDO $db, array $group, string $callsign, bool $allo
     ");
     $stmt->execute([$callsign, $callsign]);
     $qs = ['imported' => $new_id ? 1 : 0];
-    if ($allow_tour && (int)$stmt->fetchColumn() <= 1) $qs['tour'] = 1;
+    if ($allow_tour && !isDemoOnboarding($db, $callsign) && (int)$stmt->fetchColumn() <= 1) $qs['tour'] = 1;
     header('Location: index.php?' . http_build_query($qs));
     exit;
 }
@@ -95,7 +104,7 @@ $stmt->execute([$callsign, $callsign]);
 $existing_group = $stmt->fetch();
 
 // If user has a group with an address already, send them to the dashboard
-if ($existing_group && !$pending_import) {
+if ($existing_group && !$pending_import && !$demo) {
     $addr_stmt = $db->prepare("SELECT COUNT(*) FROM addresses WHERE planning_group_id = ?");
     $addr_stmt->execute([$existing_group['id']]);
     if ((int)$addr_stmt->fetchColumn() > 0) {
@@ -114,12 +123,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_group'])) {
         $error = 'Please give your dashboard a name.';
     } else {
         try {
-            // Save units as the user's personal preference
-            $db->prepare("
-                INSERT INTO user_settings (user_callsign, units) VALUES (?, ?)
-                ON DUPLICATE KEY UPDATE units = VALUES(units)
-            ")->execute([$callsign, $units]);
-            $_SESSION['user_units'] = $units;
+            // Save units as the user's personal preference (not in demo mode: don't touch real settings)
+            if (!$demo) {
+                $db->prepare("
+                    INSERT INTO user_settings (user_callsign, units) VALUES (?, ?)
+                    ON DUPLICATE KEY UPDATE units = VALUES(units)
+                ")->execute([$callsign, $units]);
+                $_SESSION['user_units'] = $units;
+            }
 
             $stmt = $db->prepare("INSERT INTO planning_groups (name, units, owner_callsign) VALUES (?, ?, ?)");
             $stmt->execute([$group_name, $units, $callsign]);
@@ -196,8 +207,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_address'])) {
             if ($pending_import && (int)($_SESSION['import_group_id'] ?? 0) === (int)$group['id']) {
                 finishPendingImport($db, $group, $callsign);
             }
-            unset($_SESSION['onboarding_crew_done']);
-            header('Location: index.php?tour=1');
+            unset($_SESSION['onboarding_crew_done'], $_SESSION['demo_onboarding_active']);
+            // Demo mode skips the dashboard tour (presented in person instead)
+            header('Location: index.php' . ($demo ? '' : '?tour=1'));
             exit;
         } catch (PDOException $e) {
             $error = 'Could not save that location. Please try again.';

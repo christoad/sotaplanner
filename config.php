@@ -1,5 +1,5 @@
 <?php
-define('APP_VERSION', '1.9.9');
+define('APP_VERSION', '2.0.0');
 
 // Enable error reporting for debugging
 error_reporting(E_ALL);
@@ -465,6 +465,16 @@ function getCurrentCallsign() {
 /** True if the current user has admin/god-mode access to all groups. */
 function isGodMode() {
     return getCurrentCallsign() === 'KI6CR';
+}
+
+/** Podcast/demo helper: when God Mode's "Demo onboarding" switch is on, KI6CR is
+ *  walked through the first-time-user onboarding wizard on every login. */
+function isDemoOnboarding($db, $callsign = null) {
+    $callsign = $callsign ?? getCurrentCallsign();
+    if ($callsign !== 'KI6CR') return false;
+    $stmt = $db->prepare("SELECT setting_value FROM app_settings WHERE setting_key = 'demo_onboarding_mode'");
+    $stmt->execute();
+    return $stmt->fetchColumn() === '1';
 }
 
 /** Rename a callsign across all tables — used when an SSO user confirms a different

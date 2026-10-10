@@ -29,6 +29,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $db = getDbConnection();
 
+                // Demo mode (God Mode switch): run KI6CR through the new-user wizard
+                if (isDemoOnboarding($db, $callsign)) {
+                    unset($_SESSION['demo_onboarding_active']);
+                    header('Location: onboarding.php');
+                    exit;
+                }
+
                 // Fetch all groups this user belongs to, owned groups first
                 $stmt = $db->prepare("
                     SELECT DISTINCT pg.id,

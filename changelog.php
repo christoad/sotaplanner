@@ -266,12 +266,15 @@ session_start();
     <!-- September 2026 -->
     <div class="version-block current">
         <div class="version-header">
-            <span class="version-number">v1.9.9</span>
+            <span class="version-number">v2.0.0</span>
             <span class="version-date">October 2026</span>
             <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Driving routes now appear on the summit map, and the offline PDF for Multi-Activate routes shows the same maps you see on the site.</p>
         <ul>
+            <li>The dashboard's column headers now stay pinned at the top as you scroll a long list of summits</li>
+            <li>A summit only shows as Ready once it has hike data and a travel time, so summits activated by your crew no longer look ready before they have been researched</li>
+            <li>Total time is no longer shown when the travel time is missing, so it never leaves out the drive</li>
             <li>The map on each summit page now shows the driving route from your starting address to the starting point, without changing the zoom, which stays focused on the hike and summit</li>
             <li>The route overview map in the PDF now follows the real driving roads for each leg, with your hiking trails, activation zones and numbered stops drawn on top, just like the Multi-Activate page</li>
             <li>Each summit page in the PDF now has a topographic map with the hike trail (when one is available), the activation zone, and clearly marked Summit and Start points</li>

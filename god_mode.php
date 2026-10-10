@@ -51,6 +51,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    // Demo onboarding mode (podcast/demo): KI6CR sees the new-user wizard on every login
+    if (isset($_POST['demo_onboarding_on'])) {
+        $db->prepare("INSERT INTO app_settings (setting_key, setting_value) VALUES ('demo_onboarding_mode', '1') ON DUPLICATE KEY UPDATE setting_value = '1'")->execute();
+        $message = 'Demo mode is ON. Sign out, then log in from the login screen to start the new-user wizard.';
+    }
+    if (isset($_POST['demo_onboarding_off'])) {
+        $db->prepare("DELETE FROM app_settings WHERE setting_key = 'demo_onboarding_mode'")->execute();
+        unset($_SESSION['demo_onboarding_active'], $_SESSION['onboarding_crew_done']);
+        // Back to the oldest dashboard KI6CR owns
+        $stmt = $db->prepare("SELECT id FROM planning_groups WHERE owner_callsign = 'KI6CR' ORDER BY id ASC LIMIT 1");
+        $stmt->execute();
+        $gid = $stmt->fetchColumn();
+        if ($gid) $_SESSION['current_planning_group_id'] = $gid;
+        header('Location: index.php');
+        exit;
+    }
+
     // Post sitewide banner
     if (isset($_POST['post_banner'])) {
         $text = trim($_POST['banner_text'] ?? '');
@@ -606,6 +623,27 @@ select.form-input { cursor: pointer; }
                     </div>
                     <button type="submit" name="post_banner" class="btn btn-primary">Post Banner</button>
                 </div>
+            </form>
+        </div>
+
+        <!-- Demo onboarding -->
+        <?php $demo_on = isDemoOnboarding($db, 'KI6CR'); ?>
+        <div class="section-head">
+            <div>
+                <h2>Demo Onboarding Mode</h2>
+                <p>For demos: while on, every KI6CR login runs the new-user wizard from step 1. Turn it on, sign out, then log in from the login screen. Your real dashboards and settings are not touched; the wizard creates a separate new dashboard each run.</p>
+            </div>
+        </div>
+        <div class="card">
+            <form method="POST">
+                <?php if ($demo_on): ?>
+                    <p style="font-size:0.875rem; margin-bottom:var(--sp-3);"><strong style="color:var(--green);">Demo mode is ON.</strong></p>
+                    <a href="logout.php" class="btn btn-ghost">Sign out now</a>
+                    <button type="submit" name="demo_onboarding_off" class="btn btn-primary">Turn off and return to my dashboard</button>
+                <?php else: ?>
+                    <p style="font-size:0.875rem; color:var(--ink-3); margin-bottom:var(--sp-3);">Demo mode is off.</p>
+                    <button type="submit" name="demo_onboarding_on" class="btn btn-primary">Turn on demo mode</button>
+                <?php endif; ?>
             </form>
         </div>
 
