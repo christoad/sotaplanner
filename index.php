@@ -1452,6 +1452,12 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     .lmap-blue   { background: oklch(48% 0.12 240); color: #fff; }
     .lmap-gray   { background: oklch(50% 0.02 200); color: #fff; }
     .lmap-warn   { background: #888; color: #fff; font-weight: 600; }
+    /* Unknown total time: a small "?" dot instead of a full-size label */
+    .lmap-badge.lmap-unknown {
+      width: 20px; height: 20px; padding: 0; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: #9A9792; font-size: 12px; font-weight: 600;
+    }
 
     /* ── Base map type toggle ── */
     .dash-base-toggle {
@@ -2623,8 +2629,8 @@ function initDashMap() {
         }
 
         // Badge label
-        const label = s.label || '+ Research';
-        const cls = s.label ? 'lmap-' + s.badge : 'lmap-warn';
+        const label = s.label || '?';
+        const cls = s.label ? 'lmap-' + s.badge : 'lmap-unknown';
 
         const icon = L.divIcon({
             className: '',
