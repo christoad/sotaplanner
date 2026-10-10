@@ -29,3 +29,4 @@ screenshots/
 
 # Claude Code local session/tool state (worktrees, local settings)
 .claude/
+SOTAplanner-intro-slides.pdf
