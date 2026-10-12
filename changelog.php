@@ -266,12 +266,13 @@ session_start();
     <!-- September 2026 -->
     <div class="version-block current">
         <div class="version-header">
-            <span class="version-number">v2.0.0</span>
+            <span class="version-number">v2.1.0</span>
             <span class="version-date">October 2026</span>
             <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Driving routes now appear on the summit map, and the offline PDF for Multi-Activate routes shows the same maps you see on the site.</p>
         <ul>
+            <li>A new thumbs-up button next to "Post an Alert to SOTAwatch" lets you vote for posting alerts and spots from SOTAplanner, so we know how much people want it</li>
             <li>The dashboard's column headers now stay pinned at the top as you scroll a long list of summits</li>
             <li>A summit only shows as Ready once it has hike data and a travel time, so summits activated by your crew no longer look ready before they have been researched</li>
             <li>Total time is no longer shown when the travel time is missing, so it never leaves out the drive</li>

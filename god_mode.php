@@ -332,6 +332,49 @@ try {
     $activity_feed_source = 'none';
 }
 
+// ── Returning-user stats + feature votes (Users tab) ───────────────────────
+$visit_stats = null; $vote_rows = []; $vote_total = 0; $weekly_active = [];
+if (($_GET['tab'] ?? '') === 'users') {
+    try {
+        $visit_users = $db->query("
+            SELECT callsign, MIN(visit_date) AS first_seen, MAX(visit_date) AS last_seen,
+                   COUNT(*) AS days_active,
+                   SUM(visit_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) AS days_30
+            FROM user_visits WHERE callsign <> 'KI6CR'
+            GROUP BY callsign ORDER BY days_active DESC, last_seen DESC
+        ")->fetchAll();
+        $total = count($visit_users);
+        $once = $few = $regular = 0; $active7 = $active30 = 0; $eligible = $came_back = 0;
+        $today = strtotime(date('Y-m-d'));
+        foreach ($visit_users as &$vu) {
+            $d = (int)$vu['days_active'];
+            $vu['tier'] = $d >= 4 ? 'Regular' : ($d >= 2 ? 'Returning' : 'One-time');
+            if ($d >= 4) $regular++; elseif ($d >= 2) $few++; else $once++;
+            $age = ($today - strtotime($vu['last_seen'])) / 86400;
+            if ($age <= 7) $active7++;
+            if ($age <= 30) $active30++;
+            if (($today - strtotime($vu['first_seen'])) / 86400 >= 7) { $eligible++; if ($d >= 2) $came_back++; }
+        }
+        unset($vu);
+        $visit_stats = compact('total', 'once', 'few', 'regular', 'active7', 'active30', 'eligible', 'came_back');
+        $visit_stats['users'] = $visit_users;
+        $visit_stats['tracking_since'] = $db->query("SELECT MIN(visit_date) FROM user_visits")->fetchColumn();
+        $wk = $db->query("
+            SELECT YEARWEEK(visit_date, 1) AS yw, MIN(visit_date) AS wk_start, COUNT(DISTINCT callsign) AS n
+            FROM user_visits WHERE callsign <> 'KI6CR' AND visit_date >= DATE_SUB(CURDATE(), INTERVAL 8 WEEK)
+            GROUP BY yw ORDER BY yw
+        ")->fetchAll();
+        foreach ($wk as $w) $weekly_active[] = $w;
+    } catch (PDOException $e) { $visit_stats = null; }
+    try {
+        $vote_rows = $db->query("
+            SELECT feature_key, COUNT(*) AS votes, GROUP_CONCAT(callsign ORDER BY created_at SEPARATOR ', ') AS voters, MAX(created_at) AS latest
+            FROM feature_votes GROUP BY feature_key ORDER BY votes DESC
+        ")->fetchAll();
+        foreach ($vote_rows as $vr) $vote_total += (int)$vr['votes'];
+    } catch (PDOException $e) { $vote_rows = []; }
+}
+
 // ── Cron log reader ──────────────────────────────────────────────────────────
 $cron_log_path   = file_exists(dirname(__DIR__) . '/sota_logs/gpx_cron.log')
     ? dirname(__DIR__) . '/sota_logs/gpx_cron.log'
@@ -439,6 +482,10 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--ink); 
 /* Page */
 .page { padding: var(--sp-8); max-width: 1100px; margin: 0 auto; }
 
+.tag { display:inline-block; font-size:0.65rem; font-weight:600; border-radius:var(--r-sm); padding:0.1rem 0.4rem; text-transform:uppercase; letter-spacing:0.05em; }
+.tag-new { background:var(--green-bg); color:var(--green); }
+.tag-improve { background:var(--blue-bg); color:var(--blue); }
+.tag-accent { background:var(--accent-bg); color:var(--accent); }
 /* Tabs */
 .tab-bar { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: var(--sp-8); }
 .tab-btn { display: inline-flex; align-items: center; padding: 0.6rem 1rem; font-size: 0.875rem; font-weight: 500; color: var(--ink-3); border: none; background: none; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; font-family: var(--font-sans); text-decoration: none; transition: color 0.12s, border-color 0.12s; }
@@ -668,6 +715,90 @@ select.form-input { cursor: pointer; }
 
     <!-- ── USERS ── -->
     <?php elseif ($active_tab === 'users'): ?>
+
+        <?php
+        $feature_labels = ['sotawatch_posting' => 'Post alerts and spots to SOTAwatch'];
+        ?>
+        <div class="section-head">
+            <div>
+                <h2>Feature Votes</h2>
+                <p>Users click the thumbs-up on features that are still "Coming Soon"</p>
+            </div>
+        </div>
+        <div class="card" style="padding:1rem 1.25rem; margin-bottom:var(--sp-8);">
+            <?php if (empty($vote_rows)): ?>
+                <div class="muted" style="font-size:0.85rem;">No votes yet (or run db_migrate.php if the table is missing).</div>
+            <?php else: foreach ($vote_rows as $vr): ?>
+                <div style="display:flex; align-items:baseline; gap:1rem; padding:0.4rem 0; flex-wrap:wrap;">
+                    <div style="font-size:1.6rem; font-weight:600; min-width:2.5rem;"><?= (int)$vr['votes'] ?></div>
+                    <div style="flex:1; min-width:200px;">
+                        <div style="font-weight:600;"><?= htmlspecialchars($feature_labels[$vr['feature_key']] ?? $vr['feature_key']) ?></div>
+                        <div class="muted mono" style="font-size:0.75rem;"><?= htmlspecialchars($vr['voters']) ?></div>
+                    </div>
+                    <div class="muted" style="font-size:0.75rem;">Latest <?= date('M j, Y', strtotime($vr['latest'])) ?></div>
+                </div>
+            <?php endforeach; endif; ?>
+        </div>
+
+        <div class="section-head">
+            <div>
+                <h2>Returning Users</h2>
+                <p>Distinct days each person used the site (you are excluded)<?= !empty($visit_stats['tracking_since']) ? '. Data since ' . date('M j, Y', strtotime($visit_stats['tracking_since'])) : '' ?></p>
+            </div>
+        </div>
+        <?php if (!$visit_stats): ?>
+            <div class="card"><div class="empty">Visit tracking table not created yet. Run db_migrate.php.</div></div>
+        <?php else: $vs = $visit_stats; $pct = function($n, $d) { return $d > 0 ? round($n / $d * 100) . '%' : '-'; }; ?>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:var(--sp-3); margin-bottom:var(--sp-4);">
+            <?php foreach ([
+                [$vs['total'], 'People tracked'],
+                [$vs['once'], 'Came once, never back'],
+                [$vs['few'], 'Returning (2-3 days)'],
+                [$vs['regular'], 'Regulars (4+ days)'],
+                [$vs['active7'], 'Active last 7 days'],
+                [$vs['active30'], 'Active last 30 days'],
+                [$pct($vs['came_back'], $vs['eligible']), 'Came back (joined 7+ days ago)'],
+            ] as [$num, $lbl]): ?>
+            <div class="card" style="padding:0.9rem 1rem;">
+                <div style="font-size:1.6rem; font-weight:600; line-height:1.1;"><?= $num ?></div>
+                <div class="muted" style="font-size:0.75rem; margin-top:0.2rem;"><?= $lbl ?></div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+
+        <?php if ($weekly_active): $maxw = max(array_column($weekly_active, 'n')); ?>
+        <div class="card" style="padding:1rem 1.25rem; margin-bottom:var(--sp-4);">
+            <div class="muted" style="font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.6rem;">Unique users per week</div>
+            <div style="display:flex; align-items:flex-end; gap:8px; height:110px;">
+                <?php foreach ($weekly_active as $w): ?>
+                <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%;">
+                    <div style="font-size:0.75rem; font-weight:600; margin-bottom:2px;"><?= (int)$w['n'] ?></div>
+                    <div style="width:100%; max-width:48px; background:var(--accent); border-radius:3px 3px 0 0; height:<?= max(4, round($w['n'] / $maxw * 70)) ?>px;"></div>
+                    <div class="muted" style="font-size:0.65rem; margin-top:4px; white-space:nowrap;"><?= date('M j', strtotime($w['wk_start'])) ?></div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <div class="card" style="padding:0; overflow:hidden; margin-bottom:var(--sp-8);">
+            <table class="data-table">
+                <thead><tr><th>Callsign</th><th>Type</th><th>Days active</th><th>Last 30 days</th><th>First seen</th><th>Last seen</th></tr></thead>
+                <tbody>
+                <?php foreach ($vs['users'] as $vu): ?>
+                    <tr>
+                        <td class="mono"><?= htmlspecialchars($vu['callsign']) ?></td>
+                        <td><span class="tag <?= $vu['tier'] === 'Regular' ? 'tag-new' : ($vu['tier'] === 'Returning' ? 'tag-improve' : 'tag-accent') ?>"><?= $vu['tier'] ?></span></td>
+                        <td><?= (int)$vu['days_active'] ?></td>
+                        <td><?= (int)$vu['days_30'] ?></td>
+                        <td class="muted" style="font-size:0.8rem;"><?= date('M j, Y', strtotime($vu['first_seen'])) ?></td>
+                        <td class="muted" style="font-size:0.8rem;"><?= date('M j, Y', strtotime($vu['last_seen'])) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php endif; ?>
 
         <div class="section-head">
             <div>

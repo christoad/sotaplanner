@@ -1,8 +1,8 @@
 <?php
-// One-off migration: tables for Multi-Activate "alternate hike start" pins.
-//   multi_alt_starts         shared (community) pin for an ordered summit pair
-//   multi_alt_start_optouts  a user's personal "ignore the shared pin" choice
-//   multi_alt_start_log      history of every set/reset, so a bad pin can be undone
+// One-off migration: feature voting + daily visit tracking.
+//   feature_votes   one row per (feature, callsign) "I'd use this" vote
+//   user_visits     one row per (callsign, day) the user was active; powers the God Mode
+//                   returning-users dashboard. Seeded from activity_log history.
 // Safe to run twice. Delete this file after running.
 require_once 'config.php';
 
@@ -24,52 +24,39 @@ function step($label, $fn) {
     }
 }
 
-step('Create multi_alt_starts', function () use ($db) {
+step('Create feature_votes', function () use ($db) {
     $db->exec("
-        CREATE TABLE IF NOT EXISTS multi_alt_starts (
+        CREATE TABLE IF NOT EXISTS feature_votes (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            from_ref VARCHAR(32) NOT NULL,
-            to_ref VARCHAR(32) NOT NULL,
-            lat DECIMAL(10,7) NOT NULL,
-            lng DECIMAL(10,7) NOT NULL,
-            set_by VARCHAR(20) NOT NULL,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            UNIQUE KEY uniq_pair (from_ref, to_ref)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    ");
-    return 'table ready';
-});
-
-step('Create multi_alt_start_optouts', function () use ($db) {
-    $db->exec("
-        CREATE TABLE IF NOT EXISTS multi_alt_start_optouts (
-            id INT AUTO_INCREMENT PRIMARY KEY,
+            feature_key VARCHAR(64) NOT NULL,
             callsign VARCHAR(20) NOT NULL,
-            from_ref VARCHAR(32) NOT NULL,
-            to_ref VARCHAR(32) NOT NULL,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uniq_user_pair (callsign, from_ref, to_ref)
+            UNIQUE KEY uniq_vote (feature_key, callsign)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     ");
     return 'table ready';
 });
 
-step('Create multi_alt_start_log', function () use ($db) {
+step('Create user_visits', function () use ($db) {
     $db->exec("
-        CREATE TABLE IF NOT EXISTS multi_alt_start_log (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            from_ref VARCHAR(32) NOT NULL,
-            to_ref VARCHAR(32) NOT NULL,
-            action VARCHAR(16) NOT NULL,
-            lat DECIMAL(10,7) NULL,
-            lng DECIMAL(10,7) NULL,
-            by_callsign VARCHAR(20) NOT NULL,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            KEY idx_pair (from_ref, to_ref)
+        CREATE TABLE IF NOT EXISTS user_visits (
+            callsign VARCHAR(20) NOT NULL,
+            visit_date DATE NOT NULL,
+            PRIMARY KEY (callsign, visit_date),
+            KEY idx_date (visit_date)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     ");
     return 'table ready';
+});
+
+step('Seed user_visits from activity_log', function () use ($db) {
+    $n = $db->exec("
+        INSERT IGNORE INTO user_visits (callsign, visit_date)
+        SELECT DISTINCT callsign, DATE(event_time)
+        FROM activity_log
+        WHERE callsign IS NOT NULL AND callsign <> '' AND callsign <> '?'
+    ");
+    return "$n rows added";
 });
 
 echo "\nDone. Delete db_migrate.php from the server now.\n";

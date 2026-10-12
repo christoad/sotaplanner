@@ -1,5 +1,5 @@
 <?php
-define('APP_VERSION', '2.0.0');
+define('APP_VERSION', '2.1.0');
 
 // Enable error reporting for debugging
 error_reporting(E_ALL);
@@ -455,6 +455,21 @@ function requireLogin() {
         header('Location: login.php?redirect=' . $redirect);
         exit;
     }
+    recordDailyVisit();
+}
+
+/** Note that the signed-in user was active today (one row per callsign per day, used by the
+ *  God Mode returning-users dashboard). Runs at most once per session per day, and never
+ *  while KI6CR is impersonating someone. */
+function recordDailyVisit() {
+    $today = date('Y-m-d');
+    if (($_SESSION['_visit_logged'] ?? '') === $today) return;
+    $_SESSION['_visit_logged'] = $today;
+    if (!empty($_SESSION['_god_mode_real_callsign'])) return;
+    try {
+        getDbConnection()->prepare("INSERT IGNORE INTO user_visits (callsign, visit_date) VALUES (?, ?)")
+            ->execute([$_SESSION['sota_callsign'], $today]);
+    } catch (Exception $e) { /* table may not exist yet, run db_migrate.php */ }
 }
 
 /** Return the currently authenticated callsign, or null. */

@@ -2070,10 +2070,51 @@ if ($tl_show) {
         <div style="height:0.75rem;"></div>
       <?php endif; ?>
 
+      <?php
+        $sw_voted = false; $sw_votes = 0;
+        try {
+            $sw_votes = (int)$db->query("SELECT COUNT(*) FROM feature_votes WHERE feature_key = 'sotawatch_posting'")->fetchColumn();
+            $sw_st = $db->prepare("SELECT 1 FROM feature_votes WHERE feature_key = 'sotawatch_posting' AND callsign = ?");
+            $sw_st->execute([getCurrentCallsign()]);
+            $sw_voted = (bool)$sw_st->fetchColumn();
+        } catch (PDOException $e) { /* table not created yet */ }
+      ?>
+      <style>
+        .sw-vote-btn { display:inline-flex; align-items:center; gap:0.4rem; height:30px; padding:0 0.75rem; border-radius:100px; border:1px dashed var(--border-2); background:transparent; color:var(--ink-4); font-family:var(--font-sans); font-size:0.775rem; font-weight:500; cursor:pointer; opacity:0.75; transition:all 0.15s; }
+        .sw-vote-btn:hover { opacity:1; color:var(--accent); border-color:var(--accent-border); background:var(--accent-bg); }
+        .sw-vote-btn.voted { opacity:1; border-style:solid; color:var(--accent-2); border-color:var(--accent-border); background:var(--accent-bg); }
+        .sw-vote-btn.voted svg { fill:currentColor; }
+      </style>
+      <script>
+      document.addEventListener('DOMContentLoaded', function () {
+        var btn = document.getElementById('swVoteBtn'), label = document.getElementById('swVoteLabel');
+        if (!btn) return;
+        btn.addEventListener('click', function (e) {
+          e.preventDefault(); e.stopPropagation();
+          var voting = !btn.classList.contains('voted');
+          var fd = new FormData();
+          fd.append('feature', 'sotawatch_posting');
+          fd.append('action', voting ? 'vote' : 'unvote');
+          fetch('vote_feature.php', { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+              if (!d.ok) return;
+              btn.classList.toggle('voted', voting);
+              btn.setAttribute('aria-pressed', voting ? 'true' : 'false');
+              label.textContent = voting ? 'Thanks, you voted for this' : 'Vote for this feature';
+            });
+        });
+      });
+      </script>
+
       <details>
         <summary style="cursor:not-allowed; font-size:0.875rem; font-weight:600; color:var(--ink-3); margin-bottom:0.875rem; display:inline-flex; align-items:center; gap:0.5rem;">
           + Post an Alert to SOTAwatch
           <span style="font-size:0.65rem; font-weight:600; color:var(--orange); background:var(--orange-bg); border-radius:20px; padding:0.15rem 0.55rem; text-transform:uppercase; letter-spacing:0.05em;">Coming Soon</span>
+          <button type="button" title="Want to post alerts and spots to SOTAwatch from here? Vote so we can prioritize it." id="swVoteBtn" class="sw-vote-btn<?= $sw_voted ? ' voted' : '' ?>" aria-pressed="<?= $sw_voted ? 'true' : 'false' ?>">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg>
+          <span id="swVoteLabel"><?= $sw_voted ? 'Thanks, you voted for this' : 'Vote for this feature' ?></span>
+        </button>
         </summary>
         <div style="background:var(--accent-bg); border:1px solid var(--accent-border); border-radius:var(--r-md); padding:0.7rem 0.875rem; margin-bottom:1rem; font-size:0.8rem; color:var(--accent-2); line-height:1.5;">
           <strong>Note:</strong> Posting alerts directly to SOTAwatch from SOTAplanner isn't live yet — we're waiting on write access from the SOTA team. These fields are a preview of what will be here.
