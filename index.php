@@ -158,7 +158,7 @@ if (!$current_group) {
         setCurrentPlanningGroup($auto_group['id']);
         $current_group = getCurrentPlanningGroup($db);
     } else {
-        // Genuinely no groups — send to setup
+        // Genuinely no groups, send to setup
         header('Location: planning_groups.php');
         exit;
     }
@@ -416,7 +416,7 @@ $dashboard_blank = empty($summits) && count($active_filters) === 7;
 // Saved multi-activations for this group, keyed by the first (lead) summit's id.
 // A saved route replaces its member summits' individual dashboard rows with one
 // summary row (aggregate stats, precomputed on save), with the members nested
-// underneath — each still a normal link through to its own summit_detail.php.
+// underneath, each still a normal link through to its own summit_detail.php.
 $multi_lookup = [];
 $stmt = $db->prepare("
     SELECT ma.id AS multi_id, ma.name AS multi_name, ma.is_expanded,
@@ -469,7 +469,7 @@ foreach ($multi_lookup as $lead_id => $ml) {
     foreach ($ml['members'] as $mem) $multi_member_ids[$mem['summit_id']] = true;
 }
 
-// A member might not itself pass the active filters — make sure its full row
+// A member might not itself pass the active filters, make sure its full row
 // data is still available so it can render inside its multi's nested list.
 $missing_member_ids = [];
 foreach (array_keys($multi_member_ids) as $mid) {
@@ -505,7 +505,7 @@ if (!empty($missing_member_ids)) {
     foreach ($stmt->fetchAll() as $s) $summits_by_id[$s['id']] = $s;
 }
 
-// Renders one <tr> (+ its mobile stats cell) for a summit row — shared by both
+// Renders one <tr> (+ its mobile stats cell) for a summit row, shared by both
 // normal top-level rows and the rows nested under a multi-activation summary.
 // Distance (mi), elevation gain (ft) and round-trip hike minutes for a summit row,
 // from its GPX track when enabled, else the manually entered numbers.
@@ -709,7 +709,7 @@ foreach ($summits as $sm) {
     $drv = $sm['drive_time_min'] ?? 0;
     $tot = $hike_min + $drv + $activation_time;
     $is_drive_up = ($sm['difficulty'] ?? '') === 'drive-up';
-    // Drive-up summits need no hike research — travel + activation time alone is enough to plan.
+    // Drive-up summits need no hike research, travel + activation time alone is enough to plan.
     $has_data = dashboard_has_total($sm, $hike_min, $drv);
     $act_yr = $sm['last_activated_date'] && (date('Y', strtotime($sm['last_activated_date'])) == gmdate('Y'));
     if ($act_yr) $badge = 'gray';
@@ -910,7 +910,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     }
     .user-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
 
-    /* ── Hamburger menu (mobile nav — topbar-nav links are hidden below 768px) ── */
+    /* ── Hamburger menu (mobile nav, topbar-nav links are hidden below 768px) ── */
     .hamburger-menu { display: none; position: relative; }
     .hamburger-btn {
       display: flex; align-items: center; justify-content: center;
@@ -1002,7 +1002,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     /* While bulk-selecting, the action cluster detaches from the toolbar and is
        relocated (via JS) to #select-bar-anchor, right between the filters and the
        summit rows. It's sticky there, so it scrolls normally until it reaches the
-       topbar, then hovers just below it — always reachable while checking off rows
+       topbar, then hovers just below it, always reachable while checking off rows
        further down the list. The armed button also grows a bit once there's
        something to act on. */
     .toolbar-right.floating {
@@ -1214,7 +1214,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
       width: 15px; height: 15px; border-radius: 50%; background: var(--green-dark); color: #fff;
       font-size: 0.58rem; font-weight: 700; margin-right: 5px; vertical-align: middle;
     }
-    /* Nested member rows read as a route "header" child — ~75% of a normal row */
+    /* Nested member rows read as a route "header" child, ~75% of a normal row */
     .data-table tbody tr.nested-summit-row td { padding-top: var(--sp-2) !important; padding-bottom: var(--sp-2) !important; }
     .nested-summit-row .summit-name { font-size: 0.8rem; }
     .nested-summit-row .summit-ref { font-size: 0.65rem; }
@@ -1223,7 +1223,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     .nested-summit-row .points-dot { width: 18px; height: 18px; font-size: 0.6rem; }
 
     /* The multi-summary row itself reads as a slim section header/divider above
-       its nested summits, not a peer row — collapsed to one line and much
+       its nested summits, not a peer row, collapsed to one line and much
        shorter than either a normal summit row or its own nested children. */
     .data-table tbody tr.multi-summary-row td { padding-top: 3px !important; padding-bottom: 3px !important; }
     .multi-summary-row .td-main a { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
@@ -1345,7 +1345,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
       .data-table tbody tr.nested-summit-row:not(.row-ready) { border-left-color: var(--border-2) !important; }
       /* The generic "tr { display: grid !important }" above beats the desktop
          ".multi-nested-row { display: none }" rule since both are unqualified
-         by specificity and !important always wins — so on mobile a collapsed
+         by specificity and !important always wins, so on mobile a collapsed
          route's members stayed visible no matter what the caret toggle did.
          This more specific selector (class + :not) restores the hide. */
       .data-table tbody tr.multi-nested-row:not(.is-open) { display: none !important; }
@@ -1364,7 +1364,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
       #dashboard-table.select-mode td.td-select, #dashboard-table.select-mode th.td-select {
         display: table-cell; text-align: center; width: 34px;
       }
-      /* A saved route can't be folded into another route — only its member
+      /* A saved route can't be folded into another route, only its member
          summits are selectable while building a new multi-activation. */
       #dashboard-table.mode-multi .multi-row-select { visibility: hidden; }
     }
@@ -1547,12 +1547,15 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
             <div class="ctx-group">
             <span class="ctx-label">From</span>
             <form method="POST" style="display:contents">
-                <select name="address_id" class="select-inline" onchange="this.form.submit()">
+                <select name="address_id" class="select-inline"
+                        data-current="<?= $selected_address ? (int)$selected_address['id'] : '' ?>"
+                        onchange="if (this.value === 'add_another') { this.value = this.dataset.current; window.location = 'planning_groups.php?manage_group=<?= (int)$current_group['id'] ?>&amp;add_address=1'; } else { this.form.submit(); }">
                     <?php foreach ($all_addresses as $addr): ?>
                         <option value="<?= $addr['id'] ?>" <?= ($selected_address && $selected_address['id'] == $addr['id']) ? 'selected' : '' ?>>
                             <?= htmlspecialchars($addr['label'] ?: $addr['address']) ?>
                         </option>
                     <?php endforeach; ?>
+                    <option value="add_another">+ Add another</option>
                 </select>
                 <input type="hidden" name="select_address" value="1">
             </form>
@@ -1730,7 +1733,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
     </div>
 
     <!-- The sticky select-bar's containing box is its immediate parent, so this
-         wrapper (not a separate small anchor div) must directly hold it — it wraps
+         wrapper (not a separate small anchor div) must directly hold it, it wraps
          everything through the end of the summit list, giving the sticky bar the
          full list's height to hover within as the user scrolls. -->
     <div id="select-bar-scroll-region">
@@ -2259,7 +2262,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
         });
     }
 
-    // Arriving from "+ Add Summit" on the multi-activation page — jump straight
+    // Arriving from "+ Add Summit" on the multi-activation page, jump straight
     // into multi-select mode with the route's current members pre-included.
     if (MULTI_PREFILL_IDS.length > 0) {
         enterSelectMode('multi');
@@ -2756,7 +2759,7 @@ function setDashView(view) {
     }
 }
 
-// Restore last-used view — but a brand-new, empty dashboard always opens to List;
+// Restore last-used view, but a brand-new, empty dashboard always opens to List;
 // there's nothing useful to show on the map yet.
 var DASH_HAS_SUMMITS = <?= (count($summits) > 0 || !$is_all) ? 'true' : 'false' ?>;
 try {
@@ -2769,13 +2772,13 @@ try {
 // Silently refresh SOTA activation cache for all summits on the dashboard.
 // Fires after page paint, 3 at a time, so it never blocks the UI.
 // The server caches each summit's SOTA API result for 24h (see fetchSotaActivations()
-// in config.php), so hitting sota_refresh.php again is cheap — but index.php sends
+// in config.php), so hitting sota_refresh.php again is cheap, but index.php sends
 // Cache-Control: no-store (PHP's session default), which blocks the browser's
 // back/forward cache. That means every back-button return re-runs this whole
 // script from scratch. Track which summit IDs we've already refreshed today in
 // sessionStorage (per tab) and only fetch the ones not already covered, so a
 // same-day revisit (back button, reload, re-opened tab) doesn't re-fire a
-// request per summit just to hit the cache again — while a newly nominated
+// request per summit just to hit the cache again, while a newly nominated
 // summit added later the same day still gets checked.
 (function() {
   const groupId = <?= (int)$current_group['id'] ?>;
@@ -2877,7 +2880,7 @@ try {
         }
       });
     })
-    .catch(() => {}); // silent — this is a best-effort background refresh
+    .catch(() => {}); // silent, this is a best-effort background refresh
 })();
 </script>
 <?php endif; ?>

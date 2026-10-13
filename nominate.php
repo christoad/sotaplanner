@@ -6,6 +6,9 @@ require_once 'config.php';
 require_once 'sota_cache_helper.php';
 session_start();
 requireLogin();
+// Release the session lock now: this endpoint only reads the session, and holding the lock
+// through slow work (API calls, file scans) would stall every other request from this user.
+session_write_close();
 
 // Link a global GPX library track to a newly-created summit row.
 // Creates a gpx_tracks row pointing at the shared file and fills in
@@ -145,7 +148,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'radius_search') {
     $summits = search_sota_cache_by_radius($clat, $clon, $radius_mi, $min_pts);
 
     if (isset($summits['_no_cache']))   { echo json_encode(['error' => 'Summit cache not built. Contact admin.']); exit; }
-    if (isset($summits['_no_latlon'])) { echo json_encode(['error' => 'Area search requires a cache rebuild — please contact the site admin.']); exit; }
+    if (isset($summits['_no_latlon'])) { echo json_encode(['error' => 'Area search requires a cache rebuild, please contact the site admin.']); exit; }
 
     // Flag summits already in this group
     if ($summits && $current_group) {
@@ -225,7 +228,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'nominate_one') {
         $latitude     = $sd['latitude'] ?? $sd['lat'] ?? 0;
         $longitude    = $sd['longitude'] ?? $sd['lng'] ?? $sd['long'] ?? 0;
         $sotlas_link  = "https://sotl.as/summits/" . $sota_ref;
-        // Winter bonus isn't in the SOTA API response — only in our cache (built from
+        // Winter bonus isn't in the SOTA API response, only in our cache (built from
         // SOTA's official summit-list CSV, see rebuild_sota_cache.php)
         $bonus_points = get_sota_cache_summit($sota_ref)['bonus'] ?? 0;
 
@@ -483,7 +486,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
             $bonus_points = get_sota_cache_summit($sota_ref)['bonus'] ?? 0;
 
             try {
-                // Already nominated by this group — count as success, don't re-insert
+                // Already nominated by this group, count as success, don't re-insert
                 $chk = $db->prepare("SELECT id FROM summits WHERE sota_ref = ? AND planning_group_id = ?");
                 $chk->execute([$sota_ref, $current_group['id']]);
                 if ($chk->fetch()) { $succeeded++; continue; }
@@ -756,7 +759,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nominate Summit — SOTA Planner</title>
+  <title>Nominate Summit | SOTA Planner</title>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -833,7 +836,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
     }
     .user-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
 
-    /* ── Hamburger menu (mobile nav — topbar-nav links are hidden below 640px) ── */
+    /* ── Hamburger menu (mobile nav, topbar-nav links are hidden below 640px) ── */
     .hamburger-menu { display: none; position: relative; }
     .hamburger-btn {
       display: flex; align-items: center; justify-content: center;
@@ -1208,7 +1211,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
               type="text"
               class="form-input"
               id="summit_search"
-              placeholder="Mount Adams — or W7O/NC-001 — or W7O/NC-001, W7O/NC-002"
+              placeholder="Mount Adams, or W7O/NC-001, or W7O/NC-001, W7O/NC-002"
               autocomplete="off"
             >
             <div class="form-hint" id="search-hint">Type a name to search, or paste a SOTA reference. Separate multiple references with commas.</div>
@@ -1234,11 +1237,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
       <!-- ── Tab 2: Area Search ─────────────────────────────────────── -->
       <div class="nom-panel active" id="panel-area">
 
-        <!-- Controls row — always above the two-column body -->
+        <!-- Controls row, always above the two-column body -->
         <div style="display:flex; gap:0.75rem; margin-bottom:0.875rem; align-items:flex-end; flex-wrap:wrap;">
           <div style="flex:1; min-width:180px;">
             <label class="form-label" for="area_location">Location</label>
-            <input type="text" class="form-input" id="area_location" placeholder="Bend, OR — or 97401 — or Crater Lake" autocomplete="off" autofocus>
+            <input type="text" class="form-input" id="area_location" placeholder="Bend, OR, or 97401, or Crater Lake" autocomplete="off" autofocus>
           </div>
           <div>
             <label class="form-label">Radius</label>
@@ -1262,7 +1265,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
             <button type="button" class="btn btn-primary" id="area_search_btn" style="width:auto;" onclick="doAreaSearch()">Search</button>
           </div>
         </div>
-        <div class="form-hint" style="margin-bottom:1rem;">Any location Google Maps recognizes — city, zip code, address, or landmark.</div>
+        <div class="form-hint" style="margin-bottom:1rem;">Any location Google Maps recognizes, city, zip code, address, or landmark.</div>
 
         <!-- Two-column body: results list (left) + map (right) -->
         <div class="area-body">
@@ -1315,12 +1318,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
       <div style="font-size:1.1rem; font-weight:600; color:var(--ink);">Add a travel starting point?</div>
       <div style="font-size:0.85rem; color:var(--ink-3); margin-top:0.35rem; line-height:1.4;">
         This dashboard doesn't have a starting point yet, so travel time couldn't be calculated for the summits you just added.
-        It doesn't need to be a precise address — anything Google can search for works: a town, a cross-street intersection, a trailhead name, or a nearby landmark.
+        It doesn't need to be a precise address, anything Google can search for works: a town, a cross-street intersection, a trailhead name, or a nearby landmark.
       </div>
     </div>
     <div>
       <label class="form-label" for="sp-input">Starting Point</label>
-      <input type="text" id="sp-input" class="form-input" placeholder="e.g. Pasadena, CA — or Foothill &amp; Lake — or Descanso Gardens">
+      <input type="text" id="sp-input" class="form-input" placeholder="e.g. Pasadena, CA, or Foothill &amp; Lake, or Descanso Gardens">
       <div id="sp-error" class="form-hint" style="display:none; color:var(--red);"></div>
     </div>
     <button type="button" id="sp-save-btn" class="btn btn-primary">Save &amp; Continue</button>
@@ -1591,7 +1594,7 @@ searchInput.addEventListener('input', function() {
     }
 
     if (refPattern.test(val.trim())) {
-        // Looks like a direct reference — select it immediately
+        // Looks like a direct reference, select it immediately
         hideResults();
         const ref = val.trim().toUpperCase();
         refInput.value = ref;
@@ -1611,10 +1614,10 @@ searchInput.addEventListener('input', function() {
                         selectedRef.textContent  = ref;
                     }
                 }
-                searchHint.textContent = 'Looks like a SOTA reference — ready to nominate.';
+                searchHint.textContent = 'Looks like a SOTA reference, ready to nominate.';
             })
             .catch(() => {
-                searchHint.textContent = 'Looks like a SOTA reference — ready to nominate.';
+                searchHint.textContent = 'Looks like a SOTA reference, ready to nominate.';
             });
         return;
     }
@@ -1805,7 +1808,7 @@ function winterBonusSeasonActive(lat) {
     return md >= 1201 || md <= 315;
 }
 
-// Mirrors winterBonusSeasonText() in config.php — SOTA doesn't publish a single source for
+// Mirrors winterBonusSeasonText() in config.php, SOTA doesn't publish a single source for
 // each association's exact winter bonus dates, so this gives a hemisphere-based default.
 function winterBonusSeasonText(bonus, lat) {
     const season = (typeof lat === 'number' && lat < 0)
@@ -1862,17 +1865,17 @@ async function runBulkNominateFlow(refs) {
             if (data.activated_this_year) {
                 activatedThisYear++;
                 entry.className += ' nom-log-activated-year';
-                entry.textContent = '★ ' + (data.name || ref) + ' — activated ' + data.last_activated_date + ' by ' + data.last_activated_by;
+                entry.textContent = '★ ' + (data.name || ref) + ', activated ' + data.last_activated_date + ' by ' + data.last_activated_by;
             } else if (data.last_activated_date) {
                 entry.className += ' nom-log-activated';
-                entry.textContent = '✓ ' + (data.name || ref) + ' — last activated ' + data.last_activated_date;
+                entry.textContent = '✓ ' + (data.name || ref) + ', last activated ' + data.last_activated_date;
             } else {
                 entry.className += ' nom-log-none';
                 entry.textContent = '✓ ' + (data.name || ref);
             }
         } else {
             entry.className += ' nom-log-error';
-            entry.textContent = '✗ ' + ref + (data && data.error ? ' — ' + data.error : '');
+            entry.textContent = '✗ ' + ref + (data && data.error ? ', ' + data.error : '');
         }
         logEl.insertBefore(entry, logEl.firstChild);
     }
@@ -1908,7 +1911,7 @@ async function runBulkNominateFlow(refs) {
             } else if (dt.updated > 0) {
                 driveMsg = ' • travel time added for ' + dt.updated + ' summit' + (dt.updated !== 1 ? 's' : '');
             }
-        } catch (_) { /* non-fatal — continue to dashboard either way */ }
+        } catch (_) { /* non-fatal, continue to dashboard either way */ }
     }
 
     let doneMsg = done + ' summit' + (done !== 1 ? 's' : '') + ' added';
@@ -1969,7 +1972,7 @@ function promptForStartingPoint() {
                     saveBtn.textContent = 'Save & Continue';
                 }
             } catch (_) {
-                errEl.textContent = 'Network error — please try again.';
+                errEl.textContent = 'Network error, please try again.';
                 errEl.style.display = 'block';
                 saveBtn.disabled = false;
                 saveBtn.textContent = 'Save & Continue';

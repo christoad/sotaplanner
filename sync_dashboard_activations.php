@@ -6,7 +6,7 @@
  * "green" (not-yet-activated-this-year) summit in the current dashboard
  * against the official SOTA activation API, filtered to this dashboard's
  * member callsigns, and flips any it finds newly activated this year.
- * Real API calls are capped per run — the 24h cache (fetchSotaActivations)
+ * Real API calls are capped per run, the 24h cache (fetchSotaActivations)
  * means the rest catch up on later runs at no extra cost.
  */
 
@@ -17,6 +17,9 @@ if (!isset($_SESSION['sota_callsign'])) {
     echo json_encode(['error' => 'Not authenticated']);
     exit;
 }
+// Release the session lock now: this endpoint only reads the session, and holding the lock
+// through slow work (API calls, file scans) would stall every other request from this user.
+session_write_close();
 
 header('Content-Type: application/json');
 
@@ -50,7 +53,7 @@ $max_live_fetches = 25;
 foreach ($candidates as $s) {
     $fresh = sotaActivationsCacheIsFresh($db, $s['sota_ref']);
     if (!$fresh && $live_fetches >= $max_live_fetches) {
-        continue; // rate-limit hit — this one catches up on the next run
+        continue; // rate-limit hit, this one catches up on the next run
     }
     if (!$fresh) $live_fetches++;
 

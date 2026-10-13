@@ -1,7 +1,7 @@
 <?php
 /**
  * activation_zone.php
- * PHP proxy for activation.zone API — avoids browser CORS restrictions.
+ * PHP proxy for activation.zone API, avoids browser CORS restrictions.
  * Returns GeoJSON polygon coordinates for a given SOTA summit reference.
  *
  * Usage: GET ?sota_ref=W6/CT-170
@@ -14,6 +14,9 @@ if (!isset($_SESSION['sota_callsign'])) {
     echo json_encode(['error' => 'Not authenticated']);
     exit;
 }
+// Release the session lock now: this endpoint only reads the session, and holding the lock
+// through slow work (API calls, file scans) would stall every other request from this user.
+session_write_close();
 
 header('Content-Type: application/json');
 
@@ -26,7 +29,7 @@ if (!$sota_ref) {
 $db = getDbConnection();
 $current_group = getCurrentPlanningGroup($db);
 
-// Look up summit coordinates — the Activation.Zone fallback API requires lat/lon/alt
+// Look up summit coordinates, the Activation.Zone fallback API requires lat/lon/alt
 $stmt = $db->prepare("SELECT latitude, longitude, elevation_m FROM summits WHERE sota_ref = ? LIMIT 1");
 $stmt->execute([$sota_ref]);
 $summit = $stmt->fetch();
@@ -50,7 +53,7 @@ if ($result && isset($result['polygon'])) {
     exit;
 }
 
-// Last resort — a polygon stored from a previous GPX import for this summit
+// Last resort, a polygon stored from a previous GPX import for this summit
 if ($current_group) {
     $stmt = $db->prepare("
         SELECT gt.activation_zone_polygon

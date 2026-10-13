@@ -8,20 +8,6 @@ requireLogin();
 
 $db = getDbConnection();
 
-// Migrate: add track_type column if missing
-try {
-    $db->exec("ALTER TABLE gpx_tracks ADD COLUMN track_type VARCHAR(20) NOT NULL DEFAULT 'round-trip'");
-} catch (PDOException $e) { /* already exists */ }
-try {
-    $db->exec("ALTER TABLE summits ADD COLUMN gpx_opted_out TINYINT NOT NULL DEFAULT 0");
-} catch (PDOException $e) { /* already exists */ }
-try {
-    $db->exec("ALTER TABLE summit_notes ADD COLUMN planning_group_id INT NULL DEFAULT NULL");
-} catch (PDOException $e) { /* already exists */ }
-try {
-    $db->exec("ALTER TABLE summit_notes ADD COLUMN is_public TINYINT NOT NULL DEFAULT 0");
-} catch (PDOException $e) { /* already exists */ }
-
 // Handle group parameter from URL (for shareable links)
 if (isset($_GET['group'])) {
     $group_id = (int)$_GET['group'];
@@ -32,6 +18,10 @@ if (isset($_GET['group'])) {
         setCurrentPlanningGroup($group_id);
     }
 }
+
+// Release the session lock: nothing below writes to the session, and the slow API calls
+// further down would otherwise block every other request from this user until they finish.
+session_write_close();
 
 if (!isset($_GET['id'])) {
     header('Location: index.php');
@@ -64,7 +54,7 @@ if (isset($_GET['geocoded'])) {
 }
 if (isset($_GET['drive_error'])) {
     $error = $_GET['drive_error'] == 2
-        ? 'No address set — add a starting address in the Manage Dashboards page first.'
+        ? 'No address set, add a starting address in the Manage Dashboards page first.'
         : 'Travel time calculation failed. Check that your Google Maps API key has the Distance Matrix API enabled, or try again.';
 }
 
@@ -174,10 +164,10 @@ if (isset($_FILES['gpx_file']) && $_FILES['gpx_file']['error'] === UPLOAD_ERR_OK
                             }
 
                             if ($use_for_hike) {
-                                $message = "✓ GPX uploaded with timestamps — hike time enabled. Hiking: " . format_time_duration($gpx_stats['hiking_time']) .
+                                $message = "✓ GPX uploaded with timestamps, hike time enabled. Hiking: " . format_time_duration($gpx_stats['hiking_time']) .
                                            ", Activation: " . format_time_duration($gpx_stats['activation_time']);
                             } else {
-                                $message = "✓ GPX uploaded (route/track only — no timestamps). Map and elevation data saved; hike time not enabled.";
+                                $message = "✓ GPX uploaded (route/track only, no timestamps). Map and elevation data saved; hike time not enabled.";
                             }
                             
                             $db->prepare("UPDATE summits SET gpx_opted_out = 0 WHERE id = ?")->execute([$summit_id]);
@@ -304,6 +294,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $ch = curl_init($geocode_url);
                 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
                 curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 4);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 8);
                 $response = curl_exec($ch);
                 curl_close($ch);
                 
@@ -341,7 +333,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $element_status = null;
             $drive_time = calculateDriveTime(addressOrigin($db, $selected_address), $dest_lat, $dest_lng, $element_status);
 
-            // Trailhead coords can land on inaccessible road segments — retry with summit coords
+            // Trailhead coords can land on inaccessible road segments, retry with summit coords
             if ($drive_time === null && $element_status === 'ZERO_RESULTS'
                 && !empty($summit_data['trailhead_lat'])
                 && ($dest_lat != $summit_data['latitude'] || $dest_lng != $summit_data['longitude'])) {
@@ -371,7 +363,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $trailhead_manual = ($trailhead_lat !== null && $trailhead_lng !== null);
 
             // Note: last_activated_date / activated_by are managed exclusively by the
-            // Add Activation / Delete Activation handlers — never overwritten here.
+            // Add Activation / Delete Activation handlers, never overwritten here.
             $stmt = $db->prepare("
                 UPDATE summits SET
                     status = ?,
@@ -610,7 +602,7 @@ if ($gpx_data && $gpx_data['track_type'] === 'round-trip' && file_exists($gpx_da
         $db->prepare("UPDATE gpx_tracks SET track_type = ? WHERE id = ?")
            ->execute([$re['track_type'], $gpx_data['id']]);
         $gpx_data['track_type'] = $re['track_type'];
-        // Descent tracks: hike_elevation_gain_ft was auto-set from elevation_gain (≈0) — correct it using elevation_loss
+        // Descent tracks: hike_elevation_gain_ft was auto-set from elevation_gain (≈0), correct it using elevation_loss
         if ($re['track_type'] === 'descent' && $re['elevation_loss'] > 0) {
             $corrected_gain_ft = round($re['elevation_loss'] * 3.28084);
             $db->prepare("UPDATE summits SET hike_elevation_gain_ft = ? WHERE id = ?")
@@ -620,7 +612,7 @@ if ($gpx_data && $gpx_data['track_type'] === 'round-trip' && file_exists($gpx_da
     }
 }
 
-// User's preferred activation/radio time — used for planning, not overridden by GPX
+// User's preferred activation/radio time, used for planning, not overridden by GPX
 $_us = $db->prepare("SELECT default_activation_time_min FROM user_settings WHERE user_callsign = ?");
 $_us->execute([$_SESSION['sota_callsign']]);
 $default_activation_min = (int)(($_us->fetchColumn()) ?: 60);
@@ -728,7 +720,7 @@ if (!empty($summit['sota_ref'])) {
     if ($alerts_cache && (time() - strtotime($alerts_cache['updated_at'])) < 3600) {
         $all_alerts = json_decode($alerts_cache['setting_value'], true);
     } else {
-        $ctx = stream_context_create(['http' => ['timeout' => 6, 'ignore_errors' => true,
+        $ctx = stream_context_create(['http' => ['timeout' => 4, 'ignore_errors' => true,
             'header' => "Accept: application/json\r\nUser-Agent: SOTAplanner/1.0\r\n"]]);
         $raw = @file_get_contents('https://api2.sota.org.uk/api/alerts', false, $ctx);
         if ($raw !== false) {
@@ -740,6 +732,12 @@ if (!empty($summit['sota_ref'])) {
                               ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=NOW()")
                    ->execute([$alerts_cache_key, json_encode($all_alerts)]);
             }
+        }
+        if (!is_array($all_alerts) && $alerts_cache) {
+            // SOTAwatch slow or down: show the stale copy and retry in ~15 minutes
+            $all_alerts = json_decode($alerts_cache['setting_value'], true);
+            $db->prepare("UPDATE app_settings SET updated_at = NOW() - INTERVAL 2700 SECOND WHERE setting_key = ?")
+               ->execute([$alerts_cache_key]);
         }
     }
 
@@ -765,11 +763,11 @@ $gpx_download_name = $gpx_data ? preg_replace('/[^a-zA-Z0-9]+/', '-', $summit['n
     . ($summit['sota_ref'] ? '-' . preg_replace('/[^a-zA-Z0-9]+/', '-', $summit['sota_ref']) : '')
     . '.gpx' : '';
 $one_way = ($track_type === 'ascent' || $track_type === 'descent');
-// has_timestamps is not stored in the DB — derive it from hiking_time:
+// has_timestamps is not stored in the DB, derive it from hiking_time:
 // if the track had no timestamps, hiking_time stays 0 since speed can't be computed.
 $has_timestamps = $gpx_data && $gpx_data['hiking_time'] > 0;
 
-// Elevation gain — resolve first so hike time can use it
+// Elevation gain, resolve first so hike time can use it
 if ($gpx_data && $gpx_data['use_for_elevation']) {
     if ($track_type === 'descent') {
         $elevation_gain_display = $gpx_data['elevation_loss'] * 3.28084;
@@ -782,7 +780,7 @@ if ($gpx_data && $gpx_data['use_for_elevation']) {
     $elevation_source = 'Manual';
 }
 
-// Distance — resolve second so hike time can use it
+// Distance, resolve second so hike time can use it
 if ($gpx_data && $gpx_data['use_for_hike_time'] && $gpx_data['total_distance'] > 0) {
     $dist_km = $gpx_data['total_distance'];
     if ($one_way) $dist_km *= 2;
@@ -793,7 +791,7 @@ if ($gpx_data && $gpx_data['use_for_hike_time'] && $gpx_data['total_distance'] >
     $distance_source = 'Manual';
 }
 
-// Hike time — uses whichever distance/elevation source is now active
+// Hike time, uses whichever distance/elevation source is now active
 if ($gpx_data && $gpx_data['use_for_hike_time'] && $has_timestamps) {
     // Real GPS recorded time
     $gpx_hiking_secs = $gpx_data['hiking_time'];
@@ -825,7 +823,7 @@ if ($hike_time_total) {
 } else {
     $tl_hike_up = $tl_hike_down = 0;
 }
-// Always use the user's configured radio time for planning — never the GPX-recorded activation time
+// Always use the user's configured radio time for planning, never the GPX-recorded activation time
 $tl_activation = $default_activation_min;
 $tl_total = $tl_drive_one * 2 + $tl_hike_up + $tl_activation + $tl_hike_down;
 $tl_show = $tl_total > 0;
@@ -855,7 +853,7 @@ if ($tl_show) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title><?= htmlspecialchars($summit['name']) ?> — SOTAplanner</title>
+  <title><?= htmlspecialchars($summit['name']) ?> | SOTAplanner</title>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -955,7 +953,7 @@ if ($tl_show) {
     }
     .user-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
 
-    /* Hamburger menu (mobile nav — topbar-nav links are hidden below 768px) */
+    /* Hamburger menu (mobile nav, topbar-nav links are hidden below 768px) */
     .hamburger-menu { display: none; position: relative; }
     .hamburger-btn {
         display: flex; align-items: center; justify-content: center;
@@ -1148,7 +1146,7 @@ if ($tl_show) {
     .carrier-btn { height: 28px; padding: 0 0.625rem; font-size: 0.75rem; font-weight: 600; border-radius: var(--r-sm); border: 1.5px solid; cursor: pointer; transition: all 0.12s; font-family: var(--font-sans); }
     .map-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
 
-    /* Map expand button — styled like a Leaflet control so it's visible on any map tile */
+    /* Map expand button, styled like a Leaflet control so it's visible on any map tile */
     .btn-map-expand {
       position: absolute; top: 10px; right: 10px; z-index: 400;
       background: #fff; border: 2px solid rgba(0,0,0,0.2);
@@ -1160,14 +1158,14 @@ if ($tl_show) {
     }
     .btn-map-expand:hover { background: #f4f4f4; }
 
-    /* Map backdrop — below topbar (z-index 100) */
+    /* Map backdrop, below topbar (z-index 100) */
     .map-backdrop {
       display: none; position: fixed; inset: 0;
       background: rgba(0,0,0,0.62); z-index: 88;
     }
     .map-backdrop.active { display: block; }
 
-    /* Expanded map overlay — below topbar, above everything else */
+    /* Expanded map overlay, below topbar, above everything else */
     .map-wrap.map-expanded {
       position: fixed;
       top: calc(56px + 0.75rem); left: 1rem; right: 1rem; bottom: 1rem;
@@ -1436,7 +1434,7 @@ if ($tl_show) {
   <?php endif; ?>
   <?php if (isset($_GET['shared_data'])): ?>
     <div class="msg msg-info">
-      <span>Summit data copied from another dashboard — customize it below for your dashboard.</span>
+      <span>Summit data copied from another dashboard, customize it below for your dashboard.</span>
       <button class="msg-dismiss" onclick="this.parentElement.style.display='none'" type="button">×</button>
     </div>
   <?php endif; ?>
@@ -1657,7 +1655,7 @@ if ($tl_show) {
       <div class="field-row-3" style="margin-bottom:1rem;">
         <div class="form-group" style="margin:0;">
           <label class="form-label">Distance (<?= getDistanceUnit($user_units) ?>, RT)</label>
-          <?php if ($gpx_active): ?><div class="gpx-tip" data-tip="Set by GPS track — uncheck 'Use GPS data' to edit"><?php endif; ?>
+          <?php if ($gpx_active): ?><div class="gpx-tip" data-tip="Set by GPS track, uncheck 'Use GPS data' to edit"><?php endif; ?>
           <input type="number" class="form-input" name="hike_distance_mi" step="0.01" min="0"
                  value="<?= htmlspecialchars($gpx_active && $distance_display_mi ? convertDistance($distance_display_mi, $user_units) : ($summit['hike_distance_mi'] ?? '')) ?>" placeholder="0.0"
                  <?= $gpx_active ? 'readonly style="opacity:0.45;cursor:not-allowed;background:var(--bg-2);"' : '' ?>>
@@ -1665,7 +1663,7 @@ if ($tl_show) {
         </div>
         <div class="form-group" style="margin:0;">
           <label class="form-label">Elev. Gain (<?= getElevationUnit($user_units) ?>)</label>
-          <?php if ($gpx_active): ?><div class="gpx-tip" data-tip="Set by GPS track — uncheck 'Use GPS data' to edit"><?php endif; ?>
+          <?php if ($gpx_active): ?><div class="gpx-tip" data-tip="Set by GPS track, uncheck 'Use GPS data' to edit"><?php endif; ?>
           <input type="number" class="form-input" name="hike_elevation_gain_ft" min="0"
                  value="<?= htmlspecialchars($gpx_active && $elevation_gain_display ? round(convertElevation($elevation_gain_display, $user_units)) : ($summit['hike_elevation_gain_ft'] ?? '')) ?>" placeholder="0"
                  <?= $gpx_active ? 'readonly style="opacity:0.45;cursor:not-allowed;background:var(--bg-2);"' : '' ?>>
@@ -1706,14 +1704,14 @@ if ($tl_show) {
             </div>
             <?php if ($trailhead_needs_validation): ?>
             <div id="trailhead-validate-banner" style="margin-top:0.4rem; background:var(--orange-bg); border:1px solid oklch(84% 0.08 58); border-radius:var(--r-md); padding:0.45rem 0.75rem; display:flex; align-items:center; justify-content:space-between; gap:0.75rem;">
-              <span style="font-size:0.78rem; color:var(--orange); line-height:1.3;">Auto-detected starting point — check the pin on the map and right-click to move it if needed.</span>
+              <span style="font-size:0.78rem; color:var(--orange); line-height:1.3;">Auto-detected starting point, check the pin on the map and right-click to move it if needed.</span>
               <button type="button" class="btn btn-sm" style="flex-shrink:0; background:var(--orange); color:#fff; height:28px; padding:0 0.6rem; font-size:0.75rem; white-space:nowrap;" onclick="confirmTrailhead()">Looks good</button>
             </div>
             <?php endif; ?>
             <input type="hidden" name="trailhead_lat" id="trailhead-lat-hidden" value="<?= htmlspecialchars($summit['trailhead_lat'] ?? '') ?>">
             <input type="hidden" name="trailhead_lng" id="trailhead-lng-hidden" value="<?= htmlspecialchars($summit['trailhead_lng'] ?? '') ?>">
           </div>
-          <!-- State: no coordinates — show right-click hint + address fallback -->
+          <!-- State: no coordinates, show right-click hint + address fallback -->
           <div id="trailhead-empty-state" style="display:<?= empty($summit['trailhead_lat']) ? 'flex' : 'none' ?>; flex-direction:column; gap:0.4rem;">
             <div style="background:var(--accent-bg); border:1px solid var(--accent-border); border-radius:var(--r-md); padding:0.45rem 0.75rem; font-size:0.8rem; color:var(--accent-2); font-weight:600; text-align:center; line-height:1.3;">
               Right-click the map above to set the starting point
@@ -1756,7 +1754,7 @@ if ($tl_show) {
         <?php endif; ?>
       </div>
     </div>
-  </form><!-- end main-edit-form — must close before right sidebar to avoid nested forms -->
+  </form><!-- end main-edit-form, must close before right sidebar to avoid nested forms -->
 
     <!-- ═══ RIGHT SIDEBAR ═══ -->
     <div>
@@ -1842,7 +1840,7 @@ if ($tl_show) {
             <?php elseif ($sotamaps_track_count > 1): ?>
               <button class="btn btn-ghost btn-sm" id="sotamaps-fetch-btn"
                       onclick="fetchSotaMaps(this)"
-                      style="font-size:0.72rem;"><?= $sotamaps_track_count - 1 ?> other route<?= $sotamaps_track_count > 2 ? 's' : '' ?> available — swap?</button>
+                      style="font-size:0.72rem;"><?= $sotamaps_track_count - 1 ?> other route<?= $sotamaps_track_count > 2 ? 's' : '' ?> available. Swap?</button>
             <?php endif; ?>
           </div>
           <div id="sotamaps-result" style="margin-top:0.5rem; display:none;"></div>
@@ -1854,7 +1852,7 @@ if ($tl_show) {
             <?php if ($sotamaps_track_count > 1): ?>
               <button class="btn btn-ghost btn-sm" id="sotamaps-fetch-btn"
                       onclick="fetchSotaMaps(this)"
-                      style="font-size:0.72rem;"><?= $sotamaps_track_count - 1 ?> other route<?= $sotamaps_track_count > 2 ? 's' : '' ?> available — swap?</button>
+                      style="font-size:0.72rem;"><?= $sotamaps_track_count - 1 ?> other route<?= $sotamaps_track_count > 2 ? 's' : '' ?> available. Swap?</button>
             <?php endif; ?>
           </div>
           <div id="sotamaps-result" style="margin-top:0.5rem; display:none;"></div>
@@ -1871,7 +1869,7 @@ if ($tl_show) {
             </div>
           </div>
           <?php else: ?>
-            <div style="font-size:0.78rem; color:var(--ink-3); margin-bottom:0.75rem;">Route-only GPX (no timestamps) — map loaded<?= $gpx_data['elevation_gain'] > 0 ? ', elevation data loaded' : ' (no elevation data in track)' ?>.</div>
+            <div style="font-size:0.78rem; color:var(--ink-3); margin-bottom:0.75rem;">Route-only GPX (no timestamps), map loaded<?= $gpx_data['elevation_gain'] > 0 ? ', elevation data loaded' : ' (no elevation data in track)' ?>.</div>
           <?php endif; ?>
           <?php
             $track_type_label = ['ascent' => 'Ascent only', 'descent' => 'Descent only', 'round-trip' => 'Round-trip'][$track_type] ?? 'Round-trip';
@@ -1978,7 +1976,7 @@ if ($tl_show) {
           <textarea class="form-textarea" name="note" rows="3" placeholder="Add notes about access, parking, trail conditions..." style="font-size:0.875rem; resize:vertical;"></textarea>
           <label style="display:flex; align-items:center; gap:0.4rem; margin-top:0.5rem; font-size:0.8rem; color:var(--ink-2); cursor:pointer;">
             <input type="checkbox" name="note_public" value="1" style="accent-color:var(--green); width:14px; height:14px;">
-            Share publicly — visible to all dashboards on this summit
+            Share publicly, visible to all dashboards on this summit
           </label>
           <button type="submit" name="add_note" class="btn btn-secondary btn-sm btn-full" style="margin-top:0.5rem;">Add Note</button>
         </form>
@@ -2117,7 +2115,7 @@ if ($tl_show) {
         </button>
         </summary>
         <div style="background:var(--accent-bg); border:1px solid var(--accent-border); border-radius:var(--r-md); padding:0.7rem 0.875rem; margin-bottom:1rem; font-size:0.8rem; color:var(--accent-2); line-height:1.5;">
-          <strong>Note:</strong> Posting alerts directly to SOTAwatch from SOTAplanner isn't live yet — we're waiting on write access from the SOTA team. These fields are a preview of what will be here.
+          <strong>Note:</strong> Posting alerts directly to SOTAwatch from SOTAplanner isn't live yet, we're waiting on write access from the SOTA team. These fields are a preview of what will be here.
         </div>
         <fieldset disabled style="border:none; padding:0; margin:0; opacity:0.55;">
           <div class="field-row-2" style="margin-bottom:1rem;">
@@ -2158,7 +2156,7 @@ if ($tl_show) {
           + Create an Invite to This Activation
         </summary>
         <div style="background:var(--accent-bg); border:1px solid var(--accent-border); border-radius:var(--r-md); padding:0.7rem 0.875rem; margin-bottom:1rem; font-size:0.8rem; color:var(--accent-2); line-height:1.5;">
-          <strong>Note:</strong> This creates a shareable invite page for your own planning and guests — it doesn't post anything to SOTAwatch.
+          <strong>Note:</strong> This creates a shareable invite page for your own planning and guests, it doesn't post anything to SOTAwatch.
         </div>
         <form method="POST" style="margin-top:0;">
           <div class="field-row-2" style="margin-bottom:1rem;">
@@ -2205,7 +2203,7 @@ if ($tl_show) {
     <div class="section-card">
       <div class="section-title" style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
         SOTAwatch Alerts
-        <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem; white-space:nowrap;">Community — not this dashboard</span>
+        <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem; white-space:nowrap;">Community, not this dashboard</span>
       </div>
       <?php if (!empty($sota_alerts)): ?>
         <div style="overflow-x:auto;">
@@ -2501,7 +2499,7 @@ document.getElementById('ctx-set-trailhead').addEventListener('click', function(
   trailheadMarker = L.circleMarker([lat, lng], { radius: 6, color: '#2D8653', fillColor: '#2D8653', fillOpacity: 0.9, weight: 2 })
     .bindPopup('Starting Point').addTo(map);
 
-  // Update the trailhead display section immediately — no page reload needed
+  // Update the trailhead display section immediately, no page reload needed
   const setState   = document.getElementById('trailhead-set-state');
   const emptyState = document.getElementById('trailhead-empty-state');
   const coordDisp  = document.getElementById('trailhead-coords-display');
@@ -2517,17 +2515,17 @@ document.getElementById('ctx-set-trailhead').addEventListener('click', function(
   document.querySelectorAll('input[name="trailhead_lat"]').forEach(el => el.value = lat);
   document.querySelectorAll('input[name="trailhead_lng"]').forEach(el => el.value = lng);
 
-  // Persist immediately via AJAX — no "Save Changes" needed
+  // Persist immediately via AJAX, no "Save Changes" needed
   const fd = new FormData();
   fd.append('set_trailhead', '1');
   fd.append('trailhead_lat', lat);
   fd.append('trailhead_lng', lng);
   fetch('summit_detail.php?id=<?= $summit_id ?>', { method: 'POST', body: fd })
     .then(r => r.json())
-    .then(d => showMapToast(d.ok ? '✓ Starting point saved — no other save needed' : 'Error saving starting point'))
+    .then(d => showMapToast(d.ok ? '✓ Starting point saved, no other save needed' : 'Error saving starting point'))
     .catch(() => showMapToast('Error saving starting point'));
 
-  // Moving the pin counts as confirming — dismiss the validation banner
+  // Moving the pin counts as confirming, dismiss the validation banner
   const banner = document.getElementById('trailhead-validate-banner');
   if (banner) banner.remove();
 });
@@ -2627,7 +2625,7 @@ function initActivationZone(poly, source) {
 }
 function setActivationZoneFallback() {
   const az = document.getElementById('az-methodology');
-  if (az) az.textContent = 'Activation Zone: API unavailable — showing estimated 50m radius.';
+  if (az) az.textContent = 'Activation Zone: API unavailable, showing estimated 50m radius.';
 }
 let azZoomed = false;
 function toggleActivationZone() {
@@ -2744,7 +2742,7 @@ function setupElevMapHover(s, mapRef) {
 <?php endif; ?>
 
 <?php if (!$gpx_data && !empty($summit['sota_ref'])): ?>
-// No GPX — fetch activation zone directly
+// No GPX, fetch activation zone directly
 fetch('activation_zone.php?sota_ref=<?= urlencode($summit['sota_ref']) ?>')
   .then(r => r.json())
   .then(data => { if (data.polygon) initActivationZone(data.polygon, data.source); else setActivationZoneFallback(); })
@@ -2786,7 +2784,7 @@ function fetchSotaMaps(fetchBtn) {
       fetchBtn.disabled = false;
       fetchBtn.textContent = 'Import from SOTA Maps';
       resultEl.style.display = 'block';
-      resultEl.innerHTML = '<span style="font-size:0.8rem; color:var(--red);">Network error — could not reach SOTA Maps API.</span>';
+      resultEl.innerHTML = '<span style="font-size:0.8rem; color:var(--red);">Network error, could not reach SOTA Maps API.</span>';
     });
 }
 
@@ -2906,7 +2904,7 @@ if (flash) setTimeout(() => { flash.style.transition = 'opacity 0.5s'; flash.sty
                 const others = count - 1;
                 badge.outerHTML = `<button class="btn btn-ghost btn-sm" id="sotamaps-fetch-btn"
                     onclick="fetchSotaMaps(this)" style="font-size:0.72rem;">
-                    ${others} other route${others > 1 ? 's' : ''} available — swap?</button>`;
+                    ${others} other route${others > 1 ? 's' : ''} available. Swap?</button>`;
             } else {
                 badge.remove();
             }
@@ -2926,7 +2924,7 @@ if (flash) setTimeout(() => { flash.style.transition = 'opacity 0.5s'; flash.sty
     }
 
     <?php if ($fetch_gpx_async && empty($gpx_data)): ?>
-    // Nomination async path — fetch from SOTAmaps
+    // Nomination async path, fetch from SOTAmaps
     const fd = new FormData();
     fd.append('summit_id', '<?= $summit['id'] ?>');
     fetch('gpx_fetch.php', { method: 'POST', body: fd })
@@ -2936,7 +2934,7 @@ if (flash) setTimeout(() => { flash.style.transition = 'opacity 0.5s'; flash.sty
         })
         .then(d => {
             if (d.status === 'found') {
-                if (label) label.textContent = '✓ Community route found — loading map…';
+                if (label) label.textContent = '✓ Community route found, loading map…';
                 const svgEl = overlay.querySelector('.gpx-loading-svg');
                 if (svgEl) svgEl.style.opacity = '0';
                 setTimeout(() => window.location.replace(window.location.pathname + '?id=<?= $summit['id'] ?>&group=<?= $current_group['id'] ?>&nominated=1'), 800);
@@ -2951,16 +2949,16 @@ if (flash) setTimeout(() => { flash.style.transition = 'opacity 0.5s'; flash.sty
         });
 
     <?php elseif ($show_nomination_overlay): ?>
-    // Nomination fast path — track already linked, show briefly
+    // Nomination fast path, track already linked, show briefly
     setTimeout(dismissOverlay, 2000);
 
     <?php elseif ($gpx_data): ?>
-    // Normal load with GPX — dismissed by the GPX fetch/draw block above
+    // Normal load with GPX, dismissed by the GPX fetch/draw block above
     window._dismissGpxOverlay = dismissOverlay;
     setTimeout(dismissOverlay, 8000); // safety fallback
 
     <?php else: ?>
-    // No GPX — dismiss when base tile layer finishes loading
+    // No GPX, dismiss when base tile layer finishes loading
     baseLayers.street.once('load', dismissOverlay);
     setTimeout(dismissOverlay, 5000); // safety fallback
     <?php endif; ?>

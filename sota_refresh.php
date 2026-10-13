@@ -1,7 +1,7 @@
 <?php
 /**
  * Background endpoint: refresh SOTA activation data for one summit.
- * Called via fetch() from the dashboard on page load — silent, non-blocking.
+ * Called via fetch() from the dashboard on page load, silent, non-blocking.
  *
  * GET params: summit_id, group_id
  * Returns JSON: { ok, updated, last_activated_date, activated_by }
@@ -9,6 +9,9 @@
 require_once 'config.php';
 session_start();
 requireLogin();
+// Release the session lock now: this endpoint only reads the session, and holding the lock
+// through slow work (API calls, file scans) would stall every other request from this user.
+session_write_close();
 
 header('Content-Type: application/json');
 

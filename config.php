@@ -1,5 +1,5 @@
 <?php
-define('APP_VERSION', '2.1.0');
+define('APP_VERSION', '2.2.0');
 
 // Enable error reporting for debugging
 error_reporting(E_ALL);
@@ -13,6 +13,14 @@ if (!session_id()) {
     ini_set('session.cookie_samesite', 'Lax');
     ini_set('session.cookie_secure', isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 1 : 0);
     ini_set('session.cookie_lifetime', 86400); // 24 hours
+    // Keep sessions in a private folder instead of the shared server-wide /tmp (tens of thousands
+    // of other tenants' files, and their cleanup runs can delete ours after only 24 minutes idle).
+    $_sess_dir = '/home/chrisr069/sota_sessions';
+    if (is_dir($_sess_dir) && is_writable($_sess_dir)) {
+        ini_set('session.save_path', $_sess_dir);
+        ini_set('session.gc_maxlifetime', 86400);
+    }
+    unset($_sess_dir);
 }
 
 // Load credentials from secrets file outside the web root.
@@ -102,6 +110,8 @@ function calculateDriveTime($origin_address, $dest_lat, $dest_lng, &$element_sta
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 4);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 8);
     $response = curl_exec($ch);
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
@@ -139,6 +149,8 @@ function calculateDriveTimeBetween($origin, $destination, &$distance_mi = null) 
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 4);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 8);
     $response = curl_exec($ch);
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
@@ -343,7 +355,7 @@ function getCurrentPlanningGroup($db) {
 
     $group = $stmt->fetch();
     if (!$group) {
-        // Group not accessible — clear it from session
+        // Group not accessible, clear it from session
         unset($_SESSION['current_planning_group_id']);
         return null;
     }
@@ -443,7 +455,7 @@ function winterBonusSeasonText($bonus_points, $latitude) {
         : 'December 1 – March 15 (Northern Hemisphere winter)';
     $pts = (int)$bonus_points;
     $label = $pts === 1 ? 'point' : 'points';
-    return "+{$pts} winter bonus {$label} — typically awarded {$season}. Exact dates are set by this summit's SOTA association.";
+    return "+{$pts} winter bonus {$label}, typically awarded {$season}. Exact dates are set by this summit's SOTA association.";
 }
 
 // ── Authentication helpers ─────────────────────────────────────────────────
@@ -492,7 +504,7 @@ function isDemoOnboarding($db, $callsign = null) {
     return $stmt->fetchColumn() === '1';
 }
 
-/** Rename a callsign across all tables — used when an SSO user confirms a different
+/** Rename a callsign across all tables, used when an SSO user confirms a different
  *  callsign than their SOTA account username. */
 function updateUserCallsign($db, $oldCallsign, $newCallsign) {
     $tables = [
@@ -508,7 +520,7 @@ function updateUserCallsign($db, $oldCallsign, $newCallsign) {
     try {
         $db->prepare("UPDATE users SET callsign=? WHERE callsign=?")->execute([$newCallsign, $oldCallsign]);
     } catch (PDOException $e) {
-        // New callsign already has a users row — remove the stale old row instead
+        // New callsign already has a users row, remove the stale old row instead
         $db->prepare("DELETE FROM users WHERE callsign=?")->execute([$oldCallsign]);
     }
     $_SESSION['sota_callsign'] = $newCallsign;
@@ -565,13 +577,21 @@ function fetchSotaActivations($db, string $sota_ref, bool $allow_live_fetch = tr
     if (count($ref_parts) !== 2) return null;
 
     $api_url = 'https://api2.sota.org.uk/api/activations/' . urlencode($ref_parts[0]) . '/' . urlencode($ref_parts[1]);
-    $ctx = stream_context_create(['http' => ['timeout' => 6, 'ignore_errors' => true,
+    $ctx = stream_context_create(['http' => ['timeout' => 4, 'ignore_errors' => true,
         'header' => "Accept: application/json\r\nUser-Agent: SOTAplanner/1.0\r\n"]]);
     $raw = @file_get_contents($api_url, false, $ctx);
-    if ($raw === false) return null;
-
-    $fetched = json_decode($raw, true);
-    if (!is_array($fetched)) return null;
+    $fetched = $raw === false ? null : json_decode($raw, true);
+    if (!is_array($fetched)) {
+        // SOTA API slow or down: serve the stale copy if we have one, and push the next
+        // retry ~15 minutes out so every page view doesn't wait on the timeout again.
+        if ($cache_row) {
+            $db->prepare("UPDATE app_settings SET updated_at = NOW() - INTERVAL 85500 SECOND WHERE setting_key = ?")
+               ->execute([$cache_key]);
+            $stale = json_decode($cache_row['setting_value'], true);
+            return is_array($stale) ? $stale : null;
+        }
+        return null;
+    }
 
     $db->prepare("INSERT INTO app_settings (setting_key, setting_value, updated_at)
         VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=NOW()")
@@ -582,7 +602,7 @@ function fetchSotaActivations($db, string $sota_ref, bool $allow_live_fetch = tr
 
 /** Returns every home callsign for a dashboard's owner + members, including
  *  each member's additional callsigns (e.g. a separate DX license held in
- *  another country) from their user profile — for matching against SOTA
+ *  another country) from their user profile, for matching against SOTA
  *  activation logs via sotaCallsignMatchesHome(). */
 function getGroupHomeCallsigns($db, int $group_id): array {
     $stmt = $db->prepare("
@@ -652,7 +672,7 @@ function analyze_gpx_track($gpx_file_path, $summit_ref = null) {
     $summit_lon = null;
 
     // Detect real timestamps: points must have parseable times that actually differ.
-    // Some apps (e.g. Gaia GPS routes) stamp every point with the same time — treat as route-only.
+    // Some apps (e.g. Gaia GPS routes) stamp every point with the same time, treat as route-only.
     $has_timestamps = false;
     $sample = array_slice($trackpoints, 0, min(10, count($trackpoints)));
     $sampled_times = [];
@@ -810,7 +830,7 @@ function analyze_gpx_track($gpx_file_path, $summit_ref = null) {
     // Threshold: if an endpoint is within 25% of the range from min (low) or max (high),
     // it qualifies as "low" or "high". ascent = low→high, descent = high→low, else round-trip.
     $detected_track_type = 'round-trip';
-    // Default to first point — overridden below if elevation data is reliable
+    // Default to first point, overridden below if elevation data is reliable
     $detected_trailhead_lat = count($points) > 0 ? $points[0]['lat'] : null;
     $detected_trailhead_lon = count($points) > 0 ? $points[0]['lon'] : null;
     if (count($points) >= 2 && ($max_elevation - $min_elevation) > 5) {
@@ -898,7 +918,7 @@ function get_activation_zone_from_api($summit_ref, $lat, $lon, $elevation) {
     if (!$result || !isset($result['polygon'])) return null;
 
     // last_sotlas_check is set here too since a SOTLAS lookup was just attempted above
-    // (whether or not it succeeded) — the upgrade cron uses it to avoid re-checking
+    // (whether or not it succeeded), the upgrade cron uses it to avoid re-checking
     // a summit we already just confirmed has no SOTLAS boundary yet.
     $stmt = $db->prepare("
         INSERT INTO activation_zone_cache (sota_ref, polygon, source, last_sotlas_check)
@@ -910,7 +930,7 @@ function get_activation_zone_from_api($summit_ref, $lat, $lon, $elevation) {
     return ['polygon' => $result['polygon'], 'source' => $source];
 }
 
-// SOTLAS high-precision activation zone (az.sotl.as) — returns null if unavailable
+// SOTLAS high-precision activation zone (az.sotl.as), returns null if unavailable
 // for this summit. Note: the object storage behind az.sotl.as returns HTTP 403
 // (not 404) when no polygon exists, so any non-200 response is treated as "not found".
 function get_sotlas_az_polygon($summit_ref) {
@@ -950,7 +970,7 @@ function get_sotlas_az_polygon($summit_ref) {
     return $coords ? ['polygon' => $coords] : null;
 }
 
-// SRTM-based Activation.Zone API (api.activation.zone) — fallback when SOTLAS has no boundary
+// SRTM-based Activation.Zone API (api.activation.zone), fallback when SOTLAS has no boundary
 function _get_activation_zone_from_activationzone_api($summit_ref, $lat, $lon, $elevation) {
     // API requires the dash removed from the summit code (W6/CT-170 → W6/CT170)
     $ref_clean = str_replace('-', '', $summit_ref);
@@ -1104,9 +1124,9 @@ function logActivity($db, $event_type, $subject = '', $detail = '', $group_name 
         ")->execute([$callsign, $login_type, $event_type,
                      substr($subject, 0, 255), substr($detail, 0, 255),
                      substr($group_name, 0, 255), $ip]);
-    } catch (PDOException $e) { /* table may not exist yet — run db_migrate.php */ }
+    } catch (PDOException $e) { /* table may not exist yet, run db_migrate.php */ }
 
-    // Flat log file outside web root — never truncated, survives DB resets
+    // Flat log file outside web root, never truncated, survives DB resets
     $log_path = dirname(__DIR__) . '/logs/sotaplanner_activity.log';
     @mkdir(dirname($log_path), 0750, true);
     @file_put_contents(
@@ -1120,7 +1140,7 @@ function logActivity($db, $event_type, $subject = '', $detail = '', $group_name 
 // data" definition login.php uses for its stat: GPX library tracks with a
 // trailhead, drive-up summits, and manually-researched summits. Re-running this
 // is cheap and idempotent (INSERT IGNORE + UNIQUE sota_ref), so no hooks are
-// needed elsewhere — new data from any source (cron imports, nominations, manual
+// needed elsewhere, new data from any source (cron imports, nominations, manual
 // edits) gets picked up the next time this runs. Gated to once/24h via app_settings.
 function reconcileTrailDataGrowthLog($db) {
     $row = $db->query("SELECT updated_at FROM app_settings WHERE setting_key = 'trail_data_log_reconciled_at'")->fetch();
@@ -1160,7 +1180,7 @@ function reconcileTrailDataGrowthLog($db) {
             INSERT INTO app_settings (setting_key, setting_value, updated_at) VALUES ('trail_data_log_reconciled_at', '1', NOW())
             ON DUPLICATE KEY UPDATE setting_value = '1', updated_at = NOW()
         ")->execute();
-    } catch (PDOException $e) { /* table may not exist yet — run db_migrate.php */ }
+    } catch (PDOException $e) { /* table may not exist yet, run db_migrate.php */ }
 }
 
 function format_time_duration($seconds) {

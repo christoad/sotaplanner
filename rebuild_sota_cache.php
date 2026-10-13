@@ -4,13 +4,14 @@
 // Run from browser: rebuild_sota_cache.php?password=sota
 // Safe to run multiple times. Takes ~30-60 seconds.
 //
-// Source: https://storage.sota.org.uk/summitslist.csv — SOTA's official worldwide
+// Source: https://storage.sota.org.uk/summitslist.csv, SOTA's official worldwide
 // summit list, published for import into third-party logging/planning tools. This
 // is the only source that includes each summit's winter BonusPoints value; the
 // JSON API (api2.sota.org.uk) does not expose it.
 
 ini_set('max_execution_time', 300);
 
+require_once 'config.php';
 require_once 'sota_cache_helper.php';
 
 $is_cli = (php_sapi_name() === 'cli');
@@ -63,10 +64,10 @@ flush();
 $fh = fopen($tmp, 'rb');
 if (!$fh) { echo "ERROR: Cannot read temp file.\n"; exit(1); }
 
-// First line is a title line, e.g. "SOTA Summits List (Date=11/09/2026)" — skip it.
+// First line is a title line, e.g. "SOTA Summits List (Date=11/09/2026)", skip it.
 fgets($fh);
 
-// Second line is the real header row — map column names to indexes so we're not
+// Second line is the real header row, map column names to indexes so we're not
 // dependent on SOTA never reordering columns.
 $header = fgetcsv($fh);
 if (!$header) { echo "ERROR: Could not read CSV header row.\n"; exit(1); }
@@ -95,7 +96,7 @@ while (($row = fgetcsv($fh)) !== false) {
     $name = trim($row[$col['SummitName']] ?? '');
     if (!$code || !$name) { $skipped++; continue; }
 
-    // ValidTo is DD/MM/YYYY (UK date format) — skip summits no longer valid for activation
+    // ValidTo is DD/MM/YYYY (UK date format), skip summits no longer valid for activation
     $valid_to_raw = trim($row[$col['ValidTo']] ?? '');
     if ($valid_to_raw) {
         $vt = DateTime::createFromFormat('d/m/Y', $valid_to_raw);
@@ -121,4 +122,11 @@ gzclose($gz);
 $size_kb = round(filesize(SOTA_CACHE_FILE) / 1024);
 echo "Done! Wrote {$written} summits to cache ({$size_kb} KB gzipped).\n";
 if ($skipped) echo "Skipped {$skipped} malformed/expired entries.\n";
+// Mirror the fresh cache into the indexed sota_summit_index table that powers fast search.
+try {
+    $n = sota_index_rebuild_from_gz(getDbConnection());
+    echo "Search index refreshed: {$n} summits loaded into sota_summit_index.\n";
+} catch (Throwable $e) {
+    echo "WARNING: could not refresh the search index (" . $e->getMessage() . "). Search will keep using the previous index or the gz file.\n";
+}
 echo "Summit search is now active on the Nominate page, and winter bonus points are available for backfill_bonus_points.php.\n";

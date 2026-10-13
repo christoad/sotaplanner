@@ -803,6 +803,13 @@ Status badge (rounded pill, white text):
 
 ## PHP session / auth patterns
 
+**Performance rules (added 2026-10-13 after a site health audit; the database itself was fine, every query 0.4-5 ms):**
+- PHP locks the session file for the whole request. Any endpoint that only reads the session and does slow work (external API calls, scanning the gz summit cache) must call `session_write_close();` right after the login check, otherwise it blocks every other request from that user. `$_SESSION` stays readable afterward; only writes are lost. Already done for `sota_refresh`, `nominate`, `gpx_fetch`, `activation_zone`, `sync_dashboard_activations`, `import_sotamaps_gpx`, `save_activation_time`, `toggle_multi_expand`, and `summit_detail`.
+- Every outbound HTTP call needs a timeout (`CURLOPT_TIMEOUT` or the stream-context `timeout`). The SOTA activations and alerts caches serve stale data and back off 15 minutes if the live fetch fails.
+- Sessions live in `/home/chrisr069/sota_sessions` (set in `config.php`, falls back to default if missing). The default `/tmp` is shared with every site on the DreamHost server (30k+ files, 24 minute cleanup), which could silently delete our sessions.
+- Never put `ALTER TABLE` migrations in page code; use `db_migrate.php`.
+- Summit search (`sota_cache_helper.php`, done 2026-10-13): `sota_cache.csv.gz` is still the source of truth (crons read it), but searches use two generated copies built by `sota_index_rebuild_from_gz()`, which `rebuild_sota_cache.php` calls automatically: the indexed `sota_summit_index` table (reference prefix, radius and single-summit lookups, about 1 to 9 ms instead of about 150 ms) and the plain-text `sota_cache_norm.txt` (keyword search via one in-memory pattern match, about 45 ms instead of about 150 ms; JIT is enabled at runtime because the host has it off). Each function falls back table, then gz scan, if a copy is missing, so staging (which gets only the gz synced) still works. Never edit these copies by hand; rerun `rebuild_sota_cache.php?password=sota`.
+
 - `requireLogin()` — call at top of any protected page (defined in config.php); redirects to login.php if not logged in
 - `$_SESSION['sota_callsign']` — the logged-in callsign (uppercase)
 - `$_SESSION['sota_login_type']` — `'early_access'` or `'sota_oauth'`

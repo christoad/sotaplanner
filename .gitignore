@@ -30,3 +30,8 @@ screenshots/
 # Claude Code local session/tool state (worktrees, local settings)
 .claude/
 SOTAplanner-intro-slides.pdf
+
+# Generated search copy of the SOTA summit list (rebuilt by rebuild_sota_cache.php)
+sota_cache_norm.txt
+sota_cache_norm.txt.tmp
+diag_*.php

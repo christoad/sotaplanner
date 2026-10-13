@@ -2,6 +2,9 @@
 require_once 'config.php';
 session_start();
 requireLogin();
+// Release the session lock now: this endpoint only reads the session, and holding the lock
+// through slow work (API calls, file scans) would stall every other request from this user.
+session_write_close();
 
 header('Content-Type: application/json');
 

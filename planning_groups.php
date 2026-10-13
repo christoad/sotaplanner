@@ -314,6 +314,18 @@ if (isset($_POST['select_group'])) {
 // Get all planning groups
 $all_groups = getAllPlanningGroups($db);
 
+// Arrived from the dashboard's address dropdown ("+ Add another"): manage that dashboard and
+// scroll to the Starting Addresses card so the Add Address button is right there.
+$scroll_to_add_address = false;
+if (isset($_GET['manage_group'], $_GET['add_address'])) {
+    $want = (int)$_GET['manage_group'];
+    if (in_array($want, array_map('intval', array_column($all_groups, 'id')), true)) {
+        $_SESSION['manage_group_id'] = $want;
+        setCurrentPlanningGroup($want);
+        $scroll_to_add_address = true;
+    }
+}
+
 // Get summit counts per group
 $group_counts = [];
 try {
@@ -1168,6 +1180,15 @@ a:hover { text-decoration: underline; }
 <script>
     window.addEventListener('load', function() {
         document.getElementById('addressModal').classList.add('open');
+    });
+</script>
+<?php endif; ?>
+
+<?php if ($scroll_to_add_address && $managing_group): ?>
+<script>
+    window.addEventListener('load', function() {
+        var el = document.getElementById('addresses');
+        if (el) el.scrollIntoView({behavior: 'smooth', block: 'center'});
     });
 </script>
 <?php endif; ?>

@@ -3,8 +3,8 @@
  * import_sotamaps_gpx.php
  *
  * Handles two actions via ?action=:
- *   list   — fetch available tracks for a summit from api-db.sota.org.uk
- *   import — download a specific track, synthesize GPX, analyze, and save
+ *   list  , fetch available tracks for a summit from api-db.sota.org.uk
+ *   import, download a specific track, synthesize GPX, analyze, and save
  */
 
 require_once 'config.php';
@@ -14,6 +14,9 @@ if (!isset($_SESSION['sota_callsign'])) {
     echo json_encode(['error' => 'Not authenticated']);
     exit;
 }
+// Release the session lock now: this endpoint only reads the session, and holding the lock
+// through slow work (API calls, file scans) would stall every other request from this user.
+session_write_close();
 
 header('Content-Type: application/json');
 
@@ -173,7 +176,7 @@ if ($action === 'import') {
     // Sort points by pt_index to ensure correct order
     usort($points, fn($a, $b) => intval($a['pt_index']) - intval($b['pt_index']));
 
-    // Build GPX XML — no timestamps (route only)
+    // Build GPX XML, no timestamps (route only)
     $gpx_xml = build_gpx_from_points($points, $track['track_title'] ?? $sota_ref, $track['callsign'] ?? '');
 
     // Save to disk
@@ -191,12 +194,12 @@ if ($action === 'import') {
         exit;
     }
 
-    // Analyze with existing pipeline (no SOTA ref — route only, no activation zone needed)
+    // Analyze with existing pipeline (no SOTA ref, route only, no activation zone needed)
     $gpx_stats = analyze_gpx_track($filepath, null);
 
     if (!$gpx_stats) {
         @unlink($filepath);
-        echo json_encode(['error' => 'GPX analysis failed — track may be malformed']);
+        echo json_encode(['error' => 'GPX analysis failed, track may be malformed']);
         exit;
     }
 
@@ -211,7 +214,7 @@ if ($action === 'import') {
         $db->prepare("DELETE FROM gpx_tracks WHERE summit_id = ? AND planning_group_id = ?")
            ->execute([$summit_id, $current_group['id']]);
 
-        // Route-only (no timestamps) — don't auto-enable hike time
+        // Route-only (no timestamps), don't auto-enable hike time
         $use_for_hike = 1;
 
         $stmt = $db->prepare("
@@ -241,7 +244,7 @@ if ($action === 'import') {
 
         $db->prepare("UPDATE summits SET gpx_opted_out = 0 WHERE id = ?")->execute([$summit_id]);
 
-        // Compute stats for response (no auto-update of summit — user must enable GPS data manually)
+        // Compute stats for response (no auto-update of summit, user must enable GPS data manually)
         $elevation_gain_ft = round($gpx_stats['elevation_gain'] * 3.28084);
         $distance_mi = round($gpx_stats['total_distance'] * 0.621371, 2);
 
@@ -284,7 +287,7 @@ function _sum_track_distance(array $points): float {
 
 /**
  * Build a minimal GPX 1.1 file from the SMP points array.
- * No timestamps — treated as a route/track for map display only.
+ * No timestamps, treated as a route/track for map display only.
  */
 function build_gpx_from_points(array $points, string $title, string $callsign): string {
     $safe_title    = htmlspecialchars($title,    ENT_XML1);
@@ -296,7 +299,7 @@ function build_gpx_from_points(array $points, string $title, string $callsign): 
         $lon = floatval($pt['longitude']);
         $ele = floatval($pt['altitude']);
 
-        // Some SMP entries store altitude in km — correct to meters
+        // Some SMP entries store altitude in km, correct to meters
         if ($ele > 0 && $ele < 9) {
             $ele *= 1000;
         }

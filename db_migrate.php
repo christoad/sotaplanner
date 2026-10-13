@@ -1,10 +1,14 @@
 <?php
-// One-off migration: feature voting + daily visit tracking.
+// One-off migration: indexed summit search table + feature voting + daily visit tracking.
+//   sota_summit_index  all ~181k SOTA summits from sota_cache.csv.gz in an indexed table, so
+//                      Nominate search no longer unzips and scans the whole file on every search.
 //   feature_votes   one row per (feature, callsign) "I'd use this" vote
 //   user_visits     one row per (callsign, day) the user was active; powers the God Mode
 //                   returning-users dashboard. Seeded from activity_log history.
 // Safe to run twice. Delete this file after running.
+ini_set('max_execution_time', 300);
 require_once 'config.php';
+require_once 'sota_cache_helper.php';
 
 if (($_GET['password'] ?? '') !== 'sota') {
     http_response_code(403);
@@ -23,6 +27,11 @@ function step($label, $fn) {
         echo "[ERROR] $label: " . $e->getMessage() . "\n";
     }
 }
+
+step('Build sota_summit_index from sota_cache.csv.gz', function () use ($db) {
+    $n = sota_index_rebuild_from_gz($db);
+    return "$n summits loaded";
+});
 
 step('Create feature_votes', function () use ($db) {
     $db->exec("

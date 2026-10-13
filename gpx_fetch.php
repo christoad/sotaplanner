@@ -1,6 +1,6 @@
 <?php
 /**
- * gpx_fetch.php — on-demand SOTAmaps GPX fetch for a single summit.
+ * gpx_fetch.php, on-demand SOTAmaps GPX fetch for a single summit.
  * POST  summit_id  (int)
  * Returns JSON: { status: 'found'|'none'|'skip'|'error', track_type, trailhead_lat, trailhead_lon, ... }
  */
@@ -9,6 +9,9 @@ set_time_limit(90);
 require_once 'config.php';
 session_start();
 requireLogin();
+// Release the session lock now: this endpoint only reads the session, and holding the lock
+// through slow work (API calls, file scans) would stall every other request from this user.
+session_write_close();
 
 header('Content-Type: application/json');
 
@@ -50,7 +53,7 @@ if ($chk->fetch()) {
     exit;
 }
 
-// Check global library — may have been populated since nomination
+// Check global library, may have been populated since nomination
 $global_stmt = $db->prepare("SELECT * FROM global_gpx_tracks WHERE sota_ref = ?");
 $global_stmt->execute([$sota_ref]);
 $global = $global_stmt->fetch(PDO::FETCH_ASSOC);
@@ -123,11 +126,11 @@ if (!$global) {
         exit;
     }
 
-    // OSM trailhead lookup — 400 m around the GPX-derived trailhead point
+    // OSM trailhead lookup, 400 m around the GPX-derived trailhead point
     $trailhead_lat = $gpx_stats['trailhead_lat'];
     $trailhead_lon = $gpx_stats['trailhead_lon'];
 
-    // Fallback: elevation analysis returns NULL for flat tracks — use the raw first point instead
+    // Fallback: elevation analysis returns NULL for flat tracks, use the raw first point instead
     if (empty($trailhead_lat) && count($points) > 0) {
         $trailhead_lat = floatval($points[0]['latitude']);
         $trailhead_lon = floatval($points[0]['longitude']);
@@ -170,7 +173,7 @@ if (!$global) {
 
     $track_type = $gpx_stats['track_type'] ?? 'round-trip';
 } else {
-    // Already in global library — derive track type from the file if present
+    // Already in global library, derive track type from the file if present
     $track_type    = 'round-trip';
     $trailhead_lat = $global['trailhead_lat'];
     $trailhead_lon = $global['trailhead_lon'];
@@ -182,13 +185,13 @@ if (!$global) {
             $track_type = $gpx_stats['track_type'] ?? 'round-trip';
 
             // Backfill NULL trailhead: stored NULL means the batch importer ran before
-            // trailhead extraction existed — re-derive it now from the GPX file.
+            // trailhead extraction existed, re-derive it now from the GPX file.
             if (empty($trailhead_lat)) {
                 $trailhead_lat = $gpx_stats['trailhead_lat'];
                 $trailhead_lon = $gpx_stats['trailhead_lon'];
 
                 // Last resort: if elevation analysis returned nothing (flat track),
-                // use the raw first trackpoint — it's always at the trailhead/parking lot.
+                // use the raw first trackpoint, it's always at the trailhead/parking lot.
                 if (empty($trailhead_lat)) {
                     $fp = _gpxfetch_first_point($global['file_path']);
                     if ($fp) { $trailhead_lat = $fp['lat']; $trailhead_lon = $fp['lon']; }

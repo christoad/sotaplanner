@@ -32,7 +32,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'login') {
 
     $state = bin2hex(random_bytes(16));
 
-    // Store state in DB — cookies and sessions are unreliable across OAuth redirects in Safari
+    // Store state in DB, cookies and sessions are unreliable across OAuth redirects in Safari
     $db = getDbConnection();
     $db->prepare("INSERT INTO app_settings (setting_key, setting_value, updated_at) VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=NOW()")
        ->execute(['oauth_state_' . $state, time() + 600]);
@@ -67,7 +67,7 @@ if (isset($_GET['code'])) {
         echo "error param:  " . htmlspecialchars($_GET['error'] ?? '(none)') . "\n";
         echo "</pre>";
     }
-    // Validate state via DB — immune to Safari ITP and shared-hosting session issues
+    // Validate state via DB, immune to Safari ITP and shared-hosting session issues
     $incoming_state = $_GET['state'] ?? '';
     if (empty($incoming_state)) {
         http_response_code(403);
@@ -108,6 +108,8 @@ if (isset($_GET['code'])) {
     $ch = curl_init(SOTA_TOKEN_URL);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_TIMEOUT        => 15,
         CURLOPT_POST           => true,
         CURLOPT_POSTFIELDS     => http_build_query($token_data),
         CURLOPT_HTTPHEADER     => ['Content-Type: application/x-www-form-urlencoded'],
@@ -118,7 +120,7 @@ if (isset($_GET['code'])) {
     curl_close($ch);
 
     if ($http_code !== 200 || !$response) {
-        error_log("SOTA token exchange failed: HTTP $http_code — $response");
+        error_log("SOTA token exchange failed: HTTP $http_code, $response");
         if ($debug) {
             die("<pre>TOKEN EXCHANGE FAILED\nHTTP: $http_code\nResponse: " . htmlspecialchars($response) . "\nRequest params: " . htmlspecialchars(http_build_query($token_data)) . "</pre>");
         }
@@ -138,9 +140,9 @@ if (isset($_GET['code'])) {
         die('Login failed: no access token received.');
     }
 
-    // Decode id_token JWT payload — no UserInfo round-trip needed.
+    // Decode id_token JWT payload, no UserInfo round-trip needed.
     // The "sotaplanner" client's claim mappers were fixed 2026-08 (previously scoped to a different
-    // client) — the token now includes verified "Callsign" and "UserID" claims directly.
+    // client), the token now includes verified "Callsign" and "UserID" claims directly.
     $id_token_parts = explode('.', $tokens['id_token'] ?? '');
     $id_payload = [];
     if (count($id_token_parts) === 3) {
@@ -179,7 +181,7 @@ if (isset($_GET['code'])) {
     $_SESSION['sota_sso_userid']            = $id_payload['UserID'] ?? null;
     $_SESSION['sota_sso_preferred_username'] = $id_payload['preferred_username'] ?? null;
 
-    // SOTA's "Callsign" claim is verified server-side on every login — trust it and record the
+    // SOTA's "Callsign" claim is verified server-side on every login, trust it and record the
     // user with no manual confirmation step. (Fallback to preferred_username above only applies
     // if a future token is ever missing the claim; the empty-callsign check earlier already
     // rejects logins with neither.)
@@ -215,12 +217,12 @@ if (isset($_GET['code'])) {
     $groups = $stmt->fetchAll();
 
     if (empty($groups)) {
-        // New user — send to onboarding wizard
+        // New user, send to onboarding wizard
         header('Location: onboarding.php');
         exit;
     }
 
-    // Try to restore last-used group from cookie (may be gone in Safari — fall back to first group)
+    // Try to restore last-used group from cookie (may be gone in Safari, fall back to first group)
     $target_group_id = $groups[0]['id'];
     if (!empty($_COOKIE['sota_default_group'])) {
         $cookie_id = (int)$_COOKIE['sota_default_group'];
