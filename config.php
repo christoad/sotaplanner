@@ -458,6 +458,12 @@ function winterBonusSeasonText($bonus_points, $latitude) {
     return "+{$pts} winter bonus {$label}, typically awarded {$season}. Exact dates are set by this summit's SOTA association.";
 }
 
+/** True on the live site (sotaplanner.com). Staging and any other host are "dev mode":
+ *  the passwordless callsign sign-in on login.php only exists there, never on production. */
+function isProductionSite() {
+    return str_ends_with(strtolower($_SERVER['HTTP_HOST'] ?? ''), 'sotaplanner.com');
+}
+
 // ── Authentication helpers ─────────────────────────────────────────────────
 
 /** Redirect to login if no authenticated callsign in session. */

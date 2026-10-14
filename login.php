@@ -2,7 +2,7 @@
 require_once 'config.php';
 session_start();
 
-// Already logged in — go to dashboard (or group picker if no group set)
+// Already logged in, go to dashboard (or group picker if no group set)
 if (isset($_SESSION['sota_callsign'])) {
     if (!empty($_SESSION['pending_multi_import'])) { header('Location: onboarding.php'); exit; }
     header('Location: ' . (isset($_SESSION['current_planning_group_id']) ? 'index.php' : 'planning_groups.php'));
@@ -12,7 +12,8 @@ if (isset($_SESSION['sota_callsign'])) {
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['dev_login'])) {
+    // Passwordless callsign sign-in is for dev/staging only. On production, SOTA SSO is the only way in.
+    if (isset($_POST['dev_login']) && !isProductionSite()) {
         $callsign = strtoupper(trim($_POST['callsign'] ?? ''));
 
         if ($callsign !== '' && preg_match('/^[A-Z0-9]{3,10}$/', $callsign)) {
@@ -49,10 +50,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $groups = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
                 if (count($groups) === 0) {
-                    // New user — no groups yet
+                    // New user, no groups yet
                     header('Location: onboarding.php');
                 } else {
-                    // Returning user — pick best group: saved default cookie > owned/first group
+                    // Returning user, pick best group: saved default cookie > owned/first group
                     $target_group = null;
 
                     if (!empty($_COOKIE['sota_default_group'])) {
@@ -70,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     header('Location: index.php');
                 }
             } catch (PDOException $e) {
-                // DB error — fall back to group picker
+                // DB error, fall back to group picker
                 header('Location: planning_groups.php');
             }
             exit;
@@ -205,7 +206,7 @@ try {
 
         /* ── Feature strip ── */
         /* Full-bleed opaque panel holding just the tiles. It parks (sticks) at the top of the
-           viewport once scrolled into place, instead of continuing to scroll off-screen — the
+           viewport once scrolled into place, instead of continuing to scroll off-screen, the
            login card below is a normal-flow sibling that scrolls up underneath it. Covering the
            hero is handled by fading the hero's own background out (see the scroll-scrub JS), not
            by this panel's opacity/size, so there's no dependency on exact pixel coverage. */
@@ -512,7 +513,7 @@ try {
 
 <!-- Hero -->
 <div class="hero">
-    <!-- Data-source bubbles converging into the SOTAplanner mark as the user scrolls — same
+    <!-- Data-source bubbles converging into the SOTAplanner mark as the user scrolls, same
          illustration/technique as about.php's "converge-section" (see the vanilla scroll-scrub
          script near the bottom of this file), floating directly on the hero's dark gradient
          (glass-style bubbles, no background card) rather than about.php's light card version. -->
@@ -530,8 +531,8 @@ try {
             </filter>
           </defs>
 
-          <!-- Arrows stop well short of the (large) logo — a deliberate hover gap, not a
-               tangent — same distance the nodes converge to on scroll. Coordinates computed
+          <!-- Arrows stop well short of the (large) logo, a deliberate hover gap, not a
+               tangent, same distance the nodes converge to on scroll. Coordinates computed
                against the hub's 340x340 bounding box plus a 32-unit clearance. -->
           <g class="conv-arrows">
           <line x1="111.7" y1="105"  x2="217.7" y2="162"   stroke="rgba(255,255,255,0.16)" stroke-width="1.5" marker-end="url(#arr)"/>
@@ -542,7 +543,7 @@ try {
           <line x1="688.3" y1="415"  x2="582.3" y2="358"   stroke="rgba(255,255,255,0.16)" stroke-width="1.5" marker-end="url(#arr)"/>
           </g>
 
-          <!-- Large and in charge — same proportions as the production logo, just scaled up
+          <!-- Large and in charge, same proportions as the production logo, just scaled up
                to be the clear focal point of the diagram. -->
           <g class="hub-group">
           <image href="sota-planner-logo-font.svg" x="230" y="90" width="340" height="340" filter="url(#toWhite)"/>
@@ -636,7 +637,7 @@ try {
     <?php endif; ?>
 </div>
 
-<!-- Feature highlights + login card — both park together at the top of the viewport once
+<!-- Feature highlights + login card, both park together at the top of the viewport once
      scrolled into place, as one combined sticky unit, so the SSO button never gets covered
      by the tiles as you keep scrolling -->
 <div class="features-panel">
@@ -687,7 +688,7 @@ try {
     </div>
 </div>
 
-<!-- How it works steps — part of the same combined sticky unit as the tiles + login card
+<!-- How it works steps, part of the same combined sticky unit as the tiles + login card
      above, so all three sections park and settle together with nothing hidden behind another -->
 <div class="how-strip">
     <div class="how-strip-inner">
@@ -720,7 +721,8 @@ try {
     <a href="changelog.php">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; sotaplanner.com
 </footer>
 
-<!-- Developer access — bottom left corner -->
+<?php if (!isProductionSite()): ?>
+<!-- Developer access, bottom left corner (dev/staging only) -->
 <div style="position:fixed; bottom:1rem; left:1rem; z-index:999;">
     <div id="dev-access" style="display:<?= $error ? 'block' : 'none' ?>; margin-bottom:0.5rem; padding:0.85rem 1rem; background:#fff; border:1px solid #e0e0e0; border-radius:10px; box-shadow:0 4px 16px rgba(0,0,0,0.1); width:220px;">
         <?php if ($error): ?>
@@ -751,6 +753,7 @@ document.getElementById('dev-toggle').addEventListener('click', function() {
     d.style.display = d.style.display === 'none' ? 'block' : 'none';
 });
 </script>
+<?php endif; ?>
 
 <!-- Bubble-to-logo convergence, ported from about.php's "converge-section" scrub. Pure
      vanilla scroll-position math (no motion.dev dependency), so it works even if the CDN
@@ -799,7 +802,7 @@ document.getElementById('dev-toggle').addEventListener('click', function() {
             'translate(' + hub.x + ',' + hub.y + ') scale(' + (1 + 0.08 * t) + ') translate(' + (-hub.x) + ',' + (-hub.y) + ')');
         if (hubRing) hubRing.setAttribute('stroke-width', 2 + 3 * t);
 
-        // Only touch the scroll cues once the user has actually scrolled — leave them alone at
+        // Only touch the scroll cues once the user has actually scrolled, leave them alone at
         // scrollY 0 so their own CSS delayed fade-in (see .scroll-cue-in keyframe) gets to play,
         // instead of this script's initial call stomping them to opacity:1 immediately.
         if (scrollCues.length && scrollY > 0) {
@@ -847,7 +850,7 @@ document.getElementById('dev-toggle').addEventListener('click', function() {
         });
     }
 
-    // Respect reduced-motion preference — just show everything, no movement
+    // Respect reduced-motion preference, just show everything, no movement
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
         showAllInstantly();
         return;
@@ -869,7 +872,7 @@ document.getElementById('dev-toggle').addEventListener('click', function() {
         var ease = [0.16, 1, 0.3, 1];
         var pop = [0.34, 1.56, 0.64, 1]; // bouncy "overshoot" ease for a dramatic entrance
 
-        // 1. Hero illustration: big dramatic drop-and-pop — falls, scales up, and fades in
+        // 1. Hero illustration: big dramatic drop-and-pop, falls, scales up, and fades in
         var logoLanded = false;
         var logoAnim = animate('.hero-illustration', { opacity: [0, 1], scale: [0.55, 1], y: [-70, 0] },
             { duration: 0.75, easing: pop });
@@ -900,10 +903,10 @@ document.getElementById('dev-toggle').addEventListener('click', function() {
         // 3. Feature tiles + SSO login card: all scroll-linked, scrubbed directly to
         //    scroll position (advances as you scroll down, reverses as you scroll back
         //    up) so everything arrives together as the tiles panel scrolls up and parks
-        //    at the top of the viewport — and the hero (background gradient included, not
+        //    at the top of the viewport, and the hero (background gradient included, not
         //    just its logo/text) fades OUT in the same motion, once the initial pop-in has
-        //    landed. Fading the hero's own background — rather than relying on the tiles
-        //    panel to physically occlude it — is what guarantees no gradient ever bleeds
+        //    landed. Fading the hero's own background, rather than relying on the tiles
+        //    panel to physically occlude it, is what guarantees no gradient ever bleeds
         //    through underneath, in any browser (this is the fix for the Safari gap).
         //    Hand-rolled against raw scroll position (rather than a scroll-timeline helper)
         //    so it behaves identically in every browser, including Safari.
@@ -978,7 +981,7 @@ document.getElementById('dev-toggle').addEventListener('click', function() {
             stopSteps();
         }, { amount: 0.3 });
     }).catch(function () {
-        // CDN blocked/slow — fail safe to a fully visible, static page
+        // CDN blocked/slow, fail safe to a fully visible, static page
         showAllInstantly();
     });
 })();
