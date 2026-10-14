@@ -266,8 +266,7 @@ session_start();
     <!-- September 2026 -->
     <div class="version-block current">
         <div class="version-header">
-            <span class="version-number">v2.2.0</span>
-            <span class="version-date">October 2026</span>
+            <span class="version-number">October 2026 update</span>
             <span class="version-badge">Current</span>
         </div>
         <p class="version-desc">Driving routes now appear on the summit map, and the offline PDF for Multi-Activate routes shows the same maps you see on the site.</p>

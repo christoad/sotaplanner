@@ -89,25 +89,30 @@ When picking one of these up, reuse the existing motion.dev-via-CDN pattern from
 Always save Playwright screenshots to the `playwright/` folder in the project root (e.g. `playwright/my-screenshot.png`). This folder is gitignored and excluded from rsync deploys — never commit screenshots.
 
 ### Playwright Login
-The staging login page shows a hero section by default. To log in, click the small **"Developer access"** link in the bottom-left corner of the page — this reveals the callsign input. Enter `KI6CR` and click **Go**.
+Use **staging** (christopherreddick.com/sotaplanner). Its login page has a small **"Developer access"** link in the bottom-left corner; click it, enter `KI6CR`, click **Go**. This passwordless sign-in exists on dev/staging only: `isProductionSite()` in `config.php` (host ends in `sotaplanner.com`) removes it from the production login page and rejects the POST server-side (removed 2026-10-13 after the podcast launch, because on production it let anyone log in as any callsign). Production login is SOTA SSO only.
 
-### Branches
-**Work happens directly on `main`.** There is no `dev` branch — it was deleted 2026-08-23 (it had gone stale, ~55 commits behind, since everything since the global GPX library work had already been committed straight to `main`). Don't recreate a `dev`/staging-merge workflow unless Chris asks for it; commit and deploy straight from `main`.
+### Branches and release flow (changed 2026-10-13, after the podcast launch brought real users)
+**Day-to-day work happens on the `dev` branch. `main` is exactly what is live on production.** Chris never does git work himself; Claude handles all branching, merging and deploying (see memory `feedback_avoid_branch_merge_complexity`).
+1. Work and commit on `dev`. Deploy to **staging** (command below) so Chris can test. Do not touch production at this stage.
+2. When Chris says to ship it: fast-forward merge `dev` into `main` (`git checkout main && git merge --ff-only dev`), rsync only the files that changed to production, verify the live site, then `git checkout dev` again.
+3. Urgent security or outage fixes may go through the same flow quickly, but still tell Chris what went live.
+4. Chris pushes to GitHub via GitHub Desktop; remind him after commits.
+
+**Staging and production share one database and `config.php`.** So schema changes are live for production the moment they run: keep migrations additive and backward compatible (new tables or nullable columns, never renames or drops), and run them before the code that needs them ships. Staging cannot test SOTA SSO, and the cron jobs run on production only.
 
 ### Before Committing a Feature
-1. Bump `APP_VERSION` in `config.php`
-2. Add a new version block to `changelog.php` describing the new features in plain English (see changelog conventions below)
+Commit when Chris says so. Do **not** bump `APP_VERSION` per commit (see Version bumping). User-visible features get a bullet in the current month's changelog block when they are shipped to production.
 
 ### Staging Environment
 - **URL:** christopherreddick.com/sotaplanner/
 - **Server path:** `/home/chrisr069/christopherreddick.com/sotaplanner/`
-- **Database:** Same production DB (shared — no schema changes without care)
-- **Deploy to staging:**
+- **Database:** Same production DB (shared, see above)
+- **Deploy to staging** (from the `dev` branch working tree):
   ```
   rsync -avz --exclude='.git' --exclude='.claude' --exclude='.playwright-mcp' --exclude='playwright' "/Users/chris/Dropbox/ham - amateur radio/sotaplanner/" dreamhost-sota:/home/chrisr069/christopherreddick.com/sotaplanner/
   ```
-- After confirming on staging, commit on `main` and deploy to production as usual.
-- **GPX files + SOTA cache** are synced from production → staging daily at 2am via `/home/chrisr069/sync_sites.sh`. No need to manually copy GPX files when testing on staging.
+- **Deploy to production** only after Chris approves and `dev` is merged to `main`: rsync just the changed files (`git diff --name-only <old main>..main`) to `dreamhost-sota:/home/chrisr069/sotaplannerdotcom/`, from a checkout of `main`.
+- **GPX files + SOTA cache** are synced from production to staging daily at 2am via `/home/chrisr069/sync_sites.sh`. No need to manually copy GPX files when testing on staging.
 
 ### Hosting & Scaling — CDN Options (researched 2026-08-25)
 DreamHost Shared Hosting (what sotaplanner.com runs on) has **no built-in CDN**. If international traffic grows and page-load latency becomes a concern, the path is a free **Cloudflare** setup (DreamHost has a direct partner integration for this): create a free Cloudflare account, then point sotaplanner.com's nameservers at Cloudflare's two assigned nameservers. This gives global edge caching for static assets (CSS/JS/images/SVGs), SSL termination closer to the user, DDoS protection, and basic analytics — DreamHost remains the origin server. Note: since most of SOTAplanner's pages are dynamic PHP (DB-backed dashboard/maps), a CDN mainly speeds up static assets and connection setup, not the PHP/DB round-trip itself — if response time becomes the bottleneck under heavy load, that requires scaling the DreamHost plan or database, not just adding a CDN. Nameserver changes affect live DNS/email routing, so treat this as a change requiring Chris's explicit go-ahead, not something to do unprompted.
@@ -831,10 +836,10 @@ The changelog is **user-facing and feature-focused**. Keep it high-level and rea
 **What to omit:**
 - Bug fixes, PHP errors, internal refactors, cosmetic tweaks, technical debt cleanup — none of this belongs in the public changelog
 
-**Grouped by month (changed 2026-08):** one `version-block` per calendar month, not per version bump — otherwise the page grows a new header/date block for every small release. When shipping a feature in a month that already has a block, append a bullet to that month's `<ul>` and bump the `version-number` shown in its header to the new `APP_VERSION`; only start a new block when the calendar month changes. The "Current" badge always lives on the latest (top) block.
+**One "update" per calendar month (changed 2026-10-13):** the public changelog has one block per month, titled like "October 2026 update". Do not create entries or numbers per release. As features ship to production during the month, append a plain-English bullet to that month's `<ul>`, newest first. Start a new block only when the first release of a new calendar month ships. The "Current" badge always lives on the top block. Older blocks keep their historical v1.x/v2.x numbers.
 
-**Format per version block:** version number (the latest reached that month), month+year date, "Current" badge on the latest only, one-sentence description summarizing the month's theme, then a plain-English bullet list (no tags, no technical jargon) with the newest change first. Each bullet should describe what the user can now *do* or *see*, not what changed in the code.
+**Format per block:** the title (month and year plus "update"), "Current" badge on the latest only, one sentence summarizing the month's theme, then the bullet list (no tags, no technical jargon). Each bullet says what users can now *do* or *see*, not what changed in code.
 
 ## Version bumping
 
-Only bump `APP_VERSION` in `config.php` (and add a changelog entry) when the commit contains a new feature or a meaningful UX improvement. **Do not bump the version for cosmetic changes, design polish, dead-code removal, or internal refactors.** Those ship silently under the current version number.
+`APP_VERSION` in `config.php` is now the month label, format `YYYY.MM` (e.g. `2026.10`), shown in page footers as `v2026.10`. **It changes only when a new calendar month's first release ships to production.** Never bump it for individual features, fixes, cosmetic changes or refactors; those just add a changelog bullet (if user-visible) to the current month's block, or ship silently.
