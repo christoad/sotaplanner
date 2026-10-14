@@ -194,7 +194,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // ── DATA ─────────────────────────────────────────────────────────────────────
 
 $stats = [
-    'users'           => $db->query("SELECT COUNT(DISTINCT callsign) FROM (SELECT callsign FROM planning_group_members UNION SELECT owner_callsign FROM planning_groups) u")->fetchColumn(),
+    // Same definition as the Users tab's "All Users" list: on a dashboard AND has completed SOTA SSO login.
+    'users'           => $db->query("SELECT COUNT(DISTINCT u.callsign) FROM (SELECT callsign FROM planning_group_members UNION SELECT owner_callsign FROM planning_groups) cs INNER JOIN users u ON u.callsign = cs.callsign AND u.sso_sub IS NOT NULL")->fetchColumn(),
+    'invited_only'    => $db->query("SELECT COUNT(DISTINCT cs.callsign) FROM (SELECT callsign FROM planning_group_members UNION SELECT owner_callsign FROM planning_groups) cs LEFT JOIN users u ON u.callsign = cs.callsign AND u.sso_sub IS NOT NULL WHERE u.callsign IS NULL")->fetchColumn(),
     'groups'          => $db->query("SELECT COUNT(*) FROM planning_groups")->fetchColumn(),
     'summits'         => $db->query("SELECT COUNT(*) FROM summits")->fetchColumn(),
     'activations'     => $db->query("SELECT COUNT(*) FROM activations")->fetchColumn(),
@@ -340,7 +342,7 @@ if (($_GET['tab'] ?? '') === 'users') {
             SELECT callsign, MIN(visit_date) AS first_seen, MAX(visit_date) AS last_seen,
                    COUNT(*) AS days_active,
                    SUM(visit_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) AS days_30
-            FROM user_visits WHERE callsign <> 'KI6CR'
+            FROM user_visits WHERE callsign NOT IN ('KI6CR', 'ZZ1ZZZ', 'ZZ9TST')
             GROUP BY callsign ORDER BY days_active DESC, last_seen DESC
         ")->fetchAll();
         $total = count($visit_users);
@@ -361,7 +363,7 @@ if (($_GET['tab'] ?? '') === 'users') {
         $visit_stats['tracking_since'] = $db->query("SELECT MIN(visit_date) FROM user_visits")->fetchColumn();
         $wk = $db->query("
             SELECT YEARWEEK(visit_date, 1) AS yw, MIN(visit_date) AS wk_start, COUNT(DISTINCT callsign) AS n
-            FROM user_visits WHERE callsign <> 'KI6CR' AND visit_date >= DATE_SUB(CURDATE(), INTERVAL 8 WEEK)
+            FROM user_visits WHERE callsign NOT IN ('KI6CR', 'ZZ1ZZZ', 'ZZ9TST') AND visit_date >= DATE_SUB(CURDATE(), INTERVAL 8 WEEK)
             GROUP BY yw ORDER BY yw
         ")->fetchAll();
         foreach ($wk as $w) $weekly_active[] = $w;
@@ -617,6 +619,7 @@ select.form-input { cursor: pointer; }
             <div class="stat-card">
                 <div class="stat-num"><?= $stats['users'] ?></div>
                 <div class="stat-label">Users</div>
+                <?php if ($stats['invited_only'] > 0): ?><div style="font-size:0.7rem; color:var(--ink-3); margin-top:0.25rem;">+<?= (int)$stats['invited_only'] ?> invited, not signed in</div><?php endif; ?>
             </div>
             <div class="stat-card">
                 <div class="stat-num"><?= $stats['groups'] ?></div>
@@ -743,7 +746,7 @@ select.form-input { cursor: pointer; }
         <div class="section-head">
             <div>
                 <h2>Returning Users</h2>
-                <p>Distinct days each person used the site (you are excluded)<?= !empty($visit_stats['tracking_since']) ? '. Data since ' . date('M j, Y', strtotime($visit_stats['tracking_since'])) : '' ?></p>
+                <p>Distinct days each person used the site (you and the ZZ1ZZZ and ZZ9TST test accounts are excluded)<?= !empty($visit_stats['tracking_since']) ? '. Data since ' . date('M j, Y', strtotime($visit_stats['tracking_since'])) : '' ?></p>
             </div>
         </div>
         <?php if (!$visit_stats): ?>
