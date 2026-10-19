@@ -56,6 +56,9 @@ if (isset($_POST['select_address'])) {
         $setting_key = 'selected_address_group_' . $current_group['id'];
         $stmt = $db->prepare("INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
         $stmt->execute([$setting_key, $address_id]);
+        $sw = $db->prepare("SELECT * FROM addresses WHERE id = ? AND planning_group_id = ?");
+        $sw->execute([$address_id, $current_group['id']]);
+        if ($sw_addr = $sw->fetch()) applyCachedDriveTimes($db, $current_group['id'], $sw_addr);
         $message = "Address updated!";
     }
 }
@@ -70,6 +73,9 @@ if (isset($_POST['set_default_address'])) {
         $stmt->execute([$setting_key, $address_id]);
         setcookie('sota_default_address_' . $current_group['id'], $address_id, time() + 60 * 60 * 24 * 365, '/');
         $_COOKIE['sota_default_address_' . $current_group['id']] = $address_id;
+        $sw = $db->prepare("SELECT * FROM addresses WHERE id = ? AND planning_group_id = ?");
+        $sw->execute([$address_id, $current_group['id']]);
+        if ($sw_addr = $sw->fetch()) applyCachedDriveTimes($db, $current_group['id'], $sw_addr);
         $message = "⭐ Default address saved. This address will load automatically next time.";
     }
 }
@@ -102,28 +108,16 @@ if (isset($_POST['calculate_drive_times'])) {
                 $failed = 0;
                 
                 foreach ($summits as $summit) {
-                    // Use trailhead coordinates if available, otherwise use summit coordinates
-                    $dest_lat = $summit['trailhead_lat'] ?? $summit['latitude'];
-                    $dest_lng = $summit['trailhead_lng'] ?? $summit['longitude'];
-                    
-                    $drive_time = calculateDriveTime($origin, $dest_lat, $dest_lng);
-                    
-                    if ($drive_time !== null) {
-                        // Multiply by 2 for round trip
-                        $drive_time_rt = $drive_time * 2;
-                        $stmt = $db->prepare("UPDATE summits SET drive_time_min = ? WHERE id = ?");
-                        $stmt->execute([$drive_time_rt, $summit['id']]);
-                        $updated++;
-                    } else {
-                        // Don't leave a stale time from a previous address in place
-                        $db->prepare("UPDATE summits SET drive_time_min = NULL WHERE id = ?")->execute([$summit['id']]);
-                        $failed++;
-                    }
-                    
+                    $drive_time_rt = calcSummitDriveRT($db, $summit, $selected_address);
+                    saveDriveTimeCache($db, $summit, $selected_address, $drive_time_rt);
+                    // A failed lookup clears the time so a previous address's value never lingers
+                    $db->prepare("UPDATE summits SET drive_time_min = ? WHERE id = ?")->execute([$drive_time_rt, $summit['id']]);
+                    if ($drive_time_rt !== null) $updated++; else $failed++;
+
                     // Small delay to avoid rate limiting
                     usleep(100000); // 0.1 second
                 }
-                
+
                 if ($updated > 0) {
                     $message = "Travel times updated for $updated summit(s) in {$current_group['name']}!";
                     if ($failed > 0) {
@@ -211,6 +205,19 @@ if (count($all_addresses) > 0 && !$selected_address) {
     ");
     $stmt->execute([$setting_key, $all_addresses[0]['id']]);
     $selected_address = $all_addresses[0];
+}
+
+// Summits with no travel time for the selected address (and no valid cached result,
+// including cached "no road route" results) get calculated in the background; see the
+// drive_time_refresh.php script at the bottom of the page.
+$drive_missing_ids = [];
+if ($current_group && $selected_address && GOOGLE_MAPS_API_KEY !== 'YOUR_API_KEY_HERE') {
+    $dm = $db->prepare("SELECT id FROM summits WHERE planning_group_id = ? AND latitude IS NOT NULL AND longitude IS NOT NULL AND (drive_time_min IS NULL OR drive_time_min = 0)");
+    $dm->execute([$current_group['id']]);
+    $drive_valid = validDriveTimeCache($db, $current_group['id'], $selected_address);
+    foreach ($dm->fetchAll(PDO::FETCH_COLUMN) as $sid) {
+        if (!isset($drive_valid[(int)$sid])) $drive_missing_ids[] = (int)$sid;
+    }
 }
 
 // Get activation time: URL param overrides, else user's saved preference, else 60
@@ -732,6 +739,20 @@ foreach ($summits as $sm) {
     ];
 }
 $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
+
+// Pin for the active "From" location in the top bar pulldown
+$from_pin = null;
+if ($selected_address) {
+    $from_geo = addressGeo($db, $selected_address);
+    if ($from_geo) {
+        $from_pin = [
+            'lat'   => $from_geo['lat'],
+            'lng'   => $from_geo['lng'],
+            'label' => $selected_address['label'] ?: $selected_address['address'],
+        ];
+    }
+}
+$from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -1717,6 +1738,7 @@ $map_json = json_encode($map_summits, JSON_UNESCAPED_UNICODE);
                 <form method="POST" style="margin:0">
                     <button type="submit" name="calculate_drive_times" class="btn btn-ghost btn-sm">Recalculate Travel Times</button>
                 </form>
+                <span id="drive-calc-status" style="display:none; font-size:0.78rem; color:var(--ink-3); white-space:nowrap"></span>
             <?php endif; ?>
             <div class="toolbar-right">
                 <span id="bulk-select-info" class="bulk-select-info" style="display:none"></span>
@@ -2578,6 +2600,7 @@ window.addEventListener('load', function() { show(0); });
 <script>
 // ── Dashboard map view ────────────────────────────────────────────────────
 const DASH_SUMMITS = <?= $map_json ?>;
+const DASH_FROM = <?= $from_pin_json ?>;
 
 let dashMap = null;
 let dashBaseLayers = null;
@@ -2671,6 +2694,26 @@ function initDashMap() {
             window.location = s.url;
         });
     });
+
+    // Pin for the active "From" location
+    if (DASH_FROM) {
+        const fromIcon = L.divIcon({
+            className: '',
+            html: '<svg width="28" height="36" viewBox="0 0 28 36" style="filter:drop-shadow(0 2px 3px rgba(0,0,0,0.35))"><path d="M14 0C6.3 0 0 6.1 0 13.7 0 24 14 36 14 36s14-12 14-22.3C28 6.1 21.7 0 14 0z" fill="#1C1B19"/><circle cx="14" cy="13.5" r="5" fill="#fff"/></svg>',
+            iconSize: [28, 36],
+            iconAnchor: [14, 36]
+        });
+        const fromMarker = L.marker([DASH_FROM.lat, DASH_FROM.lng], {
+            icon: fromIcon,
+            zIndexOffset: -500,
+            keyboard: false
+        }).addTo(dashMap);
+        const fromTip = document.createElement('div');
+        fromTip.className = 'dash-tip-name';
+        fromTip.textContent = 'Starting from: ' + DASH_FROM.label;
+        fromMarker.bindTooltip(fromTip, { direction: 'top', offset: [0, -34], className: 'dash-tip' });
+        if (bounds.length === 0) bounds.push([DASH_FROM.lat, DASH_FROM.lng]);
+    }
 
     // Fit bounds
     if (bounds.length > 0) {
@@ -2768,6 +2811,38 @@ try {
     }
 } catch(e) {}
 </script>
+<script>
+// After switching the "From" address, calculate travel times for any summit that has no
+// saved result for it, one at a time (each result is cached server-side per address, so
+// each summit/address pair is only ever looked up once), then reload to show them.
+(function() {
+  const ids = <?= json_encode($drive_missing_ids) ?>;
+  if (!ids.length) return;
+  const statusEl = document.getElementById('drive-calc-status');
+  // Guard against a reload loop if lookups keep failing
+  const guardKey = 'sota_drive_calc_<?= (int)$current_group['id'] ?>_<?= (int)($selected_address['id'] ?? 0) ?>';
+  try {
+    const last = parseInt(sessionStorage.getItem(guardKey) || '0', 10);
+    if (Date.now() - last < 60000) return;
+    sessionStorage.setItem(guardKey, String(Date.now()));
+  } catch (e) {}
+
+  let i = 0;
+  function show() {
+    if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'Calculating travel times: ' + i + ' of ' + ids.length; }
+  }
+  function next() {
+    if (i >= ids.length) { window.location.replace(window.location.href); return; }
+    show();
+    fetch('drive_time_refresh.php?summit_id=' + ids[i++])
+      .then(r => r.json())
+      .catch(() => {})
+      .finally(() => setTimeout(next, 100));
+  }
+  next();
+})();
+</script>
+
 <script>
 // Silently refresh SOTA activation cache for all summits on the dashboard.
 // Fires after page paint, 3 at a time, so it never blocks the UI.

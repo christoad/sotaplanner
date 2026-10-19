@@ -1,14 +1,10 @@
 <?php
-// One-off migration: indexed summit search table + feature voting + daily visit tracking.
-//   sota_summit_index  all ~181k SOTA summits from sota_cache.csv.gz in an indexed table, so
-//                      Nominate search no longer unzips and scans the whole file on every search.
-//   feature_votes   one row per (feature, callsign) "I'd use this" vote
-//   user_visits     one row per (callsign, day) the user was active; powers the God Mode
-//                   returning-users dashboard. Seeded from activity_log history.
-// Safe to run twice. Delete this file after running.
-ini_set('max_execution_time', 300);
+// One-off migration: per-address travel time cache.
+//   summit_drive_times  one row per (summit, starting address) holding the round-trip drive
+//                       minutes plus the origin/destination coordinates it was calculated for,
+//                       so switching the "From" address can reuse earlier results.
+// Additive and safe to run twice. Delete this file after running.
 require_once 'config.php';
-require_once 'sota_cache_helper.php';
 
 if (($_GET['password'] ?? '') !== 'sota') {
     http_response_code(403);
@@ -28,44 +24,43 @@ function step($label, $fn) {
     }
 }
 
-step('Build sota_summit_index from sota_cache.csv.gz', function () use ($db) {
-    $n = sota_index_rebuild_from_gz($db);
-    return "$n summits loaded";
-});
-
-step('Create feature_votes', function () use ($db) {
+step('Create summit_drive_times', function () use ($db) {
     $db->exec("
-        CREATE TABLE IF NOT EXISTS feature_votes (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            feature_key VARCHAR(64) NOT NULL,
-            callsign VARCHAR(20) NOT NULL,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uniq_vote (feature_key, callsign)
+        CREATE TABLE IF NOT EXISTS summit_drive_times (
+            summit_id INT NOT NULL,
+            address_id INT NOT NULL,
+            drive_time_min INT NULL,
+            origin_lat DOUBLE NULL,
+            origin_lng DOUBLE NULL,
+            dest_lat DOUBLE NOT NULL,
+            dest_lng DOUBLE NOT NULL,
+            calculated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (summit_id, address_id),
+            KEY idx_address (address_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     ");
     return 'table ready';
 });
 
-step('Create user_visits', function () use ($db) {
-    $db->exec("
-        CREATE TABLE IF NOT EXISTS user_visits (
-            callsign VARCHAR(20) NOT NULL,
-            visit_date DATE NOT NULL,
-            PRIMARY KEY (callsign, visit_date),
-            KEY idx_date (visit_date)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    ");
-    return 'table ready';
-});
-
-step('Seed user_visits from activity_log', function () use ($db) {
-    $n = $db->exec("
-        INSERT IGNORE INTO user_visits (callsign, visit_date)
-        SELECT DISTINCT callsign, DATE(event_time)
-        FROM activity_log
-        WHERE callsign IS NOT NULL AND callsign <> '' AND callsign <> '?'
-    ");
-    return "$n rows added";
+step('Seed from current travel times', function () use ($db) {
+    // Each group's summits currently hold times for that group's selected address.
+    $rows = $db->query("
+        SELECT s.id AS summit_id, s.drive_time_min,
+               COALESCE(NULLIF(s.trailhead_lat, 0), s.latitude) AS dlat,
+               COALESCE(NULLIF(s.trailhead_lng, 0), s.longitude) AS dlng,
+               a.id AS address_id, a.lat AS alat, a.lng AS alng
+        FROM summits s
+        JOIN app_settings st ON st.setting_key = CONCAT('selected_address_group_', s.planning_group_id)
+        JOIN addresses a ON a.id = st.setting_value AND a.planning_group_id = s.planning_group_id
+        WHERE s.drive_time_min > 0 AND s.latitude IS NOT NULL AND a.lat IS NOT NULL
+    ")->fetchAll();
+    $ins = $db->prepare("INSERT IGNORE INTO summit_drive_times
+        (summit_id, address_id, drive_time_min, origin_lat, origin_lng, dest_lat, dest_lng)
+        VALUES (?, ?, ?, ?, ?, ?, ?)");
+    foreach ($rows as $r) {
+        $ins->execute([$r['summit_id'], $r['address_id'], $r['drive_time_min'], $r['alat'], $r['alng'], $r['dlat'], $r['dlng']]);
+    }
+    return count($rows) . ' rows';
 });
 
 echo "\nDone. Delete db_migrate.php from the server now.\n";

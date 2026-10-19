@@ -344,6 +344,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $drive_time_rt = $drive_time * 2;
                 $stmt = $db->prepare("UPDATE summits SET drive_time_min = ? WHERE id = ?");
                 $stmt->execute([$drive_time_rt, $summit_id]);
+                saveDriveTimeCache($db, array_merge($summit_data, ['id' => $summit_id]), $selected_address, $drive_time_rt);
                 $msg = urlencode("Travel time (RT): " . formatTime($drive_time_rt));
                 header("Location: summit_detail.php?id=" . $summit_id . "&group=" . ($current_group['id'] ?? '') . "&geocoded=" . $msg);
             } else {
@@ -661,6 +662,7 @@ if (empty($summit['drive_time_min']) && $selected_address && !empty($summit['lat
         $auto_drive_rt = $auto_drive * 2;
         $db->prepare("UPDATE summits SET drive_time_min = ? WHERE id = ?")
            ->execute([$auto_drive_rt, $summit_id]);
+        saveDriveTimeCache($db, $summit, $selected_address, $auto_drive_rt);
         $summit['drive_time_min'] = $auto_drive_rt;
     }
 }

@@ -271,6 +271,8 @@ session_start();
         </div>
         <p class="version-desc">Driving routes now appear on the summit map, and the offline PDF for Multi-Activate routes shows the same maps you see on the site.</p>
         <ul>
+            <li>The dashboard map now shows a pin for your selected starting address</li>
+            <li>Travel times now update automatically when you switch your starting address, and are remembered for each address so switching back is instant</li>
             <li>The starting address menu on your dashboard now ends with "+ Add another", which takes you straight to that dashboard's Starting Addresses section so you can add a new one</li>
             <li>Searching for a summit by name, reference or area on the Nominate page is now much faster</li>
             <li>A new thumbs-up button next to "Post an Alert to SOTAwatch" lets you vote for posting alerts and spots from SOTAplanner, so we know how much people want it</li>

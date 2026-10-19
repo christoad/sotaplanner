@@ -250,6 +250,88 @@ function addressOrigin($db, $addr) {
     return $geo ? ($geo['lat'] . ',' . $geo['lng']) : $addr['address'];
 }
 
+// ── Per-address travel time cache (summit_drive_times) ─────────────────────
+// summits.drive_time_min always holds the round-trip time for the dashboard's
+// currently selected starting address (every page reads it). This table keeps
+// the result for every address that has been used, so switching addresses
+// restores earlier results instantly instead of re-querying Google.
+
+// Where we drive to: the starting point (trailhead) if known, else the summit.
+function driveDest($s) {
+    if (!empty($s['trailhead_lat']) && !empty($s['trailhead_lng'])) {
+        return [(float)$s['trailhead_lat'], (float)$s['trailhead_lng']];
+    }
+    return [(float)$s['latitude'], (float)$s['longitude']];
+}
+
+// Remember a result ($rt null = Google found no road route, so we don't retry forever).
+function saveDriveTimeCache($db, $summit, $addr, $rt) {
+    if (!$addr || empty($summit['id'])) return;
+    [$dlat, $dlng] = driveDest($summit);
+    $geo = addressGeo($db, $addr);
+    try {
+        $db->prepare("REPLACE INTO summit_drive_times (summit_id, address_id, drive_time_min, origin_lat, origin_lng, dest_lat, dest_lng)
+                      VALUES (?, ?, ?, ?, ?, ?, ?)")
+           ->execute([$summit['id'], $addr['id'], $rt, $geo['lat'] ?? null, $geo['lng'] ?? null, $dlat, $dlng]);
+    } catch (PDOException $e) {
+        // table not migrated yet
+    }
+}
+
+// Round-trip minutes from $addr to the summit, or null. Retries with the
+// summit's own coordinates when the starting point isn't on a drivable road.
+function calcSummitDriveRT($db, $summit, $addr) {
+    [$dlat, $dlng] = driveDest($summit);
+    $origin = addressOrigin($db, $addr);
+    $status = null;
+    $t = calculateDriveTime($origin, $dlat, $dlng, $status);
+    if ($t === null && $status === 'ZERO_RESULTS' && !empty($summit['trailhead_lat'])
+        && ($dlat != $summit['latitude'] || $dlng != $summit['longitude'])) {
+        $t = calculateDriveTime($origin, $summit['latitude'], $summit['longitude']);
+    }
+    return $t === null ? null : $t * 2;
+}
+
+// Fetch cached rows for a group's summits at one address, keeping only the
+// ones still valid (same origin and destination coordinates as now).
+// Returns [summit_id => ['rt' => int|null]] for valid rows.
+function validDriveTimeCache($db, $group_id, $addr) {
+    $out = [];
+    try {
+        $geo = addressGeo($db, $addr);
+        $stmt = $db->prepare("SELECT s.id, s.latitude, s.longitude, s.trailhead_lat, s.trailhead_lng,
+                                     d.drive_time_min AS rt, d.origin_lat, d.origin_lng, d.dest_lat, d.dest_lng
+                              FROM summits s
+                              JOIN summit_drive_times d ON d.summit_id = s.id AND d.address_id = ?
+                              WHERE s.planning_group_id = ?");
+        $stmt->execute([$addr['id'], $group_id]);
+        foreach ($stmt->fetchAll() as $r) {
+            [$dlat, $dlng] = driveDest($r);
+            if (abs($dlat - $r['dest_lat']) < 0.0001 && abs($dlng - $r['dest_lng']) < 0.0001
+                && $geo && $r['origin_lat'] !== null
+                && abs($geo['lat'] - $r['origin_lat']) < 0.0001 && abs($geo['lng'] - $r['origin_lng']) < 0.0001) {
+                $out[(int)$r['id']] = ['rt' => $r['rt'] === null ? null : (int)$r['rt']];
+            }
+        }
+    } catch (PDOException $e) {
+        // table not migrated yet
+    }
+    return $out;
+}
+
+// Called when the starting address changes: load cached times into
+// summits.drive_time_min and blank the rest (they are recalculated in the
+// background by drive_time_refresh.php, never left showing another address's time).
+function applyCachedDriveTimes($db, $group_id, $addr) {
+    $valid = validDriveTimeCache($db, $group_id, $addr);
+    $stmt = $db->prepare("SELECT id FROM summits WHERE planning_group_id = ?");
+    $stmt->execute([$group_id]);
+    $upd = $db->prepare("UPDATE summits SET drive_time_min = ? WHERE id = ?");
+    foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $id) {
+        $upd->execute([isset($valid[(int)$id]) ? $valid[(int)$id]['rt'] : null, $id]);
+    }
+}
+
 // Turn-by-turn driving directions between two points (each a "lat,lng" string
 // or a free-text address) via the Directions API. Used only for the offline
 // multi-activation PDF export; the interactive drive-time estimates elsewhere

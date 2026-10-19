@@ -390,6 +390,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'bulk_drive_times') {
         if ($drive_time !== null) {
             // Round trip, matching the manual "Calculate Drive Times" convention on index.php
             $db->prepare("UPDATE summits SET drive_time_min = ? WHERE id = ?")->execute([$drive_time * 2, $summit['id']]);
+            saveDriveTimeCache($db, $summit, $selected_address, $drive_time * 2);
             $updated++;
         } else {
             $skipped++;
