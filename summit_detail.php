@@ -1488,6 +1488,21 @@ if ($tl_show) {
         $drive_rt  = (int)($summit['drive_time_min'] ?? 0);
         $hike_rt   = (int)($hike_time_total ?? 0);
         $act_time  = $tl_activation;
+        // Stored travel time is stale if the starting point or address moved since it was calculated
+        $travel_stale = false;
+        if ($drive_rt && $selected_address) {
+            try {
+                $c = $db->prepare("SELECT origin_lat, origin_lng, dest_lat, dest_lng FROM summit_drive_times WHERE summit_id = ? AND address_id = ?");
+                $c->execute([$summit_id, $selected_address['id']]);
+                $c = $c->fetch();
+                if ($c) {
+                    [$cur_dlat, $cur_dlng] = driveDest($summit);
+                    $geo = addressGeo($db, $selected_address);
+                    $travel_stale = abs($cur_dlat - $c['dest_lat']) > 0.0001 || abs($cur_dlng - $c['dest_lng']) > 0.0001
+                        || ($geo && $c['origin_lat'] !== null && (abs($geo['lat'] - $c['origin_lat']) > 0.0001 || abs($geo['lng'] - $c['origin_lng']) > 0.0001));
+                }
+            } catch (PDOException $e) {}
+        }
       ?>
       <div class="stat-grid-4">
         <div class="stat-cell">
@@ -1495,6 +1510,13 @@ if ($tl_show) {
           <?php if ($drive_rt): ?>
             <div class="stat-cell-val"><?= floor($drive_rt/60) ?>h <?= $drive_rt%60 ?>m</div>
             <div class="stat-cell-sub"><?= $selected_address ? htmlspecialchars($selected_address['label'] ?: 'from base') : 'round-trip' ?></div>
+            <?php if ($selected_address): ?>
+            <button type="submit" name="calculate_drive_time"
+                    title="<?= $travel_stale ? 'The starting point changed since this was calculated' : 'Recalculate travel time' ?>"
+                    style="margin-top:0.35rem; background:none; color:<?= $travel_stale ? 'var(--accent)' : 'var(--ink-4)' ?>; border:1px solid <?= $travel_stale ? 'var(--accent-border)' : 'var(--border)' ?>; border-radius:var(--r-sm); padding:0.15rem 0.5rem; font-size:0.68rem; font-weight:<?= $travel_stale ? '600' : '500' ?>; cursor:pointer; font-family:var(--font-sans); white-space:nowrap;">
+                Recalculate
+            </button>
+            <?php endif; ?>
           <?php elseif ($selected_address): ?>
             <div class="stat-cell-val" style="color:var(--ink-3); font-size:0.875rem;">—</div>
             <button type="submit" name="calculate_drive_time"
@@ -1751,9 +1773,6 @@ if ($tl_show) {
 
       <div style="display:flex; gap:0.75rem; padding-top:1rem; border-top:1px solid var(--border);">
         <button type="submit" name="update_summit" class="btn btn-primary">Save Changes</button>
-        <?php if ($selected_address && $drive_rt): ?>
-          <button type="submit" name="calculate_drive_time" class="btn btn-ghost btn-sm" style="align-self:center;">Recalculate Travel Time</button>
-        <?php endif; ?>
       </div>
     </div>
   </form><!-- end main-edit-form, must close before right sidebar to avoid nested forms -->
