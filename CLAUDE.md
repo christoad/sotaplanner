@@ -361,6 +361,8 @@ Session keys: `sota_callsign`, `sota_login_type`, `current_planning_group_id`
 
 MySQL on DreamHost. All queries use PDO with prepared statements.
 
+**DB host must be the panel hostname, not the server name (changed 2026-10-17).** `DB_HOST` in `/home/chrisr069/sotaplanner_secrets.php` (on the server, not in git; shared by staging and production) is `mysql.ki6cr.com`. It used to be `beath.pdx1-mysql-a7-1b.dreamhost.com`. On 2026-10-16 DreamHost upgraded that server to MySQL 8.4, and afterward the server name reached a read-only copy (`@@read_only = 1`), so every write on the site failed until the host was switched. `mysql.ki6cr.com` reaches the writable server (`pdx1-mysql-a7-1a`). DreamHost's own advice is to connect by panel hostname so IP or server changes don't break the site. Never switch it back to the server name. Backup of the old file: `/home/chrisr069/sotaplanner_secrets.php.bak-20261017`. If saves ever fail again, first check `SELECT @@hostname, @@read_only` from the server. MySQL 8.4 also reserves the words MANUAL, PARALLEL, QUALIFY and TABLESAMPLE; backtick them if they appear as table or column names in SQL.
+
 Key tables:
 - `planning_groups` — groups (id, name, units, owner_callsign)
 - `planning_group_members` — join table (planning_group_id, callsign)

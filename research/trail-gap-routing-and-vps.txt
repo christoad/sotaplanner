@@ -1,0 +1,204 @@
+SOTA PLANNER RESEARCH NOTES: TRAIL GAP ROUTING AND VPS HOSTING
+Researched: 2026-10-15 (notes saved 2026-10-16)
+Question: Can we automatically generate a hiking route between two known
+coordinates (to close trail gaps), and would a DreamHost VPS be a good home for
+it? Would a VPS also help general site performance?
+
+======================================================================
+1. THE PROBLEM THAT STARTED THIS
+======================================================================
+Multi-Activate route https://sotaplanner.com/multi_activate.php?id=54
+(ids=4062,4060,4061, group=61):
+  1. Pleasants Peak   W6/CT-160  33.798952, -117.606066
+  2. Modjeska Peak    W6/CT-026  33.7201, -117.544
+  3. Santiago Peak    W6/CT-023
+There is no hike data between summit 2 (Modjeska) and summit 3 (Santiago), so
+the Multi-Activate page shows no hike estimate for that leg. This is the exact
+use case: a hike estimate between two summits that have no track connecting
+them.
+
+======================================================================
+2. gpx.studio (https://github.com/gpxstudio/gpx.studio)
+======================================================================
+- Web GPX editor, MIT licensed.
+- Its routing comes from a separate engine. README credits GraphHopper (the
+  project has used other engines in the past). Terrain/elevation data credited
+  to Mapterhorn, map data to OpenStreetMap.
+- No documented API or library for calling its routing from outside. Its
+  routing service is run for its own site.
+- CONCLUSION: not the thing to build on. Use a routing engine directly.
+- Not verified: I did not read its source code.
+
+======================================================================
+3. ROUTING ENGINES THAT CAN CLOSE A TRAIL GAP
+======================================================================
+All use OpenStreetMap trail data (paths, tracks, footways, SAC hiking grades)
+and take two coordinates, returning a path with elevation.
+
+BRouter  (https://github.com/abrensch/brouter)   LICENSE: MIT   BEST FIT
+  - Built for hikers and cyclists, supports custom profiles.
+  - Self-host: Java runtime + segment data files (5x5 degree tiles, "rd5"
+    format) downloaded from brouter.de or generated from OSM data.
+  - HTTP API is a plain GET:
+      https://brouter.de/brouter?lonlats=LON,LAT|LON,LAT&profile=trekking&alternativeidx=0&format=geojson
+    Note: lonlats is LONGITUDE first. Pipe separates waypoints (URL-encode as
+    %7C). format can be geojson or gpx.
+  - Built-in profiles listed on the public page: trekking, fastbike,
+    trekking-ignore-cr, safety, shortest, trekking-steep, trekking-noferries,
+    trekking-nosteps, moped, car-test. A hiking profile such as
+    "Hiking-Alpine-SAC6" exists in the brouter-web UI.
+  - Public server (brouter.de) caveats: its own page says concurrency is
+    "very restrictive", "one session kills the other", priority to calculations
+    under 100 km. No published API usage terms or rate limits that I could
+    find. Do not build an automated app feature on it at volume.
+
+GraphHopper   LICENSE: Apache 2.0
+  - Has foot and hike profiles, good API. Hosted service is paid past a free
+    tier. gpx.studio uses it.
+
+Valhalla   LICENSE: MIT
+  - Pedestrian mode, elevation sampling, isochrones. Heavier to self-host.
+
+openrouteservice   Open source
+  - Has a foot-hiking profile. Free API key with daily limits.
+
+LIMITS OF ANY OSM-BASED ROUTER
+  - It only follows mapped trails. Unofficial summit routes and last-bit
+    scrambles may not be in OSM, so the router may detour onto roads or fail.
+  - Fallback idea: straight line labelled as an estimate, like the existing
+    "(est.)" in the Multi-Activate alternate-start feature.
+
+======================================================================
+4. LIVE TEST (2026-10-15)
+======================================================================
+One manual request to the public BRouter, Modjeska to Santiago, profile
+trekking:
+  from -117.544,33.7201   to -117.5316,33.7108
+  (Santiago coordinates were APPROXIMATE, from memory. Verify against the
+  SOTA cache before relying on the numbers.)
+Result:
+  - track-length 4611 m (about 2.9 mi)
+  - filtered ascend 232 m, plain ascend 50 m
+  - total-time 2253 s (about 38 min), but this is the trekking profile's
+    bike-style time, NOT a hiking time. Compute hike time ourselves from
+    distance and climb using the existing GPX pace logic.
+  - 251 track points, so a real trail-following line.
+Conclusion: BRouter can fill this gap. Route follows the Main Divide
+road/trail between the two peaks.
+
+======================================================================
+5. PROPOSED INTEGRATION (not built yet)
+======================================================================
+Build on multi_alt_lib.php (the alternate hike start feature):
+  1. A leg has no connecting track and no pin.
+  2. Call a routing engine for summit A to summit B.
+  3. Show the result as a flagged estimate, like "(est.)".
+  4. Cache permanently in a new table keyed by the ordered pair of summits
+     (pairs never change, so each is routed once). Migration must be additive
+     (new table only) because staging and production share one database; use
+     the db_migrate.php pattern.
+  5. Dashboard, public share view and PDF all read the cached value.
+Open decisions for Chris:
+  a. Where routing runs: public BRouter at low volume (free, fragile, fine for
+     beta) vs self-hosted BRouter on a VPS (durable, a few dollars a month).
+  b. Scope: only gaps between summits in Multi-Activate, or also a
+     trailhead-to-summit estimate for summits with no track at all.
+Other possible uses: closing gaps in community GPX tracks that stop short of
+the trailhead; suggested route for summits with no track (label as a guess).
+Reminder: this is OSM/BRouter, not the SOTA API, so the SOTA API ToS clause in
+the global CLAUDE.md does not apply. Keep any use of the public BRouter server
+to a handful of manual calls until we self-host.
+
+======================================================================
+6. DREAMHOST VPS
+======================================================================
+Two price lists found that do not match. Check DreamHost's checkout before
+deciding.
+
+A) DreamHost's own VPS page (https://www.dreamhost.com/hosting/vps/),
+   UNMANAGED, full root access, Docker + KVM, AMD EPYC, NVMe, unmetered
+   bandwidth. Intro price for first 3 months, then auto-renews higher:
+     Stack 4   $8.99/mo   2 vCPU   4 GB RAM   75 GB NVMe
+     Stack 8   $13.99/mo  2 vCPU   8 GB RAM   150 GB NVMe
+     Stack 16  $22.99/mo  4 vCPU   16 GB RAM  250 GB NVMe
+     Stack 32  $45.99/mo  8 vCPU   32 GB RAM  450 GB NVMe
+   Page says root access allows Java or any Linux software.
+
+B) Third-party reviews (managed VPS, 36-month term promo pricing):
+     Business     $10/mo   2 cores  2 GB   60 GB    (renews about $25)
+     Professional $20/mo   2 cores  4 GB   120 GB   (renews about $47)
+     Enterprise   $40/mo   4 cores  8 GB   240 GB   (renews about $93)
+     Premier      $60/mo   6 cores  12 GB  360 GB   (renews about $115)
+   Managed plans may not allow running Java. Prefer unmanaged with root.
+
+For BRouter alone: the cheapest 4 GB plan is plenty. Real cost is disk for the
+map tiles (California is a few hundred MB; whole world is tens of GB).
+DreamHost key auth and the dreamhost-sota SSH alias do NOT carry over
+automatically; a new VPS is a separate server and would need its own SSH alias.
+
+======================================================================
+7. WOULD A VPS FIX SITE PERFORMANCE?
+======================================================================
+Context: the 2026-10-13 audit found the database fine (every query 0.4 to
+5 ms). The real slowness was session file locking, slow outbound HTTP calls,
+and scanning the gz summit cache. Those were fixed in CODE (session_write_close,
+timeouts, indexed sota_summit_index table, sota_cache_norm.txt). A VPS would
+not have fixed them.
+
+A VPS WOULD HELP WITH:
+  - Dedicated CPU/RAM, no noisy neighbors.
+  - Our own PHP config: JIT on properly, predictable OPcache (avoids the
+    stale-bytecode-after-deploy problem seen 2026-08-25).
+  - Private sessions and temp dirs (no shared /tmp risk).
+  - Room for Redis or similar caching, and crons that do not compete with the
+    web server.
+A VPS WOULD NOT HELP WITH:
+  - MySQL is a separate DreamHost server (beath.pdx1-mysql-a7-1b). A VPS does
+    not include a database, so every query still crosses the network.
+  - Pages waiting on Google or SOTA calls.
+  - Distance to far-away users (that is what Cloudflare is for).
+
+MOVING THE WHOLE SITE IS A BIG JOB:
+  - Production, staging and cron jobs depend on current paths.
+  - SOTA SSO is locked to the exact sotaplanner.com redirect URI.
+  - config.php is shared by staging and production; session dir would change.
+  - Unmanaged means we own PHP, web server, SSL, updates, backups.
+
+======================================================================
+8. RECOMMENDATION
+======================================================================
+  1. Rent a small unmanaged VPS ONLY for self-hosted BRouter; leave the site
+     where it is. Low risk, does not touch production, cheapest way to try a
+     VPS.
+  2. Do the Cloudflare CDN setup already queued in CLAUDE.md (free, helps
+     far-away users). Needs Chris's explicit go-ahead before any DNS change.
+  3. Move the whole site later only if real traffic shows PHP is the
+     bottleneck.
+Status as of 2026-10-16: nothing built. Waiting on Chris to choose between the
+public-BRouter-first path and the VPS path.
+
+======================================================================
+SOURCES
+======================================================================
+https://github.com/gpxstudio/gpx.studio
+https://github.com/abrensch/brouter
+https://brouter.de/brouter/online.html
+https://mapzen.com/blog/valhalla-intro
+https://opensource.com/life/14/11/graphhopper-open-source-route-trip-planner
+https://www.dreamhost.com/hosting/vps/
+https://www.websitebuilderexpert.com/web-hosting/dreamhost-pricing/
+https://hostadvice.com/hosting-company/dreamhost-reviews/vps-pricing/
+
+======================================================================
+9. BROUTER TILE SIZES (measured 2026-10-16)
+======================================================================
+Summed from https://brouter.de/brouter/segments4/ (1,142 .rd5 files):
+  - Whole globe: about 10.0 GB.
+  - Only tiles containing at least one SOTA summit: 396 tiles, about 6.8 GB.
+    (182,280 summits from storage.sota.org.uk/summitslist.csv fall into 404
+    tiles; 8 of those have no BRouter file: E145_N20, E25_N80, W30_S60,
+    W180_S35, E175_S50, E0_S55, E20_N80, E30_N80, probably empty or remote.)
+  - Largest tiles are in Europe (E5_N45 is 253 MB, E10_N45 199 MB).
+  - West Coast test set (10 tiles): about 392 MB.
+  - Tiles are regenerated weekly upstream; refreshing every 3 to 6 months is
+    plenty. The earlier "tens of GB" estimate was too high.

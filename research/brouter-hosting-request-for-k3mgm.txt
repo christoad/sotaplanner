@@ -1,0 +1,163 @@
+BROUTER HOSTING REQUEST FOR SOTAPLANNER
+Prepared 2026-10-16 for Mark, from Chris Reddick (KI6CR)
+
+======================================================================
+WHAT THIS IS AND WHY
+======================================================================
+SOTAplanner (sotaplanner.com) helps amateur radio operators plan summit hikes.
+Sometimes we know two points (for example two neighboring summits) but have no
+recorded trail between them, so we cannot estimate the hike. We want to ask a
+routing service: "what is the walking route and climb between point A and
+point B?"
+
+The tool for this is BRouter, a free, open source (MIT license) route planner
+that follows OpenStreetMap trails. The public BRouter server (brouter.de) says
+its capacity is very limited, so we would like to run our own copy.
+
+SOTAplanner itself stays where it is (DreamHost). Mark's server would ONLY run
+BRouter and answer web requests from SOTAplanner. Nothing else moves, and
+Mark does not need access to the SOTAplanner site, code or database.
+
+======================================================================
+WHAT WE NEED MARK TO SET UP
+======================================================================
+1. A Linux server (or VM/container) with:
+   - Java runtime (a current LTS version, for example 17 or 21).
+   - About 2 GB RAM free for BRouter is plenty; 1 vCPU is enough.
+   - Disk space for map data, see step 3.
+
+2. BRouter installed
+   - Source and release downloads: https://github.com/abrensch/brouter
+     (download the latest release zip; it contains brouter.jar, the standalone
+     server scripts and the profiles folder).
+   - Run it in standalone server mode, listening only on localhost (for
+     example 127.0.0.1:17777, its default port) so it is not directly exposed.
+   - Please follow the current README in the repo for the exact start command
+     and arguments, since they can change between versions. It takes: the
+     segment data folder, the profiles folder, a custom-profiles folder, a
+     port and a max thread count. Max threads of 2 to 4 is fine for us.
+   - Set it up to start automatically on boot and restart if it crashes (for
+     example a systemd service).
+
+3. Map data ("segment" files, .rd5)
+   - BRouter routes on prebuilt 5 by 5 degree tiles named by their
+     lower-left corner, for example W120_N30.rd5.
+   - Download from the BRouter project's segment server:
+     https://brouter.de/brouter/segments4/
+   - Phase 1 (test): the US West Coast, 10 files, about 392 MB total
+     (sizes as listed on the segments page on 2026-10-16):
+         W125_N30  1 MB       W120_N30  53 MB
+         W125_N35  56 MB      W120_N35  31 MB
+         W125_N40  38 MB      W120_N40  21 MB
+         W125_N45  67 MB      W120_N45  29 MB
+         W125_N50  6 MB       W120_N50  9 MB
+     W120_N30 covers longitude -120 to -115 and latitude 30 to 35, which
+     includes the Santa Ana Mountains where our first test case is.
+   - Phase 2 (goal): the entire world, because SOTA summits exist on every
+     continent. Every tile in the segments4 listing (1,000+ files). Measured
+     2026-10-16: the full listing is 1,142 files, about 10.0 GB total.
+     Only the 396 tiles that actually contain a SOTA summit come to about
+     6.8 GB, which is enough for SOTAplanner. Plan for 15 to 20 GB of disk
+     to leave room for refreshed copies, logs and the BRouter install. Do the West Coast test first and only download the rest once
+     Chris says go.
+   - Download tip: a script that fetches the whole listing (wget, curl or
+     rsync-style "only newer files") makes both the first global download and
+     later refreshes easy.
+
+   UPDATING THE TILES
+   - The BRouter project regenerates the worldwide tiles weekly (the listing
+     showed files stamped 2026-10-16). Our server does not need to keep up
+     with that. Trails change slowly, and SOTAplanner caches each routed pair
+     permanently.
+   - Suggested schedule: refresh about every 3 to 6 months with a cron job
+     that downloads only files newer than the local copies. Monthly is fine
+     if Mark prefers; weekly is unnecessary.
+   - Replace files safely: download to a temporary folder, then move into the
+     segments folder, so a half-downloaded file never gets served. A restart
+     is not normally needed, but check the README.
+
+4. A hiking profile
+   - Routing behavior is controlled by "profile" files. The release includes
+     a "trekking" profile. We would also like a hiking-oriented profile (one
+     that prefers footpaths and avoids roads). Chris will supply or choose one
+     later; Mark just needs to know that a profile file is dropped into the
+     profiles folder and BRouter picks it up by file name.
+
+5. A public HTTPS front door (reverse proxy)
+   - Put nginx, Caddy or similar in front of BRouter, with a real domain or
+     subdomain name and a TLS certificate (Let's Encrypt is fine), for
+     example https://routing.example.com.
+   - Forward only the route path (/brouter) to the local BRouter port. Do not
+     expose any other BRouter paths or the raw port.
+   - Require a simple shared secret so strangers cannot use it. Easiest:
+     the proxy rejects any request that does not carry a header such as
+         X-Api-Key: <long random string>
+     Mark generates the string and shares it with Chris privately (not by
+     email in plain text if avoidable).
+   - Rate limit it (for example 30 requests per minute per client) and set a
+     request timeout of around 60 seconds.
+   - Firewall: allow inbound 443 (and 80 if needed for certificate renewal),
+     and SSH from Mark's own addresses only.
+
+======================================================================
+WHAT SOTAPLANNER WILL CALL
+======================================================================
+One simple web request, made by the SOTAplanner server (PHP), never from a
+visitor's browser:
+
+   GET https://routing.example.com/brouter
+       ?lonlats=-117.544,33.7201|-117.5316,33.7108
+       &profile=trekking
+       &alternativeidx=0
+       &format=geojson
+   Header: X-Api-Key: <the shared secret>
+
+Notes:
+ - lonlats is LONGITUDE first, then latitude. Points are separated by a pipe
+   character (sent URL-encoded as %7C).
+ - profile is the profile file name (trekking now, a hiking profile later).
+ - format=geojson returns the route line plus totals (distance in meters,
+   climb, time). format=gpx is also available.
+ - Expected load: very low. A handful of requests a day at first, because
+   SOTAplanner caches every result permanently. Occasional bursts if Chris
+   imports many routes at once.
+ - Typical response time for a few miles of trail: well under a second after
+   BRouter warms up; longer routes can take several seconds.
+
+======================================================================
+WHAT MARK SHOULD SEND BACK TO CHRIS
+======================================================================
+ [ ] The base URL (for example https://routing.example.com)
+ [ ] The API key / shared secret
+ [ ] Which tile files are installed (so we know the covered area)
+ [ ] A one-line test command that works, for example:
+       curl -H "X-Api-Key: ..." "https://routing.example.com/brouter?lonlats=-117.544,33.7201%7C-117.5316,33.7108&profile=trekking&format=geojson"
+ [ ] How to ask for more map tiles or a restart
+ [ ] Any limits Mark wants us to respect (hours, rate, bandwidth)
+
+======================================================================
+THINGS TO AGREE ON (Chris and Mark)
+======================================================================
+ - Uptime expectations. This is a nice-to-have feature, not mission critical:
+   if the server is down, SOTAplanner shows "no estimate" for that leg and
+   carries on. So best-effort hosting is fine.
+ - Cost and resources. BRouter is light, but map data takes disk space and
+   routing uses CPU in short bursts.
+ - Who to contact for outages or upgrades.
+ - Privacy: the server only ever sees pairs of coordinates (summit and
+   trailhead locations). No user names, callsigns or personal data are sent.
+ - Security basics: keep Java, the OS and the reverse proxy updated; keep the
+   API key private; rotate it if it leaks.
+
+======================================================================
+WHAT CHRIS / CLAUDE WILL DO ON THE SOTAPLANNER SIDE
+======================================================================
+ - Store the URL and API key in sotaplanner_secrets.php (outside the web
+   root, not in git).
+ - Add a PHP routing helper with a short timeout and a graceful fallback.
+ - Add an additive database table that caches each routed pair of summits
+   permanently, so each pair is only ever requested once.
+ - Show routed legs in Multi-Activate as a flagged estimate, with hike time
+   computed from distance and climb using the existing GPX pace logic.
+ - Test on staging first, then ship to production.
+ See research/trail-gap-routing-and-vps.txt for the background research.
