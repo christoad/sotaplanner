@@ -1220,8 +1220,8 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
     .multi-expand-btn::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; }
     .multi-expand-btn:hover { background: oklch(80% 0.09 155); }
     .multi-expand-btn:focus-visible { outline: 2px solid var(--green-dark); outline-offset: 1px; }
-    .multi-expand-caret { transition: transform 0.15s; display: inline-flex; line-height: 1; }
-    .multi-expand-btn.open .multi-expand-caret { transform: rotate(180deg); }
+    .multi-expand-caret { transition: transform 0.15s; display: inline-flex; line-height: 1; transform: rotate(-90deg); }
+    .multi-expand-btn.open .multi-expand-caret { transform: rotate(0deg); }
     .badge-multi { background: var(--green-dark-bg); color: var(--green-dark-2); border: 1px solid var(--green-dark-border); }
     /* Nested rows are green only for summits that are themselves ready */
     .data-table tbody tr.nested-summit-row { opacity: 1 !important; }
