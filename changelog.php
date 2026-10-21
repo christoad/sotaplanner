@@ -263,7 +263,21 @@ session_start();
         </a>
     </div>
 
-    <!-- September 2026 -->
+    <!-- What we're working on -->
+    <div class="version-block">
+        <div class="version-header">
+            <span class="version-number">What we're working on</span>
+            <span class="version-badge" style="background: var(--blue);">In progress</span>
+        </div>
+        <p class="version-desc">Features currently in development. They are not live yet.</p>
+        <ul>
+            <li>Activation count</li>
+            <li>Summit to Summit mode with elevation plots</li>
+            <li>Weather widget on the summit detail page</li>
+        </ul>
+    </div>
+
+    <!-- October 2026 -->
     <div class="version-block current">
         <div class="version-header">
             <span class="version-number">October 2026 update</span>
