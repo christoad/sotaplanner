@@ -155,6 +155,45 @@ if (isset($_POST['select_group'])) {
         }
     }
 
+    // Edit address
+    if (isset($_POST['edit_address']) && isset($_SESSION['manage_group_id'])) {
+        $address_id = (int)$_POST['address_id'];
+        $label = trim($_POST['label']);
+        $address = trim($_POST['address']);
+        $group_id = $_SESSION['manage_group_id'];
+
+        if ($address === '') {
+            $error = "Address is required.";
+            $open_edit_address_id = $address_id;
+        } else {
+            $addr_check = validateStartingAddress($address);
+            if (!$addr_check['ok']) {
+                $error = $addr_check['error'];
+                $open_edit_address_id = $address_id;
+            } else {
+                try {
+                    $stmt = $db->prepare("UPDATE addresses SET label = ?, address = ?, lat = ?, lng = ? WHERE id = ? AND planning_group_id = ?");
+                    $stmt->execute([$label, $address, $addr_check['lat'] ?? null, $addr_check['lng'] ?? null, $address_id, $group_id]);
+
+                    // Saved travel times are tied to the old coordinates; if this is the
+                    // active address, reload what's still valid and blank the rest.
+                    $sel = $db->prepare("SELECT setting_value FROM app_settings WHERE setting_key = ?");
+                    $sel->execute(['selected_address_group_' . $group_id]);
+                    if ((int)$sel->fetchColumn() === $address_id) {
+                        $row = $db->prepare("SELECT * FROM addresses WHERE id = ?");
+                        $row->execute([$address_id]);
+                        if ($a = $row->fetch()) applyCachedDriveTimes($db, $group_id, $a);
+                    }
+                    $message = $addr_check['found']
+                        ? "Address updated. Google Maps found it at: " . $addr_check['found']
+                        : "Address updated.";
+                } catch (PDOException $e) {
+                    $error = "Error updating address: " . $e->getMessage();
+                }
+            }
+        }
+    }
+
     // Delete address
     if (isset($_POST['delete_address']) && isset($_SESSION['manage_group_id'])) {
         $address_id = (int)$_POST['address_id'];
@@ -1022,6 +1061,8 @@ a:hover { text-decoration: underline; }
                                     <?php else: ?>
                                         <span style="font-size: 0.72rem; color: var(--accent); font-weight: 600;">Current</span>
                                     <?php endif; ?>
+                                    <button type="button" class="btn btn-ghost btn-sm"
+                                            onclick="openEditAddress(<?= (int)$addr['id'] ?>, <?= htmlspecialchars(json_encode($addr['label'] ?? ''), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($addr['address']), ENT_QUOTES) ?>)">Edit</button>
                                     <form method="POST" style="display: inline;">
                                         <input type="hidden" name="address_id" value="<?= $addr['id'] ?>">
                                         <button type="submit" name="delete_address" class="btn btn-ghost btn-sm"
@@ -1175,6 +1216,46 @@ a:hover { text-decoration: underline; }
         </form>
     </div>
 </div>
+
+<!-- Edit Address Modal -->
+<div id="editAddressModal" class="modal-overlay" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box">
+        <button class="modal-close" onclick="document.getElementById('editAddressModal').classList.remove('open')">×</button>
+        <div class="modal-title">Edit Starting Location</div>
+        <form method="POST">
+            <input type="hidden" name="address_id" id="editAddressId">
+            <div class="form-group">
+                <label class="form-label">Label (optional)</label>
+                <input type="text" name="label" id="editAddressLabel" class="form-input" placeholder="e.g., Home, Work, Cabin">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Address</label>
+                <input type="text" name="address" id="editAddressText" class="form-input" required>
+                <div class="form-hint">A zip code, cross streets with a city, or a street address. Changing it recalculates travel times from this location.</div>
+                <?php if (!empty($error) && isset($_POST['edit_address'])): ?>
+                    <div class="form-hint" style="color: var(--red); margin-top: 0.4rem;"><?= htmlspecialchars($error) ?></div>
+                <?php endif; ?>
+            </div>
+            <div style="display: flex; gap: 0.75rem;">
+                <button type="submit" name="edit_address" class="btn btn-primary" style="flex: 1;">Save Changes</button>
+                <button type="button" class="btn btn-ghost" onclick="document.getElementById('editAddressModal').classList.remove('open')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+function openEditAddress(id, label, address) {
+    document.getElementById('editAddressId').value = id;
+    document.getElementById('editAddressLabel').value = label;
+    document.getElementById('editAddressText').value = address;
+    document.getElementById('editAddressModal').classList.add('open');
+}
+</script>
+<?php if (!empty($open_edit_address_id) && $managing_group): ?>
+<script>
+    openEditAddress(<?= (int)$open_edit_address_id ?>, <?= json_encode(trim($_POST['label'] ?? '')) ?>, <?= json_encode(trim($_POST['address'] ?? '')) ?>);
+</script>
+<?php endif; ?>
 
 <?php if (!empty($open_address_modal) && $managing_group): ?>
 <script>
