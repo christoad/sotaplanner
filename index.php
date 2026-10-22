@@ -257,7 +257,7 @@ if ($filter_param === 'all' || empty($filter_param)) {
 }
 
 // Validate sort parameters
-$allowed_sorts = ['name', 'sota_ref', 'points', 'elevation_ft', 'hike_distance_mi', 'hike_elevation_gain_ft', 'difficulty', 'status', 'nominated_date', 'last_activated_date', 'hike_time', 'drive_time', 'total_time'];
+$allowed_sorts = ['name', 'sota_ref', 'points', 'elevation_ft', 'hike_distance_mi', 'hike_elevation_gain_ft', 'difficulty', 'status', 'nominated_date', 'last_activated_date', 'hike_time', 'drive_time', 'total_time', 'activation_count'];
 if (!in_array($sort_by, $allowed_sorts)) {
     $sort_by = 'nominated_date';
 }
@@ -301,7 +301,7 @@ $sort_expr = match($sort_by) {
     'drive_time' => 'NULLIF(s.drive_time_min, 0)',
     default      => "s.$sort_by"
 };
-$sort_nulls_last = in_array($sort_by, ['hike_time', 'total_time', 'drive_time'], true) ? "($sort_expr) IS NULL," : '';
+$sort_nulls_last = in_array($sort_by, ['hike_time', 'total_time', 'drive_time', 'activation_count'], true) ? "($sort_expr) IS NULL," : '';
 
 // Get summits for CURRENT group ONLY (not all groups!)
 // Also get GPX data if available for this group
@@ -567,6 +567,15 @@ function dashboard_is_ready($summit, $hike_time_total, $drive_time, $activated_t
     return dashboard_has_total($summit, $hike_time_total, $drive_time);
 }
 
+// SOTLAS-style colour for a summit's point value (same palette as the dashboard map pins)
+function points_color(int $pts): string {
+    $map = [0 => '#a0a0a0', 1 => '#4d7a20', 2 => '#6da536', 4 => '#aea727', 6 => '#efa818', 8 => '#dc5d04', 10 => '#c8101e'];
+    if (isset($map[$pts])) return $map[$pts];
+    $best = 0;
+    foreach (array_keys($map) as $k) if ($k <= $pts) $best = $k;   // 3, 5, 7, 9 use the next tier down
+    return $map[$best];
+}
+
 function render_dashboard_row($summit, $current_group, $user_units, $activation_time, $nested = false, $route_order = null, $multi_group_id = null, $multi_expanded = true) {
     [$distance_display_mi, $elevation_for_display, $hike_time_total] = dashboard_hike_stats($summit, $current_group);
 
@@ -613,9 +622,16 @@ function render_dashboard_row($summit, $current_group, $user_units, $activation_
             </a>
         </td>
         <td class="td-hide-mobile">
-            <span class="points-dot"><?= $summit['points'] ?></span>
+            <span class="points-dot" style="--pc:<?= points_color((int)$summit['points']) ?>"><?= $summit['points'] ?></span>
             <?php if (!empty($summit['bonus_points']) && isWinterBonusSeasonActive($summit['latitude'])): ?>
                 <span class="bonus-badge" data-tip="<?= htmlspecialchars(winterBonusSeasonText($summit['bonus_points'], $summit['latitude'])) ?>">+<?= $summit['bonus_points'] ?></span>
+            <?php endif; ?>
+        </td>
+        <td class="td-hide-mobile td-act-count col-acts"<?= $summit['activation_count'] === null ? ' data-empty' : '' ?>>
+            <?php if ($summit['activation_count'] !== null): ?>
+                <span class="stat-val"><?= number_format((int)$summit['activation_count']) ?></span>
+            <?php else: ?>
+                <span class="stat-val" style="color:var(--ink-4)">—</span>
             <?php endif; ?>
         </td>
         <td class="td-diff">
@@ -1143,6 +1159,8 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
     .data-table tbody tr.row-activated { background: var(--gray-bg); opacity: 0.65; }
     .data-table td { padding: var(--sp-3) var(--sp-4); vertical-align: middle; }
     .data-table td.text-right { text-align: right; }
+    .data-table td.td-hide-mobile { white-space: nowrap; }
+    .data-table th.col-acts, .data-table td.col-acts { text-align: center; width: 1%; padding-left: var(--sp-2); padding-right: var(--sp-2); }
 
     /* ── Badges ── */
     .badge {
@@ -1174,9 +1192,11 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
     /* ── Points dot ── */
     .points-dot {
       display: inline-flex; align-items: center; justify-content: center;
-      width: 22px; height: 22px; border-radius: 50%;
-      background: var(--bg-2); border: 1px solid var(--border-2);
-      font-size: 0.7rem; font-weight: 700; color: var(--ink-2);
+      width: 32px; height: 32px; border-radius: 50%;
+      /* Subtle tint of the SOTLAS point colour (--pc set inline); falls back to neutral grey */
+      background: color-mix(in srgb, var(--pc, #a0a0a0) 15%, #fff);
+      border: 1px solid color-mix(in srgb, var(--pc, #a0a0a0) 55%, #fff);
+      font-size: 0.95rem; font-weight: 700; color: color-mix(in srgb, var(--pc, #a0a0a0) 75%, #000);
       font-variant-numeric: tabular-nums;
     }
     .bonus-badge {
@@ -1811,6 +1831,9 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
                         <th class="<?= $sort_by === 'points' ? 'sorted' : '' ?> td-hide-mobile" onclick="sortTable('points')">
                             Pts <span class="sort-icon"><?= $sort_by === 'points' ? ($sort_order === 'ASC' ? '↑' : '↓') : '↕' ?></span>
                         </th>
+                        <th class="<?= $sort_by === 'activation_count' ? 'sorted' : '' ?> td-hide-mobile col-acts" onclick="sortTable('activation_count')" title="Activations: total times SOTA records this summit as activated">
+                            Acts <span class="sort-icon"><?= $sort_by === 'activation_count' ? ($sort_order === 'ASC' ? '↑' : '↓') : '↕' ?></span>
+                        </th>
                         <th class="<?= $sort_by === 'difficulty' ? 'sorted' : '' ?>" onclick="sortTable('difficulty')">
                             Difficulty <span class="sort-icon"><?= $sort_by === 'difficulty' ? ($sort_order === 'ASC' ? '↑' : '↓') : '↕' ?></span>
                         </th>
@@ -1895,6 +1918,7 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
                         <td class="td-hide-mobile">
                             <span class="points-dot"><?= $t_points ?></span>
                         </td>
+                        <td class="td-hide-mobile col-acts"><span style="color:var(--ink-4)">—</span></td>
                         <td class="td-diff">
                             <span class="badge badge-multi">Multi-Route</span>
                         </td>
@@ -1973,6 +1997,7 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
         <p class="hiw-section">The Summit List</p>
         <ul class="hiw-list">
             <li><strong>Pts:</strong> SOTA points awarded for activating this summit.</li>
+            <li><strong>Activations:</strong> Total times SOTA records this summit as activated, by anyone.</li>
             <li><strong>Distance:</strong> round-trip hiking distance. From GPS track if one is loaded, otherwise manually entered.</li>
             <li><strong>Gain:</strong> total elevation gained on the approach.</li>
             <li><strong>Hike Time:</strong> round-trip hiking time. From GPS timestamps if available; otherwise Naismith's rule.</li>
@@ -2870,7 +2895,11 @@ try {
   } catch (e) {}
 
   const doneSet = new Set(alreadyDone);
-  const ids = allIds.filter(id => !doneSet.has(id));
+  // Summits with no activation count yet are always fetched, even if refreshed earlier today
+  const missingCount = new Set(Array.from(document.querySelectorAll('tr[data-summit-id]'))
+      .filter(r => r.querySelector('.td-act-count[data-empty]'))
+      .map(r => r.dataset.summitId));
+  const ids = allIds.filter(id => !doneSet.has(id) || missingCount.has(id));
   if (!ids.length) return;
 
   try {
@@ -2883,6 +2912,12 @@ try {
     const id = ids[i++];
     fetch('sota_refresh.php?summit_id=' + id + '&group_id=' + groupId)
       .then(r => r.json())
+      .then(d => {
+        // Fill in the Activations cell in place; no page reload needed
+        if (!d || !d.ok || typeof d.activation_count !== 'number') return;
+        const cell = document.querySelector('tr[data-summit-id="' + id + '"] .td-act-count .stat-val');
+        if (cell) { cell.textContent = d.activation_count.toLocaleString(); cell.style.color = ''; cell.parentElement.removeAttribute('data-empty'); }
+      })
       .catch(() => {})
       .finally(() => setTimeout(next, 200));
   }

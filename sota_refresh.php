@@ -4,7 +4,7 @@
  * Called via fetch() from the dashboard on page load, silent, non-blocking.
  *
  * GET params: summit_id, group_id
- * Returns JSON: { ok, updated, last_activated_date, activated_by }
+ * Returns JSON: { ok, activation_count, updated, last_activated_date, activated_by }
  */
 require_once 'config.php';
 session_start();
@@ -52,6 +52,11 @@ if (!is_array($all_activations)) {
     exit;
 }
 
+// Total activations ever logged for this summit, shown in the dashboard's Activations column
+$activation_count = count($all_activations);
+$db->prepare("UPDATE summits SET activation_count = ? WHERE sota_ref = ? AND (activation_count IS NULL OR activation_count <> ?)")
+   ->execute([$activation_count, $summit['sota_ref'], $activation_count]);
+
 // Get group member callsigns (including their additional callsigns)
 $group_callsigns = getGroupHomeCallsigns($db, $group_id);
 
@@ -80,6 +85,7 @@ if ($most_recent_date) {
 
 echo json_encode([
     'ok'                  => true,
+    'activation_count'    => $activation_count,
     'updated'             => $updated,
     'last_activated_date' => $most_recent_date,
     'activated_by'        => $most_recent_callsign,

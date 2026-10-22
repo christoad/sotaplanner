@@ -10,6 +10,13 @@ requireLogin();
 // through slow work (API calls, file scans) would stall every other request from this user.
 session_write_close();
 
+function _set_activation_count(PDO $db, int $summit_id, $summit_data): void {
+    // The SOTA summit lookup already returns activationCount, so nominating costs no extra API call
+    if (!is_array($summit_data) || !isset($summit_data['activationCount'])) return;
+    $db->prepare("UPDATE summits SET activation_count = ? WHERE id = ?")
+       ->execute([(int)$summit_data['activationCount'], $summit_id]);
+}
+
 // Link a global GPX library track to a newly-created summit row.
 // Creates a gpx_tracks row pointing at the shared file and fills in
 // hike distance, elevation gain, and trailhead on the summit.
@@ -262,6 +269,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'nominate_one') {
         }
 
         $summit_id = (int)$db->lastInsertId();
+        _set_activation_count($db, $summit_id, $sd);
         _link_global_gpx($db, $summit_id, $current_group['id'], $sota_ref);
         _maybe_set_researched($db, $summit_id);
     }
@@ -524,6 +532,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
                 }
 
                 $summit_id = $db->lastInsertId();
+                _set_activation_count($db, (int)$summit_id, $summit_data);
                 _link_global_gpx($db, $summit_id, $current_group['id'], $sota_ref);
                 _maybe_set_researched($db, $summit_id);
                 $new_ids[] = $summit_id;
@@ -621,6 +630,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
                     ]);
 
                     $summit_id = $db->lastInsertId();
+                    _set_activation_count($db, (int)$summit_id, $summit_data);
 
                     $stmt = $db->prepare("SELECT * FROM gpx_tracks WHERE summit_id = ? AND planning_group_id = ?");
                     $stmt->execute([$source_summit['id'], $source_summit['planning_group_id']]);
@@ -679,6 +689,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
                     ]);
 
                     $summit_id = $db->lastInsertId();
+                    _set_activation_count($db, (int)$summit_id, $summit_data);
 
                     // Try to import data from SOTLAS
                     $api_url_sotlas = "https://api.sotl.as/summits/" . urlencode($sota_ref);
