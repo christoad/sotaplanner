@@ -989,7 +989,7 @@ a:hover { text-decoration: underline; }
                 <div class="section-head">
                     <div>
                         <h2>Hike Pace</h2>
-                        <p style="font-size: 0.8rem; color: var(--ink-3); margin-top: 3px;">Scales Naismith estimated hike times up or down for this dashboard's fitness level.</p>
+                        <p style="font-size: 0.8rem; color: var(--ink-3); margin-top: 3px;">Scales the Naismith's Rule hike time estimates for every summit on this dashboard. Right = longer estimates, left = shorter.</p>
                     </div>
                 </div>
                 <?php
@@ -1015,7 +1015,15 @@ a:hover { text-decoration: underline; }
                         </div>
                         <button type="submit" name="save_pace" class="btn btn-ghost btn-sm" style="flex-shrink:0;">Save</button>
                     </div>
-                    <p class="form-hint" style="margin-top: 0.5rem;">100% = standard Naismith (2.5 mph + 1 hr per 1500 ft gain). Increase if your group hikes slowly; decrease if you're fast. Adjust in small increments (5–10% at a time) after each activation and compare estimates to actual times until dialed in.</p>
+                    <div class="form-hint" style="margin-top: 0.5rem;">
+                        <p><strong>How it works:</strong> SOTA Planner estimates hike time with Naismith's Rule: 2.5 mph of walking, plus 1 hour for every 1,500 ft of climbing. This slider scales that estimate to match how your group actually hikes.</p>
+                        <ul style="margin: 0.4rem 0 0.4rem 1.25rem;">
+                            <li><strong>Drag right (above 100%)</strong> to make estimated hike times longer. Use this if your group is slower than the formula. At 120%, a 2-hour estimate becomes 2 hours 24 minutes.</li>
+                            <li><strong>Drag left (below 100%)</strong> to make estimated hike times shorter. Use this if your group is faster than the formula. At 80%, a 2-hour estimate becomes 1 hour 36 minutes.</li>
+                            <li><strong>100%</strong> uses Naismith's Rule as is.</li>
+                        </ul>
+                        <p><strong>Tip:</strong> After each activation, compare the estimated hike time to your actual time. If you took longer, move the slider right 5 to 10%. If you were quicker, move it left 5 to 10%. Repeat until the estimates match.</p>
+                    </div>
                 </form>
             </div>
             <?php endif; ?>
