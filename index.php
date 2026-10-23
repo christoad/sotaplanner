@@ -1160,6 +1160,13 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
     .data-table td { padding: var(--sp-3) var(--sp-4); vertical-align: middle; }
     .data-table td.text-right { text-align: right; }
     .data-table td.td-hide-mobile { white-space: nowrap; }
+    /* Tighter desktop spacing so the Status column never runs off the right edge */
+    @media (min-width: 769px) {
+      .data-table th, .data-table td { padding-left: var(--sp-2); padding-right: var(--sp-2); }
+      .data-table th { letter-spacing: 0.03em; font-size: 0.66rem; }
+      .data-table thead th:first-child { padding-left: var(--sp-3); }
+      .data-table th.td-select, .data-table td.td-select { padding-left: var(--sp-2); padding-right: 0; }
+    }
     .data-table th.col-acts, .data-table td.col-acts { text-align: center; width: 1%; padding-left: var(--sp-2); padding-right: var(--sp-2); }
 
     /* ── Badges ── */
@@ -1178,8 +1185,8 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
     .badge-activated   { background: var(--gray-bg);   color: var(--gray-badge); }
 
     /* ── Summit name cell ── */
-    .data-table thead th:first-child { padding-left: var(--sp-5); }
-    .td-main a { display: block; padding-left: var(--sp-5); }
+    .data-table thead th:first-child { padding-left: var(--sp-3); }
+    .td-main a { display: block; padding-left: var(--sp-3); }
     .summit-name { font-weight: 600; font-size: 0.9rem; color: var(--ink); line-height: 1.25; }
     .summit-ref { font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-3); margin-top: 2px; }
 
