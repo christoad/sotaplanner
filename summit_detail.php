@@ -1394,6 +1394,9 @@ if ($tl_show) {
       <div class="page-subtitle">
         <?= htmlspecialchars($summit['region']) ?>
         <?php if ($summit['points']): ?> &middot; <?= $summit['points'] ?> pts<?php endif; ?>
+        <?php
+          $total_acts = isset($all_sota_activations) && is_array($all_sota_activations) ? count($all_sota_activations) : ($summit['activation_count'] ?? null);
+          if ($total_acts !== null): ?> &middot; <span title="Total times SOTA records this summit as activated, by anyone"><?= (int)$total_acts ?> <?= (int)$total_acts === 1 ? 'activation' : 'activations' ?></span><?php endif; ?>
         <?php if ($selected_address): ?> &middot; From: <?= htmlspecialchars($selected_address['label'] ?: $selected_address['address']) ?><?php endif; ?>
       </div>
     </div>

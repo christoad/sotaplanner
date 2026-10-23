@@ -1831,8 +1831,8 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
                         <th class="<?= $sort_by === 'points' ? 'sorted' : '' ?> td-hide-mobile" onclick="sortTable('points')">
                             Pts <span class="sort-icon"><?= $sort_by === 'points' ? ($sort_order === 'ASC' ? '↑' : '↓') : '↕' ?></span>
                         </th>
-                        <th class="<?= $sort_by === 'activation_count' ? 'sorted' : '' ?> td-hide-mobile col-acts" onclick="sortTable('activation_count')" title="Activations: total times SOTA records this summit as activated">
-                            Acts <span class="sort-icon"><?= $sort_by === 'activation_count' ? ($sort_order === 'ASC' ? '↑' : '↓') : '↕' ?></span>
+                        <th class="<?= $sort_by === 'activation_count' ? 'sorted' : '' ?> td-hide-mobile col-acts" onclick="sortTable('activation_count')" title="Total activations: all-time number of times SOTA records this summit as activated, by anyone">
+                            Total<br>Acts <span class="sort-icon"><?= $sort_by === 'activation_count' ? ($sort_order === 'ASC' ? '↑' : '↓') : '↕' ?></span>
                         </th>
                         <th class="<?= $sort_by === 'difficulty' ? 'sorted' : '' ?>" onclick="sortTable('difficulty')">
                             Difficulty <span class="sort-icon"><?= $sort_by === 'difficulty' ? ($sort_order === 'ASC' ? '↑' : '↓') : '↕' ?></span>
@@ -1997,7 +1997,7 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
         <p class="hiw-section">The Summit List</p>
         <ul class="hiw-list">
             <li><strong>Pts:</strong> SOTA points awarded for activating this summit.</li>
-            <li><strong>Activations:</strong> Total times SOTA records this summit as activated, by anyone.</li>
+            <li><strong>Total Acts:</strong> Total times SOTA records this summit as activated, by anyone.</li>
             <li><strong>Distance:</strong> round-trip hiking distance. From GPS track if one is loaded, otherwise manually entered.</li>
             <li><strong>Gain:</strong> total elevation gained on the approach.</li>
             <li><strong>Hike Time:</strong> round-trip hiking time. From GPS timestamps if available; otherwise Naismith's rule.</li>
