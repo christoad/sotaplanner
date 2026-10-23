@@ -12,7 +12,7 @@ $pa_id = (int)$_GET['id'];
 
 $stmt = $db->prepare("
     SELECT pa.id as pa_id, pa.summit_id, pa.planning_group_id, pa.planned_date,
-           pa.hike_start_time, pa.callsigns, pa.activation_duration_min, pa.invitation_message, pa.travel_notes, pa.location_link,
+           pa.hike_start_time, pa.callsigns, pa.activation_duration_min, pa.invitation_message, pa.travel_notes, pa.location_link, pa.created_by,
            s.name as summit_name, s.sota_ref, s.region, s.points,
            s.elevation_ft, s.elevation_m,
            s.latitude, s.longitude, s.trailhead_lat, s.trailhead_lng,
@@ -1453,7 +1453,7 @@ $difficulty_labels = [
 </div>
 
 <div style="text-align:center; padding:0.5rem 0 1.5rem; font-size:0.78rem; color:var(--ink-4);">
-    Planned by <?= htmlspecialchars($pa['group_name']) ?>
+    Planned by <?= htmlspecialchars($pa['created_by'] ?: $pa['owner_callsign']) ?>
 </div>
 
 </div><!-- /page -->

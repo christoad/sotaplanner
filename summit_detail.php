@@ -436,8 +436,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($current_group) {
             $stmt = $db->prepare("
                 INSERT INTO planned_activations
-                    (summit_id, planning_group_id, planned_date, hike_start_time, callsigns, activation_duration_min, invitation_message, travel_notes, location_link)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (summit_id, planning_group_id, planned_date, hike_start_time, callsigns, activation_duration_min, invitation_message, travel_notes, location_link, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $stmt->execute([
                 $summit_id,
@@ -448,7 +448,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 (int)$_POST['activation_duration_min'],
                 $_POST['invitation_message'] ?: null,
                 $_POST['travel_notes'] ?: null,
-                $_POST['location_link'] ?: null
+                $_POST['location_link'] ?: null,
+                getCurrentCallsign()
             ]);
             logActivity($db, 'Activation scheduled', $log_summit_name, $log_sota_ref, $log_group_name);
             header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
@@ -2036,6 +2037,7 @@ if ($tl_show) {
                 <div style="display:flex; gap:0.5rem; margin-top:0.625rem; flex-wrap:wrap;">
                   <a href="<?= htmlspecialchars($invite_url) ?>" target="_blank" class="btn btn-accent btn-sm">View Invite</a>
                   <button type="button" onclick="copyInviteLink('<?= htmlspecialchars($invite_url, ENT_QUOTES) ?>')" class="btn btn-ghost btn-sm">Copy Link</button>
+                  <a href="activation_ics.php?id=<?= $pa['id'] ?>" class="btn btn-ghost btn-sm">Add to Calendar</a>
                   <button type="button" onclick="togglePaEdit(<?= $pa['id'] ?>)" class="btn btn-ghost btn-sm">Edit</button>
                 </div>
               </div>

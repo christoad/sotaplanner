@@ -1,6 +1,6 @@
 <?php
-// One-off migration: add summits.activation_count (total times SOTA says the summit has been
-// activated; NULL = not fetched yet, filled in by the dashboard's background refresh).
+// One-off migration: add planned_activations.created_by (callsign of whoever set up the invitation;
+// NULL for older rows, which fall back to the dashboard owner).
 // Additive and safe to run twice. Delete this file after running.
 require_once 'config.php';
 
@@ -22,10 +22,10 @@ function step($label, $fn) {
     }
 }
 
-step('Add summits.activation_count', function () use ($db) {
-    $has = $db->query("SHOW COLUMNS FROM summits LIKE 'activation_count'")->fetch();
+step('Add planned_activations.created_by', function () use ($db) {
+    $has = $db->query("SHOW COLUMNS FROM planned_activations LIKE 'created_by'")->fetch();
     if ($has) return 'already exists, skipped';
-    $db->exec("ALTER TABLE summits ADD COLUMN activation_count INT NULL DEFAULT NULL");
+    $db->exec("ALTER TABLE planned_activations ADD COLUMN created_by VARCHAR(20) NULL DEFAULT NULL");
     return 'column added';
 });
 
