@@ -35,3 +35,6 @@ SOTAplanner-intro-slides.pdf
 sota_cache_norm.txt
 sota_cache_norm.txt.tmp
 diag_*.php
+
+# Open-Meteo forecast cache (generated at runtime)
+weather_cache/

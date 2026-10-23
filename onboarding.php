@@ -784,7 +784,11 @@ window.addEventListener('pageshow', snapTopAndFocus);
                 <div class="form-group">
                     <label class="form-label">Your Preferred Units</label>
                     <div class="units-toggle">
-                        <?php $detected_units = detectUnitsFromCallsign($callsign); ?>
+                        <?php
+                        // Start on the user's saved setting (which is itself seeded from their callsign the first time);
+                        // demo mode has no real settings, so it uses the callsign guess
+                        $detected_units = $demo ? detectUnitsFromCallsign($callsign) : getUserUnits($db);
+                        ?>
                         <input type="radio" id="units_imperial" name="units" value="imperial"
                             <?= ($_POST['units'] ?? $detected_units) === 'imperial' ? 'checked' : '' ?>>
                         <label for="units_imperial">
@@ -798,7 +802,7 @@ window.addEventListener('pageshow', snapTopAndFocus);
                             <span style="font-size:0.75rem; opacity:0.65;">km &amp; meters</span>
                         </label>
                     </div>
-                    <div class="form-hint" style="margin-top:0.5rem;">We detected <?= $detected_units === 'imperial' ? 'imperial' : 'metric' ?> from your callsign. You can change this any time in User Settings.</div>
+                    <div class="form-hint" style="margin-top:0.5rem;">We started with <?= $detected_units === 'imperial' ? 'imperial' : 'metric' ?> based on your callsign and settings. You can change this any time in User Settings.</div>
                 </div>
             </div>
 

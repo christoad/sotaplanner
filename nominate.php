@@ -1259,7 +1259,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
             <label class="form-label">Radius</label>
             <div style="display:flex; align-items:center; gap:0.4rem;">
               <input type="number" class="form-input" id="area_radius" value="25" min="1" max="300" style="width:72px;">
-              <span style="font-size:0.875rem; color:var(--ink-3); white-space:nowrap;"><?= ($current_group['units'] ?? 'imperial') === 'metric' ? 'km' : 'miles' ?></span>
+              <span style="font-size:0.875rem; color:var(--ink-3); white-space:nowrap;"><?= getUserUnits($db) === 'metric' ? 'km' : 'miles' ?></span>
             </div>
           </div>
           <div>
@@ -1998,7 +1998,7 @@ function promptForStartingPoint() {
 }
 
 // ── Area search ───────────────────────────────────────────────────────────────
-const useMetric = <?= json_encode(($current_group['units'] ?? 'imperial') === 'metric') ?>;
+const useMetric = <?= json_encode(getUserUnits($db) === 'metric') ?>;
 
 // Area tab is the default. ?tab=search opens the Name/Reference tab instead;
 // ?tab=area&lat=X&lng=Y (from a dashboard map link) preloads a location.

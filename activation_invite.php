@@ -1,5 +1,6 @@
 <?php
 require_once 'config.php';
+require_once 'weather_lib.php';
 
 $db = getDbConnection();
 
@@ -30,6 +31,11 @@ $stmt = $db->prepare("
 ");
 $stmt->execute([$pa_id]);
 $pa = $stmt->fetch();
+
+// Summits with no real name are stored as just a number (e.g. "1234"); label them "Summit 1234"
+if ($pa && preg_match('/^\s*\d+\s*$/', (string)$pa['summit_name'])) {
+    $pa['summit_name'] = 'Summit ' . trim($pa['summit_name']);
+}
 
 if (!$pa) {
     http_response_code(404);
@@ -76,7 +82,7 @@ $stmt = $db->prepare("SELECT * FROM gpx_tracks WHERE summit_id = ? AND planning_
 $stmt->execute([$pa['summit_id'], $pa['planning_group_id']]);
 $gpx = $stmt->fetch();
 
-// Activation zone polygon — use stored one if available, else fetch live from API
+// Activation zone polygon, use stored one if available, else fetch live from API
 $az_polygon_json = null;
 if ($gpx && $gpx['activation_zone_polygon']) {
     $az_polygon_json = $gpx['activation_zone_polygon'];
@@ -153,7 +159,7 @@ if ($gpx && $gpx['use_for_hike_time']) {
     }
 }
 
-// Distance/elevation for display — mirror summit_detail.php's source-of-truth logic
+// Distance/elevation for display, mirror summit_detail.php's source-of-truth logic
 // (prefer live GPX track over the stale/manual summits.hike_distance_mi column,
 // applying the same one-way doubling used for hike time above)
 if ($gpx && $gpx['use_for_hike_time'] && $gpx['total_distance'] > 0) {
@@ -231,6 +237,13 @@ $hike_down_pct  = round($hike_down_min  / $total_min * 100, 1);
 $gantt_leave_ts     = $guest_leave_ts;
 $gantt_back_home_ts = $guest_drive_min !== null ? $back_trailhead_ts + ($guest_drive_min * 60) : null;
 
+// Summit forecast for the hiking window (Open-Meteo, cached 3h); null when the date is outside the 16-day range
+$wx = weather_window(
+    weather_fetch($pa['latitude'], $pa['longitude'], $pa['elevation_m'] ?: round(($pa['elevation_ft'] ?? 0) * 0.3048)),
+    $hike_start_ts, $back_trailhead_ts
+);
+$wx_too_far = !$wx && $pa['planned_date'] > date('Y-m-d', strtotime('+15 days'));
+
 // Trailhead coordinates for directions button
 $trailhead_lat = $pa['trailhead_lat'] ?: $pa['latitude'];
 $trailhead_lng = $pa['trailhead_lng'] ?: $pa['longitude'];
@@ -270,7 +283,7 @@ $difficulty_labels = [
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>You're Invited — <?= htmlspecialchars($pa['summit_name']) ?> SOTA Activation</title>
+    <title>You're Invited: <?= htmlspecialchars($pa['summit_name']) ?> SOTA Activation</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -432,6 +445,22 @@ $difficulty_labels = [
             padding-bottom: 0.875rem;
             border-bottom: 1px solid var(--border);
         }
+
+        /* ── Summit forecast ── */
+        .wx-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.625rem; margin-bottom: 1rem; }
+        .wx-cell { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.625rem 0.75rem; }
+        .wx-label { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3); }
+        .wx-val { font-size: 1.05rem; font-weight: 600; color: var(--ink); margin-top: 2px; line-height: 1.25; }
+        .wx-sub { font-size: 0.72rem; color: var(--ink-3); margin-top: 1px; }
+        .wx-alert { background: var(--orange-bg); border: 1px solid oklch(88% 0.08 58); color: oklch(45% 0.12 58); border-radius: var(--r-md); padding: 0.6rem 0.875rem; font-size: 0.85rem; font-weight: 500; margin-bottom: 1rem; }
+        .wx-hours { display: flex; gap: 0.375rem; overflow-x: auto; padding-bottom: 0.25rem; }
+        .wx-hour { flex: 0 0 auto; min-width: 68px; text-align: center; border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.5rem 0.375rem; background: var(--surface); }
+        .wx-hour .t { font-size: 0.7rem; color: var(--ink-3); font-weight: 600; }
+        .wx-hour .i { font-size: 1.15rem; line-height: 1.5; }
+        .wx-hour .d { font-size: 0.9rem; font-weight: 600; color: var(--ink); }
+        .wx-hour .w { font-size: 0.68rem; color: var(--ink-3); margin-top: 2px; }
+        .wx-credit { font-size: 0.7rem; color: var(--ink-4); margin-top: 0.75rem; }
+        .wx-credit a { color: var(--ink-4); }
 
         /* ── Travel notes card ── */
         .travel-note {
@@ -792,7 +821,7 @@ $difficulty_labels = [
     <?php else: ?>
     <p class="hero-message">
         You're invited to join us for a day on the mountain! We'll be hiking to the summit and making
-        amateur radio contacts with stations around the world — no radio license needed to tag along.
+        amateur radio contacts with stations around the world. No radio license is needed to tag along.
         Lace up your hiking boots and come enjoy the views.
     </p>
     <?php endif; ?>
@@ -961,7 +990,7 @@ $difficulty_labels = [
 
     <div class="gantt-legend">
         <?php if ($show_drive): ?>
-        <div class="legend-item"><div class="legend-dot" style="background:oklch(55% 0.04 50);"></div> Travel (<?= $gantt_drive ?> min each way — your estimate)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:oklch(55% 0.04 50);"></div> Travel (<?= $gantt_drive ?> min each way, your estimate)</div>
         <?php endif; ?>
         <?php if ($hike_up_pct > 0): ?>
         <div class="legend-item"><div class="legend-dot" style="background:var(--green);"></div> Hike Up (<?= $hike_up_min ?> min)</div>
@@ -1018,6 +1047,58 @@ $difficulty_labels = [
     <?php endif; ?>
 </div>
 
+<!-- SUMMIT FORECAST -->
+<?php if ($wx || $wx_too_far): ?>
+<div class="section">
+    <div class="section-title">Summit Forecast</div>
+    <?php if ($wx):
+        $sm = $wx['summary'];
+    ?>
+        <?php if ($sm['storm']): ?>
+            <div class="wx-alert">⛈️ Thunderstorms are possible during the hike window. Plan to be off the summit early.</div>
+        <?php endif; ?>
+        <div class="wx-summary">
+            <div class="wx-cell">
+                <div class="wx-label">Temperature</div>
+                <div class="wx-val"><?= weather_temp($sm['tmin'], $units) ?> to <?= weather_temp($sm['tmax'], $units) ?></div>
+                <div class="wx-sub">Feels as low as <?= weather_temp($sm['fmin'], $units) ?></div>
+            </div>
+            <div class="wx-cell">
+                <div class="wx-label">Wind</div>
+                <div class="wx-val"><?= weather_speed($sm['wind'], $units) ?></div>
+                <div class="wx-sub">Gusts to <?= weather_speed($sm['gust'], $units) ?></div>
+            </div>
+            <div class="wx-cell">
+                <div class="wx-label">Precipitation</div>
+                <div class="wx-val"><?= weather_precip($sm['precip'], $units) ?></div>
+                <div class="wx-sub"><?= $sm['snow'] >= 0.1 ? weather_snow($sm['snow'], $units) . ' snow' : 'No snow expected' ?></div>
+            </div>
+            <?php if ($sm['frz'] !== null): ?>
+            <div class="wx-cell">
+                <div class="wx-label">Freezing Level</div>
+                <div class="wx-val"><?= weather_height($sm['frz'], $units) ?></div>
+                <div class="wx-sub"><?= $elev_display ? 'Summit is at ' . $elev_display : 'At the summit' ?></div>
+            </div>
+            <?php endif; ?>
+        </div>
+        <div class="wx-hours">
+            <?php foreach ($wx['rows'] as $r): [$lbl, $ico] = weather_wmo($r['code']); ?>
+                <div class="wx-hour" title="<?= htmlspecialchars($lbl) ?>">
+                    <div class="t"><?= date('g A', strtotime($r['time'])) ?></div>
+                    <div class="i"><?= $ico ?></div>
+                    <div class="d"><?= weather_temp($r['temp'], $units) ?></div>
+                    <div class="w"><?= weather_speed($r['wind'], $units) ?></div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <div class="wx-credit">Forecast for the summit's elevation, covering the hike. Mountain weather changes fast, so check again before you go. <?= weather_credit_html() ?>.</div>
+    <?php else: ?>
+        <p style="font-size:0.875rem; color:var(--ink-2); line-height:1.6;">The forecast will appear here once this activation is within 16 days. Check back closer to the date.</p>
+        <div class="wx-credit"><?= weather_credit_html() ?>.</div>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
+
 <!-- YOUR DRIVE TIME -->
 <div class="section" id="drive-section">
     <div class="section-title">Calculate Your Travel Time</div>
@@ -1047,7 +1128,7 @@ $difficulty_labels = [
     <?php if ($guest_drive_min !== null): ?>
         <div class="drive-result">
             <span class="drive-result-text">
-                <?= formatTime($guest_drive_min) ?> travel — your times are updated above.
+                <?= formatTime($guest_drive_min) ?> travel. Your times are updated above.
             </span>
             <a href="<?= htmlspecialchars($guest_directions_url) ?>" target="_blank" class="btn btn-green" style="font-size:0.82rem;">
                 Get Directions ↗
@@ -1098,7 +1179,7 @@ $difficulty_labels = [
 
     <div id="gpx-map" style="height: 400px; border-radius: var(--r-lg); border: 1px solid var(--border);"></div>
     <p style="font-size:0.72rem; color:var(--ink-4); margin-top:0.5rem;">
-        Coverage data: FCC Form 477 filings (2021), via ArcGIS public tile service. Carrier-reported estimates — actual signal in mountainous terrain may differ.
+        Coverage data: FCC Form 477 filings (2021), via ArcGIS public tile service. Carrier-reported estimates; actual signal in mountainous terrain may differ.
     </p>
 
     <!-- Elevation Profile -->
@@ -1187,7 +1268,7 @@ $difficulty_labels = [
         }
     }
 
-    // ── GPX track (coords inlined server-side — no auth needed for guests) ──────
+    // ── GPX track (coords inlined server-side, no auth needed for guests) ──────
     (function() {
         const coords  = <?= json_encode($gpx_map_coords) ?>;
         const elevPts = <?= json_encode($gpx_map_elev) ?>;
@@ -1429,10 +1510,10 @@ $difficulty_labels = [
         <p class="safety-text">
             <strong>Hiking &amp; Mountaineering Involves Real Risk.</strong>
             Hiking to mountain summits is physically demanding and inherently dangerous. Conditions can change
-            rapidly — weather, terrain, and altitude are serious factors. <strong>Please do not join if you are
+            rapidly: weather, terrain, and altitude are serious factors. <strong>Please do not join if you are
             sick, injured, or in poor health.</strong> Know your limits and come prepared with appropriate gear,
             water, and clothing for the conditions.<br><br>
-            Always let someone at home know your plans — where you're going, who you're with, and when
+            Always let someone at home know your plans: where you're going, who you're with, and when
             to expect you back. <strong>Share this invitation page</strong> with a friend or family member as
             your trip plan so they know where to look if needed.
         </p>
@@ -1483,11 +1564,11 @@ function openTrailheadDirections(lat, lng) {
         <div class="explainer-grid">
             <div class="explainer-card">
                 <h4>No license needed to hike</h4>
-                <p>You don't need a radio license to join the hike — just come along for the mountain views and fresh air.</p>
+                <p>You don't need a radio license to join the hike. Just come along for the mountain views and fresh air.</p>
             </div>
             <div class="explainer-card">
                 <h4>What we do on top</h4>
-                <p>We set up a lightweight portable radio and antenna, then make contact with stations across the country — sometimes across oceans.</p>
+                <p>We set up a lightweight portable radio and antenna, then make contact with stations across the country, sometimes across oceans.</p>
             </div>
             <div class="explainer-card">
                 <h4>Points &amp; awards</h4>

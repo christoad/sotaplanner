@@ -285,6 +285,9 @@ session_start();
         </div>
         <p class="version-desc">Driving routes now appear on the summit map, and the offline PDF for Multi-Activate routes shows the same maps you see on the site.</p>
         <ul>
+            <li>Summits now show a weather forecast for the summit's elevation: a small row on the summit page, and a full Summit Forecast on the activation invitation covering the hike (temperature, wind, precipitation, freezing level and thunderstorm warnings)</li>
+            <li>Summits that only have a number for a name now appear as "Summit 1234" on the activation invitation</li>
+            <li>The area search on the Nominate page now uses your own miles or kilometers setting, and creating another dashboard no longer resets that setting</li>
             <li>Planned activations on the summit page now have an Add to Calendar button, and the invitation page now says which callsign planned the activation</li>
             <li>The dashboard map now shows a pin for your selected starting address</li>
             <li>Travel times now update automatically when you switch your starting address, and are remembered for each address so switching back is instant</li>

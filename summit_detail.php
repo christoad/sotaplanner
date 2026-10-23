@@ -3,6 +3,7 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
 require_once 'config.php';
+require_once 'weather_lib.php';
 session_start();
 requireLogin();
 
@@ -1797,6 +1798,15 @@ if ($tl_show) {
             ?>
           </span>
         </div>
+        <div class="info-row" id="wxRow" style="display:none; flex-direction:column; align-items:stretch; gap:0.2rem;">
+          <div style="display:flex; justify-content:space-between; align-items:baseline;">
+            <span class="info-label">Weather at Summit</span>
+            <span class="info-val" id="wxNow"></span>
+          </div>
+          <div id="wxWind" style="font-size:0.72rem; color:var(--ink-3); text-align:right;"></div>
+          <div id="wxDays" style="display:flex; justify-content:space-between; gap:0.25rem; margin-top:0.35rem; font-size:0.7rem; color:var(--ink-3);"></div>
+          <div style="font-size:0.65rem; color:var(--ink-4); text-align:right; margin-top:0.15rem;"><?= weather_credit_html() ?></div>
+        </div>
         <div class="info-row">
           <span class="info-label">SOTA Points</span>
           <span class="info-val">
@@ -3084,6 +3094,26 @@ function saveActTime() {
         body: 'minutes=' + encodeURIComponent(minutes)
     }).then(() => { window.location.reload(); });
 }
+</script>
+<script>
+// Compact summit weather (Open-Meteo via summit_weather.php), loaded after render so it never slows the page
+(function () {
+  var q = new URLSearchParams({
+    lat: <?= json_encode((float)$summit['latitude']) ?>,
+    lon: <?= json_encode((float)$summit['longitude']) ?>,
+    elev_m: <?= json_encode((int)round(($summit['elevation_ft'] ?? 0) * 0.3048)) ?>
+  });
+  fetch('summit_weather.php?' + q).then(function (r) { return r.json(); }).then(function (d) {
+    if (!d || d.error || !d.now) return;
+    var n = d.now;
+    document.getElementById('wxNow').textContent = n.icon + ' ' + n.temp + ', ' + n.label;
+    document.getElementById('wxWind').textContent = 'Feels ' + n.feels + ' · Wind ' + n.wind + ', gusts ' + n.gust;
+    document.getElementById('wxDays').innerHTML = d.days.slice(1).map(function (x) {
+      return '<span title="' + x.label + '">' + x.day + ' ' + x.icon + ' ' + x.hi + '/' + x.lo + '</span>';
+    }).join('');
+    document.getElementById('wxRow').style.display = 'flex';
+  }).catch(function () {});
+})();
 </script>
 </body>
 </html>
