@@ -1786,6 +1786,15 @@ if ($tl_show) {
 
     <!-- ═══ RIGHT SIDEBAR ═══ -->
     <div>
+      <!-- Weather -->
+      <div class="card" id="wxRow" style="display:none; margin-bottom:1rem; flex-direction:column; gap:0.2rem;">
+        <div style="font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3); margin-bottom:0.5rem;">Weather at Summit</div>
+        <div class="info-val" id="wxNow" style="font-size:0.95rem; text-align:center;"></div>
+        <div id="wxWind" style="font-size:0.72rem; color:var(--ink-3); text-align:center;"></div>
+        <div id="wxDays" style="display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:0.4rem; margin-top:0.6rem;"></div>
+        <div style="font-size:0.55rem; color:var(--ink-4); text-align:right; margin-top:0.15rem;"><?= weather_credit_html() ?></div>
+      </div>
+
       <!-- Summit info -->
       <div class="card" style="margin-bottom:1rem;">
         <div style="font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3); margin-bottom:0.875rem;">Summit Info</div>
@@ -1797,15 +1806,6 @@ if ($tl_show) {
               echo number_format($elev_disp) . ' ' . getElevationUnit($user_units);
             ?>
           </span>
-        </div>
-        <div class="info-row" id="wxRow" style="display:none; flex-direction:column; align-items:stretch; gap:0.2rem;">
-          <div style="display:flex; justify-content:space-between; align-items:baseline;">
-            <span class="info-label">Weather at Summit</span>
-            <span class="info-val" id="wxNow"></span>
-          </div>
-          <div id="wxWind" style="font-size:0.72rem; color:var(--ink-3); text-align:right;"></div>
-          <div id="wxDays" style="display:flex; justify-content:space-between; gap:0.25rem; margin-top:0.35rem; font-size:0.7rem; color:var(--ink-3);"></div>
-          <div style="font-size:0.65rem; color:var(--ink-4); text-align:right; margin-top:0.15rem;"><?= weather_credit_html() ?></div>
         </div>
         <div class="info-row">
           <span class="info-label">SOTA Points</span>
@@ -3109,7 +3109,11 @@ function saveActTime() {
     document.getElementById('wxNow').textContent = n.icon + ' ' + n.temp + ', ' + n.label;
     document.getElementById('wxWind').textContent = 'Feels ' + n.feels + ' · Wind ' + n.wind + ', gusts ' + n.gust;
     document.getElementById('wxDays').innerHTML = d.days.slice(1).map(function (x) {
-      return '<span title="' + x.label + '">' + x.day + ' ' + x.icon + ' ' + x.hi + '/' + x.lo + '</span>';
+      return '<div title="' + x.label + '" style="display:flex; flex-direction:column; align-items:center; gap:0.15rem; padding:0.45rem 0.25rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--r-md);">'
+        + '<span style="font-size:0.68rem; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.05em;">' + x.day + '</span>'
+        + '<span style="font-size:1.1rem; line-height:1.2;">' + x.icon + '</span>'
+        + '<span style="font-size:0.74rem; font-weight:500; color:var(--ink);">' + x.hi + '<span style="color:var(--ink-3); font-weight:400;"> / ' + x.lo + '</span></span>'
+        + '</div>';
     }).join('');
     document.getElementById('wxRow').style.display = 'flex';
   }).catch(function () {});
