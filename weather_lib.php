@@ -27,7 +27,7 @@ function weather_fetch($lat, $lon, $elev_m) {
         'forecast_days' => 16,
         'current'   => 'temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_gusts_10m',
         'hourly'    => 'temperature_2m,apparent_temperature,precipitation,snowfall,weather_code,wind_speed_10m,wind_gusts_10m,cape,freezing_level_height',
-        'daily'     => 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,wind_gusts_10m_max',
+        'daily'     => 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max',
     ]);
     $ch = curl_init($url);
     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 5, CURLOPT_CONNECTTIMEOUT => 3]);
@@ -105,6 +105,9 @@ function weather_compact($w, $units) {
                 'label' => $label,
                 'hi'   => weather_temp($d['temperature_2m_max'][$i], $units),
                 'lo'   => weather_temp($d['temperature_2m_min'][$i], $units),
+                // Older cached forecasts have gusts only; show those until the cache refreshes
+                'wind' => weather_speed($d['wind_speed_10m_max'][$i] ?? $d['wind_gusts_10m_max'][$i] ?? 0, $units),
+                'gust' => weather_speed($d['wind_gusts_10m_max'][$i] ?? 0, $units),
             ];
         }
     }

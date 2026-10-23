@@ -3109,10 +3109,11 @@ function saveActTime() {
     document.getElementById('wxNow').textContent = n.icon + ' ' + n.temp + ', ' + n.label;
     document.getElementById('wxWind').textContent = 'Feels ' + n.feels + ' · Wind ' + n.wind + ', gusts ' + n.gust;
     document.getElementById('wxDays').innerHTML = d.days.slice(1).map(function (x) {
-      return '<div title="' + x.label + '" style="display:flex; flex-direction:column; align-items:center; gap:0.15rem; padding:0.45rem 0.25rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--r-md);">'
+      return '<div title="' + x.label + ', max wind ' + x.wind + ', gusts ' + x.gust + '" style="display:flex; flex-direction:column; align-items:center; gap:0.15rem; padding:0.45rem 0.25rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--r-md);">'
         + '<span style="font-size:0.68rem; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.05em;">' + x.day + '</span>'
         + '<span style="font-size:1.1rem; line-height:1.2;">' + x.icon + '</span>'
         + '<span style="font-size:0.74rem; font-weight:500; color:var(--ink);">' + x.hi + '<span style="color:var(--ink-3); font-weight:400;"> / ' + x.lo + '</span></span>'
+        + '<span style="font-size:0.68rem; color:var(--ink-3);">💨 ' + x.wind + '</span>'
         + '</div>';
     }).join('');
     document.getElementById('wxRow').style.display = 'flex';
