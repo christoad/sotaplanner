@@ -54,13 +54,13 @@ function multi_point_segment_m($plat, $plng, $a, $b) {
 
 // Distance (miles) and elevation gain (feet) walking along $pts from index $a to $b
 function multi_track_span($pts, $a, $b) {
-    $dist = 0.0; $gain = 0.0;
+    $dist = 0.0; $eles = [$pts[$a][2]];
     for ($k = $a + 1; $k <= $b; $k++) {
         $dist += haversine_miles($pts[$k - 1][0], $pts[$k - 1][1], $pts[$k][0], $pts[$k][1]);
-        $de = $pts[$k][2] - $pts[$k - 1][2];
-        if ($de > 0) $gain += $de * 3.28084;
+        $eles[] = $pts[$k][2];
     }
-    return [$dist, $gain];
+    [$gain_m] = gpx_smoothed_gain_loss($eles);
+    return [$dist, $gain_m * 3.28084];
 }
 
 // ── Database access ──────────────────────────────────────────────────────────

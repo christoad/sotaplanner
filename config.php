@@ -732,6 +732,22 @@ function sotaCallsignMatchesHome(string $opCallsign, array $homeCallsigns): ?str
 }
 
 // GPX PROCESSING FUNCTIONS
+// Elevation gain/loss (meters) from a list of elevations, ignoring wobble smaller than
+// $threshold_m. Summing every tiny up-step counts GPS/terrain-model noise as climbing and
+// roughly doubles the gain on a typical track; a point only counts once it is at least
+// $threshold_m above/below the last counted one (5 m matches apps like Gaia GPS).
+function gpx_smoothed_gain_loss(array $eles, $threshold_m = 5.0) {
+    $gain = 0.0; $loss = 0.0;
+    if (count($eles) < 2) return [$gain, $loss];
+    $ref = $eles[0];
+    foreach ($eles as $e) {
+        $d = $e - $ref;
+        if ($d >= $threshold_m) { $gain += $d; $ref = $e; }
+        elseif ($d <= -$threshold_m) { $loss += -$d; $ref = $e; }
+    }
+    return [$gain, $loss];
+}
+
 function analyze_gpx_track($gpx_file_path, $summit_ref = null) {
     $stationary_threshold = 0.3;
     $activation_zone_radius = 50;
@@ -830,7 +846,7 @@ function analyze_gpx_track($gpx_file_path, $summit_ref = null) {
     $hiking_distance = 0;
     $elevation_gain = 0;
     $elevation_loss = 0;
-    $prev_elevation = null;
+    [$elevation_gain, $elevation_loss] = gpx_smoothed_gain_loss(array_column($points, 'ele'));
     
     $current_rest_start = null;
     $current_rest_duration = 0;
@@ -848,16 +864,6 @@ function analyze_gpx_track($gpx_file_path, $summit_ref = null) {
         if ($has_timestamps && $time_diff <= 0) continue;
         
         $speed = ($has_timestamps && $time_diff > 0) ? ($distance / 1000) / ($time_diff / 3600) : 0;
-        
-        if ($prev_elevation !== null) {
-            $ele_diff = $curr_point['ele'] - $prev_elevation;
-            if ($ele_diff > 0) {
-                $elevation_gain += $ele_diff;
-            } else {
-                $elevation_loss += abs($ele_diff);
-            }
-        }
-        $prev_elevation = $curr_point['ele'];
         
         $in_activation_zone = false;
         
