@@ -771,7 +771,9 @@ $one_way = ($track_type === 'ascent' || $track_type === 'descent');
 $has_timestamps = $gpx_data && $gpx_data['hiking_time'] > 0;
 
 // Elevation gain, resolve first so hike time can use it
-if ($gpx_data && $gpx_data['use_for_elevation']) {
+// A track with no <ele> data (some SOTAmaps uploads) records 0 gain/loss; treat that as
+// "no elevation data" and fall back to the manual value, same as the dashboard.
+if ($gpx_data && $gpx_data['use_for_elevation'] && ($gpx_data['elevation_gain'] ?? 0) > 0) {
     if ($track_type === 'descent') {
         $elevation_gain_display = $gpx_data['elevation_loss'] * 3.28084;
     } else {
@@ -1909,7 +1911,7 @@ if ($tl_show) {
           <form method="POST" class="gps-prefs">
             <input type="hidden" name="update_gpx_preferences" value="1">
             <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; font-size:0.82rem; font-weight:500; color:var(--ink); margin-bottom:0.75rem;">
-              <input type="checkbox" name="use_gps_data" value="1" <?= ($gpx_data['use_for_hike_time']) ? 'checked' : '' ?> style="width:14px; height:14px;" onchange="this.form.submit()">
+              <input type="checkbox" name="use_gps_data" value="1" <?= ($gpx_data['use_for_hike_time']) ? 'checked' : '' ?> style="width:14px; height:14px;" onchange="<?= ($gpx_data['elevation_gain'] ?? 0) > 0 ? '' : 'if (this.checked && !confirm(\'This GPX file has no elevation data, so the hike estimate may be off (the route may be treated as flat). For better planning, record your own GPX track on your next hike and use Upload New GPX to replace this one.\\n\\nUse it for planning anyway?\')) { this.checked = false; return; } ' ?>this.form.submit()">
               Use GPS data for planning
             </label>
             <a href="load_gpx.php?id=<?= $gpx_data['id'] ?>" download="<?= htmlspecialchars($gpx_download_name) ?>" class="btn btn-ghost btn-sm">Download GPX</a>
