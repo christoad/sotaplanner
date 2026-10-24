@@ -1233,6 +1233,31 @@ if ($tl_show) {
     .section-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 1.5rem; box-shadow: var(--shadow-sm); margin-bottom: 1rem; }
     .section-title { font-size: 1rem; font-weight: 600; color: var(--ink); margin-bottom: 1rem; }
 
+    /* Community Notes */
+    .cn-summary { display:flex; align-items:center; justify-content:space-between; gap:1rem; cursor:pointer; list-style:none; }
+    .cn-summary::-webkit-details-marker { display:none; }
+    .cn-chevron { color:var(--ink-3); transition:transform 0.15s; flex-shrink:0; }
+    .cn-box[open] .cn-chevron { transform:rotate(180deg); }
+    .cn-heading { font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3); margin-bottom:0.625rem; }
+    .cn-section-head { display:flex; align-items:center; gap:0.5rem 0.875rem; margin-bottom:0.75rem; flex-wrap:wrap; }
+    .cn-sub { font-size:0.78rem; color:var(--ink-3); line-height:1.4; max-width:44rem; }
+    .cn-private { margin-top:1.5rem; padding:1rem 1.125rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--r-md); }
+    .cn-res { padding:0.65rem 0; border-bottom:1px solid var(--border); }
+    .cn-res:last-of-type { border-bottom:none; }
+    .cn-res summary { cursor:pointer; list-style:none; display:flex; align-items:baseline; gap:0.5rem; }
+    .cn-res summary::-webkit-details-marker { display:none; }
+    .cn-res .cn-twisty { color:var(--ink-3); font-size:0.7rem; transition:transform 0.15s; display:inline-block; width:0.8rem; flex-shrink:0; }
+    .cn-res[open] .cn-twisty { transform:rotate(90deg); }
+    .cn-res-title { font-size:0.9rem; font-weight:600; color:var(--accent-2); text-decoration:none; }
+    a.cn-res-title:hover, .cn-res summary:hover .cn-res-title { text-decoration:underline; }
+    .cn-res-meta { font-size:0.72rem; color:var(--ink-3); min-width:11rem; flex-shrink:0; white-space:nowrap; }
+    @media (max-width:600px) { .cn-res-meta { min-width:0; } .cn-res summary, .cn-res-line { flex-wrap:wrap; } }
+    .cn-res-line { display:flex; align-items:baseline; gap:0.5rem; }
+    .cn-res-line .cn-twisty { visibility:hidden; }
+    .cn-res-body { font-size:0.85rem; color:var(--ink); line-height:1.55; margin:0.5rem 0 0 1.3rem; }
+    @media (min-width:601px) { .cn-res-body { margin-left:12.8rem; } }
+    .cn-res-body p { margin-bottom:0.5rem; }
+    .cn-res-body a { color:var(--accent-2); }
     /* Notes */
     .note-item { padding: 0.625rem 0; border-bottom: 1px solid var(--border); }
     .note-item:last-child { border-bottom: none; }
@@ -1923,63 +1948,95 @@ if ($tl_show) {
           </form>
         <?php endif; ?>
       </div>
+    </div>
+  </div>
 
-      <!-- Notes -->
-      <div class="card">
-        <div style="font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3); margin-bottom:0.875rem;">Notes</div>
-        <?php if (!empty($notes)): ?>
-          <div style="margin-bottom:0.875rem;">
-            <?php foreach ($notes as $note):
-                $is_own_group = ($note['planning_group_id'] === null || $note['planning_group_id'] == $current_group['id']);
-                $can_delete   = $is_own_group || ($note['user_callsign'] === $_SESSION['sota_callsign']);
-                $from_other   = !$is_own_group && !empty($note['group_name']);
-            ?>
-              <div class="note-item" style="<?= $from_other ? 'background:var(--bg); border-radius:var(--r-sm); padding:0.5rem 0.625rem; margin-bottom:0.25rem;' : '' ?>">
-                <?php if (!empty($note['is_public'])): ?>
-                  <div style="margin-bottom:4px;">
-                    <span style="display:inline-flex; align-items:center; gap:3px; font-size:0.65rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--green); background:var(--green-bg); border-radius:var(--r-sm); padding:0.1rem 0.4rem;">
-                      <svg width="9" height="9" viewBox="0 0 12 12" fill="none"><path d="M10 4H9V3a3 3 0 0 0-6 0v1H2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1zM6 8.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2zM7.5 4h-3V3a1.5 1.5 0 0 1 3 0v1z" fill="currentColor"/></svg>
-                      Public
-                    </span>
-                    <?php if ($from_other): ?>
-                      <span style="font-size:0.7rem; color:var(--ink-3); margin-left:4px;">from <?= htmlspecialchars($note['group_name']) ?></span>
-                    <?php endif; ?>
-                  </div>
-                <?php endif; ?>
-                <div class="note-text"><?= htmlspecialchars($note['note']) ?></div>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
-                  <span class="note-meta">
-                    <?php if (!empty($note['user_callsign'])): ?>
-                      <span style="font-family:var(--font-mono); font-weight:600;"><?= htmlspecialchars($note['user_callsign']) ?></span>
-                      &middot;
-                    <?php endif; ?>
-                    <?= date('M j, Y g:ia', strtotime($note['created_at'])) ?>
-                  </span>
-                  <?php if ($can_delete): ?>
-                  <form method="POST" style="margin:0;" onsubmit="return confirm('Delete this note?');">
-                    <input type="hidden" name="note_id" value="<?= $note['id'] ?>">
-                    <button type="submit" name="delete_note" class="btn btn-danger btn-sm" style="height:24px; padding:0 8px; font-size:0.72rem;">Delete</button>
-                  </form>
-                  <?php endif; ?>
-                </div>
-              </div>
-            <?php endforeach; ?>
-          </div>
-        <?php endif; ?>
-        <form method="POST">
-          <textarea class="form-textarea" name="note" rows="3" placeholder="Add notes about access, parking, trail conditions..." style="font-size:0.875rem; resize:vertical;"></textarea>
-          <label style="display:flex; align-items:center; gap:0.4rem; margin-top:0.5rem; font-size:0.8rem; color:var(--ink-2); cursor:pointer;">
-            <input type="checkbox" name="note_public" value="1" style="accent-color:var(--green); width:14px; height:14px;">
-            Share publicly, visible to all dashboards on this summit
-          </label>
-          <button type="submit" name="add_note" class="btn btn-secondary btn-sm btn-full" style="margin-top:0.5rem;">Add Note</button>
-        </form>
+  <!-- COMMUNITY NOTES -->
+  <div id="community-notes" style="margin-top:1.5rem;">
+    <div class="section-card">
+    <div class="cn-private" style="margin:0 0 1rem;">
+      <div class="cn-section-head">
+        <div class="cn-heading" style="margin:0; display:flex; align-items:center; gap:0.35rem;">
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M10 4H9V3a3 3 0 0 0-6 0v1H2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1zM6 8.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2zM7.5 4h-3V3a1.5 1.5 0 0 1 3 0v1z" fill="currentColor"/></svg>
+          Your private notes
+        </div>
+        <span class="cn-sub">Visible to you and others on your dashboards</span>
+        <button type="button" class="btn btn-secondary btn-sm" id="cnAddBtn" onclick="document.getElementById('cnAddForm').style.display='block'; this.style.display='none'; document.getElementById('cnNoteText').focus();">+ Add a private note</button>
       </div>
+
+      <form method="POST" id="cnAddForm" style="display:none; margin-bottom:0.875rem;">
+        <textarea class="form-textarea" id="cnNoteText" name="note" rows="3" required placeholder="Add a note about access, parking, trail conditions..." style="font-size:0.875rem; resize:vertical;"></textarea>
+        <div style="display:flex; gap:0.5rem; margin-top:0.5rem; justify-content:flex-end;">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('cnAddForm').style.display='none'; document.getElementById('cnAddBtn').style.display='';">Cancel</button>
+          <button type="submit" name="add_note" class="btn btn-primary btn-sm">Save private note</button>
+        </div>
+      </form>
+
+      <?php if (!empty($notes)): ?>
+        <?php foreach ($notes as $note):
+            $is_own_group = ($note['planning_group_id'] === null || $note['planning_group_id'] == $current_group['id']);
+            $can_delete   = $is_own_group || ($note['user_callsign'] === $_SESSION['sota_callsign']);
+            $from_other   = !$is_own_group && !empty($note['group_name']);
+        ?>
+          <div class="note-item">
+            <?php if (!empty($note['is_public'])): ?>
+              <div style="margin-bottom:4px;">
+                <span class="tag tag-accent">Shared earlier</span>
+                <?php if ($from_other): ?>
+                  <span style="font-size:0.7rem; color:var(--ink-3); margin-left:4px;">from <?= htmlspecialchars($note['group_name']) ?></span>
+                <?php endif; ?>
+              </div>
+            <?php endif; ?>
+            <div class="note-text"><?= nl2br(htmlspecialchars($note['note'])) ?></div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+              <span class="note-meta">
+                <?php if (!empty($note['user_callsign'])): ?>
+                  <span style="font-family:var(--font-mono); font-weight:600;"><?= htmlspecialchars($note['user_callsign']) ?></span>
+                  &middot;
+                <?php endif; ?>
+                <?= date('M j, Y g:ia', strtotime($note['created_at'])) ?>
+              </span>
+              <?php if ($can_delete): ?>
+              <form method="POST" style="margin:0;" onsubmit="return confirm('Delete this note?');">
+                <input type="hidden" name="note_id" value="<?= $note['id'] ?>">
+                <button type="submit" name="delete_note" class="btn btn-danger btn-sm" style="height:24px; padding:0 8px; font-size:0.72rem;">Delete</button>
+              </form>
+              <?php endif; ?>
+            </div>
+          </div>
+        <?php endforeach; ?>
+      <?php else: ?>
+        <p style="color:var(--ink-3); font-size:0.85rem;">No private notes yet.</p>
+      <?php endif; ?>
+    </div>
+
+    <details class="cn-box">
+      <summary class="cn-summary">
+        <span class="section-title" style="margin:0; display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+          Community Notes
+          <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem; white-space:nowrap;">Articles and links from other users</span>
+        </span>
+        <span style="display:inline-flex; align-items:center; gap:0.6rem;">
+          <span id="cnCount" style="font-size:0.78rem; color:var(--ink-3);"></span>
+          <svg class="cn-chevron" width="12" height="8" viewBox="0 0 10 6" fill="none"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+      </summary>
+
+      <div style="margin-top:1.25rem;">
+        <?php if (!empty($summit['sota_ref'])): ?>
+        <div class="cn-section-head">
+          <div class="cn-heading" style="margin:0;">Public articles and links</div>
+          <a class="btn btn-secondary btn-sm" href="https://www.sotadata.org.uk/en/summits/article/new/<?= htmlspecialchars($summit['sota_ref']) ?>" target="_blank" rel="noopener noreferrer">+ Post an article on SOTA &#8599;</a>
+        </div>
+        <div id="sotaResourcesBody"><p style="color:var(--ink-3); font-size:0.875rem;">Loading articles and links...</p></div>
+        <?php endif; ?>
+      </div>
+    </details>
     </div>
   </div>
 
   <!-- PLANNED ACTIVATIONS -->
-  <div id="planned-activations" style="margin-top:1.5rem;">
+  <div id="planned-activations" style="margin-top:0;">
     <div class="section-card">
       <div class="section-title" style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
         Planned Activations
@@ -2198,7 +2255,7 @@ if ($tl_show) {
     <div class="section-card">
       <div class="section-title" style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
         SOTAwatch Alerts
-        <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem; white-space:nowrap;">Community, not this dashboard</span>
+        <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem; white-space:nowrap;">Community wide</span>
       </div>
       <div id="sotaAlertsBody">
       <?php if (!empty($sota_alerts)): ?>
@@ -3125,6 +3182,42 @@ document.querySelectorAll('.alert-local-time').forEach(function(el){
         .then(function(r){ return r.json(); })
         .then(function(j){ if (j && j.ok) render(j.alerts); })
         .catch(function(){});
+})();
+</script>
+<?php endif; ?>
+<?php if (!empty($summit['sota_ref'])): ?>
+<script>
+// Load SOTA articles and links in the background so the page itself never waits on SOTA
+(function(){
+    var body = document.getElementById('sotaResourcesBody');
+    if (!body) return;
+    function esc(t){ var d=document.createElement('div'); d.textContent=t==null?'':t; return d.innerHTML; }
+    function render(items){
+        if (!items.length) {
+            body.innerHTML = '<p style="color:var(--ink-3); font-size:0.875rem;">No articles or links have been posted for this summit yet.</p>';
+            return;
+        }
+        var html = items.map(function(r){
+            var date = r.ts ? new Date(r.ts*1000).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '';
+            var meta = '<span class="cn-res-meta">'+esc(date)+(r.callsign&&date?' &middot; ':'')+(r.callsign?'<span style="font-family:var(--font-mono); font-weight:600;">'+esc(r.callsign)+'</span>':'')+'</span>';
+            var title = esc(r.title||'Untitled');
+            if (r.article) {
+                return '<details class="cn-res"><summary><span class="cn-twisty">&#9654;</span>'+meta+'<span class="cn-res-title">'+title+'</span></summary>'+
+                  '<div class="cn-res-body">'+r.article+'<p><a href="'+esc(r.url)+'" target="_blank" rel="noopener noreferrer">View on SOTA &#8599;</a></p></div></details>';
+            }
+            return '<div class="cn-res"><div class="cn-res-line"><span class="cn-twisty">&#9654;</span>'+meta+'<a class="cn-res-title" href="'+esc(r.url)+'" target="_blank" rel="noopener noreferrer">'+title+' &#8599;</a></div></div>';
+        }).join('');
+        body.innerHTML = html + '<p style="font-size:0.75rem; color:var(--ink-4); margin-top:0.75rem;">From SOTA</p>';
+    }
+    fetch('sota_resources_refresh.php?ref='+encodeURIComponent(<?= json_encode($summit['sota_ref']) ?>), {credentials:'same-origin'})
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+            if (!j || !j.ok) throw new Error('bad');
+            render(j.items);
+            var n = j.items.length;
+            document.getElementById('cnCount').textContent = n ? n + ' article' + (n===1?'':'s') : '';
+        })
+        .catch(function(){ body.innerHTML = '<p style="color:var(--ink-3); font-size:0.875rem;">Could not load articles right now. Try again later.</p>'; });
 })();
 </script>
 <?php endif; ?>

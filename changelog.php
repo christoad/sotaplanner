@@ -285,6 +285,7 @@ session_start();
         </div>
         <p class="version-desc">Driving routes now appear on the summit map, and the offline PDF for Multi-Activate routes shows the same maps you see on the site.</p>
         <ul>
+            <li>The summit page now has a Community Notes section: articles and links other activators have posted on SOTA are listed as headlines you can open to read or follow to the original site, with a button to post your own on SOTA. Your private notes now show right on the page, visible to you and the members of your dashboards</li>
             <li>Click any day in the summit weather to open a full 16-day forecast for the summit's elevation, with hour-by-hour detail: rain chance, wind and wind direction, cloud cover, visibility, lightning risk, freezing level, and sunrise and sunset</li>
             <li>SOTAwatch alerts on the summit page now appear within about a minute of being posted, without slowing the page down, and are shown in your own local time</li>
             <li>Summits now show a weather forecast for the summit's elevation: a small row on the summit page, and a full Summit Forecast on the activation invitation covering the hike (temperature, wind, precipitation, freezing level and thunderstorm warnings)</li>
