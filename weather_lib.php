@@ -12,7 +12,7 @@ function weather_fetch($lat, $lon, $elev_m) {
 
     $dir = __DIR__ . '/weather_cache';
     if (!is_dir($dir)) @mkdir($dir, 0755, true);
-    $file = "$dir/" . md5("$lat,$lon,$elev_m") . '.json';
+    $file = "$dir/" . md5("v2,$lat,$lon,$elev_m") . '.json';
 
     $cached = is_readable($file) ? json_decode(@file_get_contents($file), true) : null;
     if ($cached && (time() - filemtime($file)) < WEATHER_CACHE_TTL) return $cached;
@@ -26,8 +26,8 @@ function weather_fetch($lat, $lon, $elev_m) {
         'timezone'  => 'auto',
         'forecast_days' => 16,
         'current'   => 'temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_gusts_10m',
-        'hourly'    => 'temperature_2m,apparent_temperature,precipitation,snowfall,weather_code,wind_speed_10m,wind_gusts_10m,cape,freezing_level_height',
-        'daily'     => 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max',
+        'hourly'    => 'temperature_2m,apparent_temperature,precipitation,snowfall,weather_code,wind_speed_10m,wind_gusts_10m,cape,freezing_level_height,precipitation_probability,lightning_potential,cloud_cover,cloud_cover_low,visibility,wind_direction_10m',
+        'daily'     => 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max,precipitation_probability_max,sunrise,sunset',
     ]);
     $ch = curl_init($url);
     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 5, CURLOPT_CONNECTTIMEOUT => 3]);
@@ -74,6 +74,21 @@ function weather_precip($mm, $units) {
 }
 function weather_snow($cm, $units) {
     return $units === 'metric' ? round($cm, 1) . ' cm' : round($cm / 2.54, 1) . ' in';
+}
+function weather_vis($m, $units) {
+    return $units === 'metric' ? round($m / 1000, $m >= 10000 ? 0 : 1) . ' km' : round($m / 1609.34, $m >= 16093 ? 0 : 1) . ' mi';
+}
+function weather_compass($deg) {
+    $pts = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+    return $pts[(int)round(((float)$deg % 360) / 22.5) % 16];
+}
+// Rough label for lightning potential (J/kg); null when the model has no value for this place
+function weather_lightning($v) {
+    if ($v === null) return '';
+    if ($v < 1) return 'None';
+    if ($v < 25) return 'Low';
+    if ($v < 100) return 'Moderate';
+    return 'High';
 }
 function weather_height($m, $units) {
     return $units === 'metric' ? number_format(round($m, -1)) . ' m' : number_format(round($m * 3.28084, -2)) . ' ft';

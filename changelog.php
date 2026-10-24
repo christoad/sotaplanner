@@ -285,6 +285,8 @@ session_start();
         </div>
         <p class="version-desc">Driving routes now appear on the summit map, and the offline PDF for Multi-Activate routes shows the same maps you see on the site.</p>
         <ul>
+            <li>Click any day in the summit weather to open a full 16-day forecast for the summit's elevation, with hour-by-hour detail: rain chance, wind and wind direction, cloud cover, visibility, lightning risk, freezing level, and sunrise and sunset</li>
+            <li>SOTAwatch alerts on the summit page now appear within about a minute of being posted, without slowing the page down, and are shown in your own local time</li>
             <li>Summits now show a weather forecast for the summit's elevation: a small row on the summit page, and a full Summit Forecast on the activation invitation covering the hike (temperature, wind, precipitation, freezing level and thunderstorm warnings)</li>
             <li>Summits that only have a number for a name now appear as "Summit 1234" on the activation invitation</li>
             <li>The area search on the Nominate page now uses your own miles or kilometers setting, and creating another dashboard no longer resets that setting</li>

@@ -713,53 +713,9 @@ if ($current_group && !empty($summit['sota_ref'])) {
 }
 
 // ── SOTAwatch alerts for this summit ────────────────────────────────────────
-$sota_alerts = [];
-if (!empty($summit['sota_ref'])) {
-    $alerts_cache_key = 'sota_all_alerts';
-    $ac = $db->prepare("SELECT setting_value, updated_at FROM app_settings WHERE setting_key = ?");
-    $ac->execute([$alerts_cache_key]);
-    $alerts_cache = $ac->fetch();
-    $all_alerts = null;
-
-    if ($alerts_cache && (time() - strtotime($alerts_cache['updated_at'])) < 3600) {
-        $all_alerts = json_decode($alerts_cache['setting_value'], true);
-    } else {
-        $ctx = stream_context_create(['http' => ['timeout' => 4, 'ignore_errors' => true,
-            'header' => "Accept: application/json\r\nUser-Agent: SOTAplanner/1.0\r\n"]]);
-        $raw = @file_get_contents('https://api2.sota.org.uk/api/alerts', false, $ctx);
-        if ($raw !== false) {
-            $fetched = json_decode($raw, true);
-            if (is_array($fetched)) {
-                $all_alerts = $fetched;
-                $db->prepare("INSERT INTO app_settings (setting_key, setting_value, updated_at)
-                              VALUES (?, ?, NOW())
-                              ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=NOW()")
-                   ->execute([$alerts_cache_key, json_encode($all_alerts)]);
-            }
-        }
-        if (!is_array($all_alerts) && $alerts_cache) {
-            // SOTAwatch slow or down: show the stale copy and retry in ~15 minutes
-            $all_alerts = json_decode($alerts_cache['setting_value'], true);
-            $db->prepare("UPDATE app_settings SET updated_at = NOW() - INTERVAL 2700 SECOND WHERE setting_key = ?")
-               ->execute([$alerts_cache_key]);
-        }
-    }
-
-    if (is_array($all_alerts)) {
-        $ref_parts = explode('/', $summit['sota_ref'], 2);
-        $assoc_code  = $ref_parts[0] ?? '';
-        $summit_code = $ref_parts[1] ?? '';
-        $now = time();
-        foreach ($all_alerts as $alert) {
-            if (strcasecmp($alert['associationCode'] ?? '', $assoc_code) === 0
-                && strcasecmp($alert['summitCode'] ?? '', $summit_code) === 0
-                && strtotime($alert['dateActivated'] ?? '') > $now) {
-                $sota_alerts[] = $alert;
-            }
-        }
-        usort($sota_alerts, fn($a,$b) => strcmp($a['dateActivated'], $b['dateActivated']));
-    }
-}
+// Stored copy only here (no network call); the page refreshes it in the background after load.
+require_once 'sota_alerts_lib.php';
+$sota_alerts = !empty($summit['sota_ref']) ? sota_alerts_for_ref($db, $summit['sota_ref'], false) : [];
 
 // Track type determines how one-way GPX tracks are used for round-trip planning
 $track_type = $gpx_data['track_type'] ?? 'round-trip';
@@ -1788,10 +1744,11 @@ if ($tl_show) {
     <div>
       <!-- Weather -->
       <div class="card" id="wxRow" style="display:none; margin-bottom:1rem; flex-direction:column; gap:0.2rem;">
-        <div style="font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3); margin-bottom:0.5rem;">Weather at Summit</div>
+        <div style="font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3); margin-bottom:0.5rem;">Weather at Summit &middot; <?= number_format(convertElevation($summit['elevation_ft'] ?? 0, $user_units)) . ' ' . getElevationUnit($user_units) ?></div>
         <div class="info-val" id="wxNow" style="font-size:0.95rem; text-align:center;"></div>
         <div id="wxWind" style="font-size:0.72rem; color:var(--ink-3); text-align:center;"></div>
         <div id="wxDays" style="display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:0.4rem; margin-top:0.6rem;"></div>
+        <a id="wxMore" href="#" target="_blank" rel="noopener" style="font-size:0.74rem; font-weight:500; text-align:center; margin-top:0.4rem;">Full forecast and hourly detail &rarr;</a>
         <div style="font-size:0.55rem; color:var(--ink-4); text-align:right; margin-top:0.15rem;"><?= weather_credit_html() ?></div>
       </div>
 
@@ -2243,12 +2200,13 @@ if ($tl_show) {
         SOTAwatch Alerts
         <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3); background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-sm); padding:0.1rem 0.45rem; white-space:nowrap;">Community, not this dashboard</span>
       </div>
+      <div id="sotaAlertsBody">
       <?php if (!empty($sota_alerts)): ?>
         <div style="overflow-x:auto;">
           <table class="mini-table">
             <thead>
               <tr>
-                <th>Date &amp; Time</th>
+                <th>Date &amp; Time (your local time)</th>
                 <th>Callsign</th>
                 <th>Frequency / Mode</th>
                 <th>Notes</th>
@@ -2258,10 +2216,8 @@ if ($tl_show) {
               <?php foreach ($sota_alerts as $al): ?>
                 <tr>
                   <td style="white-space:nowrap; font-weight:500; color:var(--ink);">
-                    <?= date('M j, Y', strtotime($al['dateActivated'])) ?>
-                    <span style="color:var(--ink-3); font-size:0.78rem; display:block;">
-                      <?= date('g:i A', strtotime($al['dateActivated'])) ?> UTC
-                    </span>
+                    <span class="alert-local-date" data-ts="<?= (int)strtotime($al['dateActivated']) ?>"><?= date('M j, Y', strtotime($al['dateActivated'])) ?></span>
+                    <span class="alert-local-time" data-ts="<?= (int)strtotime($al['dateActivated']) ?>" style="color:var(--ink-3); font-size:0.78rem; display:block;"><?= gmdate('g:i A', strtotime($al['dateActivated'])) ?> UTC</span>
                   </td>
                   <td style="font-family:var(--font-mono); font-size:0.82rem; font-weight:600; color:var(--ink);">
                     <?= htmlspecialchars($al['activatingCallsign']) ?>
@@ -2276,10 +2232,11 @@ if ($tl_show) {
             </tbody>
           </table>
         </div>
-        <p style="font-size:0.75rem; color:var(--ink-4); margin-top:0.75rem;">From SOTAwatch · refreshed hourly</p>
+        <p style="font-size:0.75rem; color:var(--ink-4); margin-top:0.75rem;">From SOTAwatch</p>
       <?php else: ?>
         <p style="color:var(--ink-3); font-size:0.875rem;">No upcoming activations posted on SOTAwatch for this summit.</p>
       <?php endif; ?>
+      </div>
     </div>
   </div>
   <?php endif; ?>
@@ -3103,22 +3060,73 @@ function saveActTime() {
     lon: <?= json_encode((float)$summit['longitude']) ?>,
     elev_m: <?= json_encode((int)round(($summit['elevation_ft'] ?? 0) * 0.3048)) ?>
   });
+  // Full forecast page for this summit (elevation-adjusted), opened in a new tab
+  var fcUrl = 'summit_forecast.php?' + new URLSearchParams({
+    lat: q.get('lat'), lon: q.get('lon'), elev_m: q.get('elev_m'),
+    name: <?= json_encode($summit['name'] ?? '') ?>, ref: <?= json_encode($summit['sota_ref'] ?? '') ?>
+  });
   fetch('summit_weather.php?' + q).then(function (r) { return r.json(); }).then(function (d) {
     if (!d || d.error || !d.now) return;
     var n = d.now;
     document.getElementById('wxNow').textContent = n.icon + ' ' + n.temp + ', ' + n.label;
     document.getElementById('wxWind').textContent = 'Feels ' + n.feels + ' · Wind ' + n.wind + ', gusts ' + n.gust;
     document.getElementById('wxDays').innerHTML = d.days.slice(1).map(function (x) {
-      return '<div title="' + x.label + ', max wind ' + x.wind + ', gusts ' + x.gust + '" style="display:flex; flex-direction:column; align-items:center; gap:0.15rem; padding:0.45rem 0.25rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--r-md);">'
+      return '<a href="' + fcUrl + '" target="_blank" rel="noopener" title="' + x.label + ', max wind ' + x.wind + ', gusts ' + x.gust + '" style="display:flex; flex-direction:column; align-items:center; gap:0.15rem; padding:0.45rem 0.25rem; text-decoration:none; color:inherit; background:var(--bg); border:1px solid var(--border); border-radius:var(--r-md);">'
         + '<span style="font-size:0.68rem; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.05em;">' + x.day + '</span>'
         + '<span style="font-size:1.1rem; line-height:1.2;">' + x.icon + '</span>'
         + '<span style="font-size:0.74rem; font-weight:500; color:var(--ink);">' + x.hi + '<span style="color:var(--ink-3); font-weight:400;"> / ' + x.lo + '</span></span>'
         + '<span style="font-size:0.68rem; color:var(--ink-3);">💨 ' + x.wind + '</span>'
-        + '</div>';
+        + '</a>';
     }).join('');
+    document.getElementById('wxMore').href = fcUrl;
     document.getElementById('wxRow').style.display = 'flex';
   }).catch(function () {});
 })();
 </script>
+<script>
+// Show SOTA alert times in the viewer's own timezone (server values are UTC fallback)
+document.querySelectorAll('.alert-local-date').forEach(function(el){
+    var d = new Date(el.dataset.ts * 1000);
+    el.textContent = d.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+});
+document.querySelectorAll('.alert-local-time').forEach(function(el){
+    var d = new Date(el.dataset.ts * 1000);
+    var t = d.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit', timeZoneName:'short'});
+    el.textContent = t;
+});
+</script>
+<?php if (!empty($summit['sota_ref'])): ?>
+<script>
+// Refresh SOTAwatch alerts in the background so the page itself never waits on SOTAwatch
+(function(){
+    var body = document.getElementById('sotaAlertsBody');
+    if (!body) return;
+    function esc(t){ var d=document.createElement('div'); d.textContent=t==null?'':t; return d.innerHTML; }
+    function render(alerts){
+        if (!alerts.length) {
+            body.innerHTML = '<p style="color:var(--ink-3); font-size:0.875rem;">No upcoming activations posted on SOTAwatch for this summit.</p>';
+            return;
+        }
+        var rows = alerts.map(function(a){
+            var d = new Date(a.ts*1000);
+            var date = d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+            var time = d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZoneName:'short'});
+            return '<tr><td style="white-space:nowrap; font-weight:500; color:var(--ink);">'+esc(date)+
+              '<span style="color:var(--ink-3); font-size:0.78rem; display:block;">'+esc(time)+'</span></td>'+
+              '<td style="font-family:var(--font-mono); font-size:0.82rem; font-weight:600; color:var(--ink);">'+esc(a.callsign)+
+              (a.name?'<span style="display:block; font-family:var(--font-sans); font-size:0.72rem; font-weight:400; color:var(--ink-3);">'+esc(a.name)+'</span>':'')+'</td>'+
+              '<td style="font-size:0.78rem; color:var(--ink-2);">'+esc(a.frequency||'\u2014')+'</td>'+
+              '<td style="font-size:0.78rem; color:var(--ink-2);">'+esc(a.comments)+'</td></tr>';
+        }).join('');
+        body.innerHTML = '<div style="overflow-x:auto;"><table class="mini-table"><thead><tr><th>Date &amp; Time (your local time)</th><th>Callsign</th><th>Frequency / Mode</th><th>Notes</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+          '<p style="font-size:0.75rem; color:var(--ink-4); margin-top:0.75rem;">From SOTAwatch</p>';
+    }
+    fetch('sota_alerts_refresh.php?ref='+encodeURIComponent(<?= json_encode($summit['sota_ref']) ?>), {credentials:'same-origin'})
+        .then(function(r){ return r.json(); })
+        .then(function(j){ if (j && j.ok) render(j.alerts); })
+        .catch(function(){});
+})();
+</script>
+<?php endif; ?>
 </body>
 </html>
