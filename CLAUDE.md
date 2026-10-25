@@ -70,6 +70,8 @@ Checked sotamaps.org directly: the "Import GPX Track" page is a plain web form (
 **SSO callsign claim — RESOLVED 2026-08-24:**
 The `sotaplanner` Keycloak client's `id_token` was missing verified `Callsign`/`UserID` claims (see "SOTA SSO OAuth" section below for what changed in `oauth_callback.php`). Flagged to VK3ARR on the SOTA Reflector thread; he fixed it same-day ("exported for a different scope" — a client-scope/protocol-mapper issue on his end). Verified live via `SOTA_SSO_DEBUG` mode before deploying the code fix. No further action needed here.
 
+**Idea, not scheduled (2026-10-24): email "invited, not signed in" users.** God Mode's Users tile shows callsigns added to a dashboard who have never completed SSO (11 of them at the time). Chris may someday email them to say they've been set up. Catch: the app has no email addresses for them (the `users` table is keyed by callsign and SSO only supplies the callsign claim), so this would need a new way to get contact info first.
+
 **Visual sophistication backlog (started 2026-08-23):**
 Chris asked for design inspiration from anime.js, motion.dev, Kokonut UI, Bklit UI, and Manus.im, wanting to make the site feel more polished/animated without changing the Alpine Precision visual language. Takeaways: motion.dev (Framer Motion) is the animation engine of choice — spring hovers, layout animation, scroll-linked reveals; Kokonut UI shows that pattern applied to ordinary cards/buttons; Bklit UI is a charts/data-viz kit (D3 + Motion) relevant to the Community Growth page; Manus.im is an aesthetic reference for hero gradients and staged scroll reveals rather than everything visible on load.
 

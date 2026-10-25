@@ -175,7 +175,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $gid = (int)$_POST['group_id'];
         if ($gid) {
             $db->prepare("UPDATE summits SET drive_time_min = NULL WHERE planning_group_id = ?")->execute([$gid]);
-            $message = "Travel times cleared — they'll recalculate on next visit.";
+            $message = "Travel times cleared, they'll recalculate on next visit.";
         }
     }
 
@@ -213,7 +213,7 @@ $cached_total_row = $db->query("SELECT setting_value, updated_at FROM app_settin
 if ($cached_total_row && strtotime($cached_total_row['updated_at']) > time() - 86400) {
     $gpx_total_cache = (int)$cached_total_row['setting_value'];
 } else {
-    // Read from gz file — 2MB, fast enough to do once a day
+    // Read from gz file, 2MB, fast enough to do once a day
     if (file_exists(SOTA_CACHE_FILE)) {
         $gz = @gzopen(SOTA_CACHE_FILE, 'rb');
         if ($gz) {
@@ -273,7 +273,7 @@ foreach ($db->query("SELECT planning_group_id, callsign, role FROM planning_grou
 }
 
 // Only callsigns that have actually completed SOTA SSO login (users.sso_sub is set on every
-// SSO callback) show up here — early-access-only callsigns are excluded.
+// SSO callback) show up here, early-access-only callsigns are excluded.
 $users_raw = $db->query("
     SELECT cs.callsign,
            GROUP_CONCAT(DISTINCT pg.name ORDER BY pg.name SEPARATOR ', ') as group_names,
@@ -303,7 +303,7 @@ $last_activity = [];
 foreach ($la_rows as $r) $last_activity[$r['actor']] = $r['last_activity'];
 
 // activity_log captures a broader, fresher set of events (edits, trailhead changes,
-// activation scheduling, etc.) — merge it in, keeping whichever timestamp is newer.
+// activation scheduling, etc.), merge it in, keeping whichever timestamp is newer.
 try {
     $al_rows = $db->query("
         SELECT callsign AS actor, MAX(event_time) AS last_activity
@@ -316,7 +316,7 @@ try {
         }
     }
 } catch (PDOException $e) {
-    // activity_log table not yet created — fall back to the derived query above
+    // activity_log table not yet created, fall back to the derived query above
 }
 
 // Try the structured activity_log table first; fall back to derived query if table doesn't exist yet
@@ -329,7 +329,7 @@ try {
     ")->fetchAll();
     $activity_feed_source = 'log';
 } catch (PDOException $e) {
-    // Table not yet created — run db_migrate.php
+    // Table not yet created, run db_migrate.php
     $activity_feed = [];
     $activity_feed_source = 'none';
 }
@@ -426,7 +426,7 @@ $tabs = ['overview' => 'Overview', 'users' => 'Users', 'groups' => 'Dashboards',
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow">
-<title>God Mode — SOTA Planner</title>
+<title>God Mode: SOTA Planner</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -851,6 +851,80 @@ select.form-input { cursor: pointer; }
             <?php endif; ?>
         </div>
 
+        <?php
+        $invited_rows = $db->query("
+            SELECT cs.callsign,
+                   GROUP_CONCAT(DISTINCT CONCAT(pg.name, ' (', pg.owner_callsign, ')') ORDER BY pg.name SEPARATOR ', ') AS group_names
+            FROM (SELECT callsign FROM planning_group_members UNION SELECT owner_callsign FROM planning_groups) cs
+            LEFT JOIN users u ON u.callsign = cs.callsign AND u.sso_sub IS NOT NULL
+            LEFT JOIN planning_group_members pgm ON pgm.callsign = cs.callsign
+            LEFT JOIN planning_groups pg ON pg.id = pgm.planning_group_id
+            WHERE u.callsign IS NULL
+            GROUP BY cs.callsign
+            ORDER BY cs.callsign
+        ")->fetchAll();
+        ?>
+        <div class="section-head" style="margin-top:var(--sp-8);">
+            <div>
+                <h2>Invited, Not Signed In</h2>
+                <p><?= count($invited_rows) ?> callsigns are on a dashboard but have never completed SOTA SSO login</p>
+            </div>
+            <?php if ($invited_rows): ?>
+            <button type="button" class="btn btn-sm btn-ghost" id="qrz-btn" onclick="qrzLookupAll()">Look up on QRZ</button>
+            <?php endif; ?>
+        </div>
+        <div class="card" style="padding:0; overflow:hidden;">
+            <?php if (empty($invited_rows)): ?>
+                <div class="empty">Everyone on a dashboard has signed in.</div>
+            <?php else: ?>
+            <table class="data-table">
+                <thead><tr><th>Callsign</th><th>On dashboard (owner)</th><th>QRZ name</th><th>QRZ email</th><th>Location</th></tr></thead>
+                <tbody>
+                <?php foreach ($invited_rows as $ir): ?>
+                    <tr data-qrz-row="<?= htmlspecialchars($ir['callsign']) ?>">
+                        <td class="mono"><?= htmlspecialchars($ir['callsign']) ?></td>
+                        <td style="font-size:0.8rem; color:var(--ink-2); max-width:300px;"><?= htmlspecialchars($ir['group_names'] ?? '') ?></td>
+                        <td class="qrz-name muted" style="font-size:0.8rem;"></td>
+                        <td class="qrz-email mono" style="font-size:0.8rem;"></td>
+                        <td class="qrz-loc muted" style="font-size:0.8rem;"></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php endif; ?>
+        </div>
+        <div id="qrz-status" class="muted" style="font-size:0.8rem; margin-top:0.5rem;">Results are shown here only and are not saved anywhere.</div>
+        <script>
+        function qrzLookupAll() {
+            var btn = document.getElementById('qrz-btn'), status = document.getElementById('qrz-status');
+            btn.disabled = true; btn.textContent = 'Looking up...';
+            status.textContent = 'Asking QRZ, this takes a few seconds.';
+            fetch('god_qrz_lookup.php', { method: 'POST' })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    btn.disabled = false; btn.textContent = 'Look up again';
+                    if (!d.ok) { status.textContent = 'QRZ lookup failed: ' + d.error; return; }
+                    var found = 0, withEmail = 0;
+                    Object.keys(d.results).forEach(function (cs) {
+                        var row = document.querySelector('[data-qrz-row="' + cs + '"]');
+                        if (!row) return;
+                        var r = d.results[cs];
+                        if (!r.ok) {
+                            row.querySelector('.qrz-name').textContent = r.error;
+                            return;
+                        }
+                        found++;
+                        row.querySelector('.qrz-name').textContent = r.name || '';
+                        row.querySelector('.qrz-loc').textContent = r.location || '';
+                        if (r.email) { withEmail++; row.querySelector('.qrz-email').textContent = r.email; }
+                        else row.querySelector('.qrz-email').textContent = 'none published';
+                    });
+                    status.textContent = found + ' found on QRZ, ' + withEmail + ' with an email.';
+                })
+                .catch(function () { btn.disabled = false; btn.textContent = 'Look up on QRZ'; status.textContent = 'Request failed.'; });
+        }
+        </script>
+
     <!-- ── GROUPS ── -->
     <?php elseif ($active_tab === 'groups'): ?>
 
@@ -947,7 +1021,7 @@ select.form-input { cursor: pointer; }
         <div class="section-head">
             <div>
                 <h2>Activity Log</h2>
-                <p>Last 200 logged events — includes callsign and login method. Persistent log file also at <code>~/logs/sotaplanner_activity.log</code>.</p>
+                <p>Last 200 logged events, includes callsign and login method. Persistent log file also at <code>~/logs/sotaplanner_activity.log</code>.</p>
             </div>
         </div>
         <?php if ($activity_feed_source === 'none'): ?>
@@ -966,7 +1040,7 @@ select.form-input { cursor: pointer; }
                     <span class="feed-subject">
                         <?= htmlspecialchars($ev['subject']) ?>
                         <?php if (!empty($ev['detail']) && $ev['detail'] !== $ev['subject']): ?>
-                            <span class="muted" style="font-size:0.78rem;"> — <?= htmlspecialchars($ev['detail']) ?></span>
+                            <span class="muted" style="font-size:0.78rem;">: <?= htmlspecialchars($ev['detail']) ?></span>
                         <?php endif; ?>
                     </span>
                     <span class="feed-actor" title="<?= htmlspecialchars($ev['login_type'] ?? '') ?>">
@@ -1186,7 +1260,7 @@ select.form-input { cursor: pointer; }
 
         <?php if (empty($cron_log_lines)): ?>
         <div class="card" style="margin-bottom:var(--sp-4);">
-            <div style="font-size:0.85rem; color:var(--ink-3);">No log file yet — the log appears here once the cron job has run for the first time.</div>
+            <div style="font-size:0.85rem; color:var(--ink-3);">No log file yet, the log appears here once the cron job has run for the first time.</div>
         </div>
         <?php else: ?>
         <div class="card" style="padding:0; margin-bottom:var(--sp-4);">
@@ -1344,10 +1418,10 @@ select.form-input { cursor: pointer; }
                 if ($geo && $geo['status'] === 'OK') {
                     $geo_ok  = true;
                     $loc     = $geo['results'][0]['geometry']['location'];
-                    $geo_msg = "OK — Portland, OR resolved to {$loc['lat']}, {$loc['lng']}";
+                    $geo_msg = "OK: Portland, OR resolved to {$loc['lat']}, {$loc['lng']}";
                 } else {
                     $geo_msg = "Status: " . ($geo['status'] ?? 'unknown');
-                    if (!empty($geo['error_message'])) $geo_msg .= " — " . $geo['error_message'];
+                    if (!empty($geo['error_message'])) $geo_msg .= ": " . $geo['error_message'];
                 }
             }
         } else {
@@ -1373,13 +1447,13 @@ select.form-input { cursor: pointer; }
                         $dm_ok  = true;
                         $dur    = $elem['duration']['text'] ?? '?';
                         $dist   = $elem['distance']['text'] ?? '?';
-                        $dm_msg = "OK — Portland to Mt Hood: $dist, $dur";
+                        $dm_msg = "OK: Portland to Mt Hood: $dist, $dur";
                     } else {
                         $dm_msg = "Row status: " . ($elem['status'] ?? 'unknown');
                     }
                 } else {
                     $dm_msg = "Status: " . ($dm['status'] ?? 'unknown');
-                    if (!empty($dm['error_message'])) $dm_msg .= " — " . $dm['error_message'];
+                    if (!empty($dm['error_message'])) $dm_msg .= ": " . $dm['error_message'];
                 }
             }
         } else {
@@ -1413,7 +1487,7 @@ select.form-input { cursor: pointer; }
                     <div class="mono" style="font-size:0.9rem; color:var(--ink-2);"><?= htmlspecialchars(substr($bkey, 0, 8)) ?>...<?= htmlspecialchars(substr($bkey, -6)) ?></div>
                     <div style="font-size:0.78rem; color:var(--ink-3); margin-top:0.4rem;">Application restrictions: HTTP referrers (3 domains) &nbsp;·&nbsp; API restrictions: Maps JS only</div>
                 <?php else: ?>
-                    <div style="color:var(--red);">Not configured — add GOOGLE_MAPS_BROWSER_KEY to sotaplanner_secrets.php</div>
+                    <div style="color:var(--red);">Not configured: add GOOGLE_MAPS_BROWSER_KEY to sotaplanner_secrets.php</div>
                 <?php endif; ?>
             </div>
         </div>
@@ -1449,7 +1523,7 @@ select.form-input { cursor: pointer; }
                 <div style="font-weight:600;">Maps JavaScript API</div>
                 <span id="js-status-badge" style="margin-left:auto; font-size:0.72rem; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.05em;">LOADING…</span>
             </div>
-            <div id="js-status-msg" style="font-size:0.82rem; color:var(--ink-2); margin-bottom:0.75rem;">Initialising map — watch for auth errors below.</div>
+            <div id="js-status-msg" style="font-size:0.82rem; color:var(--ink-2); margin-bottom:0.75rem;">Initialising map, watch for auth errors below.</div>
             <div id="map-test-container" style="width:100%; height:220px; border-radius:var(--r-md); overflow:hidden; background:var(--bg-2); border:1px solid var(--border);">
                 <div id="map-test" style="width:100%; height:100%;"></div>
             </div>
@@ -1497,7 +1571,7 @@ select.form-input { cursor: pointer; }
         }
 
         window.gm_authfailure = function() {
-            setJsFail('Auth failure — the Maps JavaScript API rejected the key. ' +
+            setJsFail('Auth failure: the Maps JavaScript API rejected the key. ' +
                 'Likely a referrer restriction blocking this domain, billing disabled, ' +
                 'or the Maps JS API is not enabled for this key.');
         };
@@ -1511,16 +1585,16 @@ select.form-input { cursor: pointer; }
                     disableDefaultUI: true,
                     gestureHandling: 'none',
                 });
-                // Only mark PASS when tiles actually load — not just when the Map object is created
+                // Only mark PASS when tiles actually load, not just when the Map object is created
                 google.maps.event.addListenerOnce(map, 'tilesloaded', function() {
                     mapPassed = true;
                     document.getElementById('js-status-badge').textContent = 'PASS';
                     document.getElementById('js-status-badge').style.color = 'var(--green)';
                     document.getElementById('js-status-msg').textContent =
-                        '✅ Maps JavaScript API loaded successfully — tiles rendered.';
+                        '✅ Maps JavaScript API loaded successfully, tiles rendered.';
                     document.getElementById('js-status-msg').style.color = 'var(--green)';
                 });
-                // Timeout fallback — if tiles never load, something failed silently
+                // Timeout fallback, if tiles never load, something failed silently
                 setTimeout(function() {
                     if (!mapPassed) {
                         setJsFail('Map tiles never loaded (timed out after 8 s). ' +
@@ -1534,7 +1608,7 @@ select.form-input { cursor: pointer; }
         </script>
         <script src="https://maps.googleapis.com/maps/api/js?key=<?= htmlspecialchars(defined('GOOGLE_MAPS_BROWSER_KEY') ? GOOGLE_MAPS_BROWSER_KEY : GOOGLE_MAPS_API_KEY) ?>&callback=initMap&loading=async"
                 async defer
-                onerror="document.getElementById('js-status-badge').textContent='ERROR';document.getElementById('js-status-msg').textContent='❌ Script failed to load — check network or API key.';">
+                onerror="document.getElementById('js-status-badge').textContent='ERROR';document.getElementById('js-status-msg').textContent='❌ Script failed to load: check network or API key.';">
         </script>
 
     <?php endif; ?>
