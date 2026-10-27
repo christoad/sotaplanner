@@ -420,6 +420,15 @@ usort($summits, function ($a, $b) use ($current_group) {
 // own "Nominate Your First Summit" button is the only add button shown.
 $dashboard_blank = empty($summits) && count($active_filters) === 7;
 
+// Gentle nudge: pulse the Add Summits button until the dashboard has at least 3 summits (counted unfiltered)
+$pulse_add_summits = false;
+if (!empty($current_group)) {
+    $_pc = $db->prepare("SELECT COUNT(*) FROM summits WHERE planning_group_id = ?");
+    $_pc->execute([$current_group['id']]);
+    $pulse_add_summits = ((int)$_pc->fetchColumn()) < 3;
+    unset($_pc);
+}
+
 // Saved multi-activations for this group, keyed by the first (lead) summit's id.
 // A saved route replaces its member summits' individual dashboard rows with one
 // summary row (aggregate stats, precomputed on save), with the members nested
@@ -908,6 +917,12 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
     .btn:hover { text-decoration: none; }
     .btn:active { transform: scale(0.98); }
     .btn-primary { background: var(--ink); color: #fff; }
+    .btn-pulse { animation: addSummitsPulse 2s ease-in-out infinite; }
+    @keyframes addSummitsPulse {
+      0%, 100% { box-shadow: 0 0 0 0 oklch(52% 0.13 50 / 0.55); transform: scale(1); }
+      50%      { box-shadow: 0 0 0 9px oklch(52% 0.13 50 / 0); transform: scale(1.05); }
+    }
+    @media (prefers-reduced-motion: reduce) { .btn-pulse { animation: none; box-shadow: 0 0 0 3px oklch(84% 0.08 65); } }
     .btn-primary:hover { background: var(--ink-2); color: #fff; }
     .btn-ghost {
       background: transparent; color: var(--ink-2);
@@ -1648,7 +1663,7 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
             </div>
         </div>
         <?php if (!$dashboard_blank): ?>
-        <a href="nominate.php" class="btn btn-primary btn-sm">+ Add Summits</a>
+        <a href="nominate.php" class="btn btn-primary btn-sm<?= $pulse_add_summits ? ' btn-pulse' : '' ?>">+ Add Summits</a>
         <?php endif; ?>
         <div class="topbar-divider"></div>
         <div class="user-chip" id="userChip">
@@ -1688,6 +1703,15 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
         <span><?= $_GET['imported']
             ? 'The shared multi-summit route has been added to this dashboard, along with its summits and their trail research.'
             : 'Sorry, the shared route could not be copied into this dashboard. Open the shared link again and try once more.' ?></span>
+        <button class="msg-dismiss" onclick="this.parentElement.remove()">×</button>
+    </div>
+    <?php endif; ?>
+
+    <?php if (isset($_GET['summit_saved'])): ?>
+    <div class="msg <?= $_GET['summit_saved'] ? 'msg-success' : 'msg-info' ?>" style="margin-bottom:1rem;">
+        <span><?= $_GET['summit_saved']
+            ? 'The shared summit has been saved to this dashboard, along with its trail research.'
+            : 'Sorry, the shared summit could not be saved. Open the shared link again and try once more.' ?></span>
         <button class="msg-dismiss" onclick="this.parentElement.remove()">×</button>
     </div>
     <?php endif; ?>
@@ -1822,7 +1846,7 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
             <h3>No summits<?= !$is_all ? ' match the current filters' : ' nominated yet' ?></h3>
             <p><?= !$is_all ? 'Try adjusting the filters above.' : 'Nominate your first summit to start planning activations.' ?></p>
             <?php if ($is_all): ?>
-                <a href="nominate.php" class="btn btn-primary" style="margin-top:var(--sp-4)">Nominate Your First Summit</a>
+                <a href="nominate.php" class="btn btn-primary<?= $pulse_add_summits ? ' btn-pulse' : '' ?>" style="margin-top:var(--sp-4)">Nominate Your First Summit</a>
             <?php endif; ?>
         </div>
     <?php else: ?>
@@ -1981,7 +2005,7 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
 
     <?php if (!$dashboard_blank): ?>
     <div class="add-summits-footer">
-        <a href="nominate.php" class="btn btn-primary">+ Add Summits</a>
+        <a href="nominate.php" class="btn btn-primary<?= $pulse_add_summits ? ' btn-pulse' : '' ?>">+ Add Summits</a>
     </div>
     <?php endif; ?>
     </div><!-- /#list-view -->

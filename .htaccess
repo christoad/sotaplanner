@@ -1,0 +1,5 @@
+# Pretty public links for shared summit pages: /s/w6-cc-045-mount-baldy
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^s/([a-z0-9-]+)/?$ summit_share.php?s=$1 [NC,L,QSA]
+</IfModule>

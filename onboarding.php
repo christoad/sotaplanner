@@ -1,6 +1,7 @@
 <?php
 require_once 'config.php';
 require_once 'multi_import_lib.php';
+require_once 'share_lib.php';
 session_start();
 requireLogin();
 
@@ -39,11 +40,32 @@ if ($pending_import) {
     }
 }
 
+// Arrived via "Save this summit" on a shared summit page (share_save.php). Same flow as a
+// shared route: existing users pick a dashboard or make a new one, new users create their
+// first dashboard (name + starting address), then the summit is copied in.
+$pending_summit = (string)($_SESSION['pending_summit_import'] ?? '');
+$import_summit = null;
+if ($pending_summit) {
+    $import_summit = sharePublicSummitByRef($db, $pending_summit);
+    if (!$import_summit) {
+        unset($_SESSION['pending_summit_import'], $_SESSION['import_group_id']);
+        $pending_summit = 0;
+    }
+}
+$pending_any = $pending_import || $pending_summit;
+$import_what = $pending_summit ? 'summit' : 'route';
+
 function finishPendingImport(PDO $db, array $group, string $callsign, bool $allow_tour = true): void {
     $source_id = (int)($_SESSION['pending_multi_import'] ?? 0);
-    $new_id = $source_id ? importMultiActivationIntoGroup($db, $source_id, (int)$group['id'], $callsign) : null;
-    if ($new_id) logActivity($db, 'Multi-activation imported', 'shared route #' . $source_id, "new id=$new_id", $group['name']);
-    unset($_SESSION['pending_multi_import'], $_SESSION['import_group_id'], $_SESSION['import_choose_new'], $_SESSION['onboarding_crew_done']);
+    $share_id = (string)($_SESSION['pending_summit_import'] ?? '');
+    if ($share_id !== '') {
+        $new_id = importSharedSummitIntoGroup($db, $share_id, (int)$group['id']);
+        if ($new_id) logActivity($db, 'Shared summit saved', 'public page ' . $share_id, "new summit id=$new_id", $group['name']);
+    } else {
+        $new_id = $source_id ? importMultiActivationIntoGroup($db, $source_id, (int)$group['id'], $callsign) : null;
+        if ($new_id) logActivity($db, 'Multi-activation imported', 'shared route #' . $source_id, "new id=$new_id", $group['name']);
+    }
+    unset($_SESSION['pending_multi_import'], $_SESSION['pending_summit_import'], $_SESSION['pending_share_return'], $_SESSION['import_group_id'], $_SESSION['import_choose_new'], $_SESSION['onboarding_crew_done']);
 
     // Only a user's very first dashboard gets the dashboard tour
     $stmt = $db->prepare("
@@ -52,7 +74,9 @@ function finishPendingImport(PDO $db, array $group, string $callsign, bool $allo
         WHERE pg.owner_callsign = ? OR pgm.callsign = ?
     ");
     $stmt->execute([$callsign, $callsign]);
-    $qs = ['imported' => $new_id ? 1 : 0];
+    $qs = $share_id ? ['summit_saved' => $new_id ? 1 : 0] : ['imported' => $new_id ? 1 : 0];
+    // Same orange highlight the nominate tool gives newly added summits
+    if ($share_id && $new_id) $qs['new_ids'] = $new_id;
     if ($allow_tour && !isDemoOnboarding($db, $callsign) && (int)$stmt->fetchColumn() <= 1) $qs['tour'] = 1;
     header('Location: index.php?' . http_build_query($qs));
     exit;
@@ -61,7 +85,7 @@ function finishPendingImport(PDO $db, array $group, string $callsign, bool $allo
 // Existing user importing a shared route: every dashboard they can add it to,
 // with its selected starting address (drive times are calculated from it)
 $user_groups = [];
-if ($pending_import) {
+if ($pending_any) {
     $stmt = $db->prepare("
         SELECT DISTINCT pg.id, pg.name, a.label AS addr_label, a.address AS addr
         FROM planning_groups pg
@@ -75,7 +99,7 @@ if ($pending_import) {
     $user_groups = $stmt->fetchAll();
 }
 
-if ($pending_import && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_existing'])) {
+if ($pending_any && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_existing'])) {
     $pick = (int)($_POST['group_id'] ?? 0);
     $chosen = null;
     foreach ($user_groups as $g) { if ((int)$g['id'] === $pick) $chosen = $g; }
@@ -86,7 +110,7 @@ if ($pending_import && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['im
     $error = 'Please pick one of your dashboards.';
 }
 
-if ($pending_import && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_new'])) {
+if ($pending_any && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_new'])) {
     $_SESSION['import_choose_new'] = true;
     header('Location: onboarding.php');
     exit;
@@ -104,7 +128,7 @@ $stmt->execute([$callsign, $callsign]);
 $existing_group = $stmt->fetch();
 
 // If user has a group with an address already, send them to the dashboard
-if ($existing_group && !$pending_import && !$demo) {
+if ($existing_group && !$pending_any && !$demo) {
     $addr_stmt = $db->prepare("SELECT COUNT(*) FROM addresses WHERE planning_group_id = ?");
     $addr_stmt->execute([$existing_group['id']]);
     if ((int)$addr_stmt->fetchColumn() > 0) {
@@ -140,7 +164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_group'])) {
             $stmt->execute([$new_group_id, $callsign]);
 
             setCurrentPlanningGroup($new_group_id);
-            if ($pending_import) {
+            if ($pending_any) {
                 $_SESSION['import_group_id'] = (int)$new_group_id;
                 $_SESSION['onboarding_crew_done'] = true;
             } else {
@@ -204,7 +228,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_address'])) {
             $stmt = $db->prepare("INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
             $stmt->execute([$setting_key, $new_addr_id]);
 
-            if ($pending_import && (int)($_SESSION['import_group_id'] ?? 0) === (int)$group['id']) {
+            if ($pending_any && (int)($_SESSION['import_group_id'] ?? 0) === (int)$group['id']) {
                 finishPendingImport($db, $group, $callsign);
             }
             unset($_SESSION['onboarding_crew_done'], $_SESSION['demo_onboarding_active']);
@@ -218,7 +242,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_address'])) {
 }
 
 // Import mode: "Skip for now" on the address step still brings the route along
-if ($pending_import && isset($_GET['skip_address'])) {
+if ($pending_any && isset($_GET['skip_address'])) {
     $group = getCurrentPlanningGroup($db);
     if ($group && (int)($_SESSION['import_group_id'] ?? 0) === (int)$group['id']) {
         finishPendingImport($db, $group, $callsign);
@@ -227,7 +251,7 @@ if ($pending_import && isset($_GET['skip_address'])) {
 
 // Determine current step (1 = no group, 2 = crew, 3 = address)
 $current_group = getCurrentPlanningGroup($db);
-if ($pending_import) {
+if ($pending_any) {
     if ($current_group && (int)($_SESSION['import_group_id'] ?? 0) === (int)$current_group['id']) {
         $step = 3;
     } elseif (!empty($user_groups) && empty($_SESSION['import_choose_new'])) {
@@ -624,7 +648,7 @@ window.addEventListener('pageshow', snapTopAndFocus);
 <?php if ($step !== 'choose'): ?>
 <!-- Step indicator -->
 <div class="setup-header">
-    <div class="setup-title"><?= $pending_import ? '2 steps to add this route' : '3 steps to get started' ?></div>
+    <div class="setup-title"><?= $pending_any ? '2 steps to add this ' . $import_what : '3 steps to get started' ?></div>
 </div>
 <div class="step-bar">
 
@@ -640,7 +664,7 @@ window.addEventListener('pageshow', snapTopAndFocus);
         <div class="step-sublabel <?= $step === 1 ? 'active' : '' ?>">Name your dashboard</div>
     </div>
 
-    <?php if (!$pending_import): ?>
+    <?php if (!$pending_any): ?>
     <div class="step-connector-wrap">
         <div class="step-connector-line <?= $step > 1 ? 'done' : '' ?>"></div>
     </div>
@@ -663,7 +687,7 @@ window.addEventListener('pageshow', snapTopAndFocus);
     </div>
 
     <div class="step-item">
-        <div class="step-circle <?= $step >= 3 ? 'active' : '' ?>"><?= $pending_import ? 2 : 3 ?></div>
+        <div class="step-circle <?= $step >= 3 ? 'active' : '' ?>"><?= $pending_any ? 2 : 3 ?></div>
         <div class="step-label <?= $step >= 3 ? 'active' : '' ?>">Set Location</div>
         <div class="step-sublabel <?= $step === 3 ? 'active' : '' ?>">For travel times</div>
     </div>
@@ -689,12 +713,17 @@ window.addEventListener('pageshow', snapTopAndFocus);
             </svg>
         </span>
 
-        <h1 class="hero-title">Where should this route go?</h1>
+        <h1 class="hero-title">Where should this <?= $import_what ?> go?</h1>
 
         <div class="hero-note">
+        <?php if ($pending_summit): ?>
+            You're saving <strong><?= htmlspecialchars($import_summit['name']) ?></strong> (<?= htmlspecialchars($import_summit['sota_ref']) ?>).
+            Its trail research comes along with it. Travel time is calculated from the dashboard's starting location.
+        <?php else: ?>
             You're adding <strong><?= htmlspecialchars($import_route['name'] ?: 'a multi-summit route') ?></strong>
             (<?= (int)$import_route['stops'] ?> stops<?= $import_route['created_by'] ? ', shared by ' . htmlspecialchars($import_route['created_by']) : '' ?>).
             Its summits and their trail research come along with it. Drive times are calculated from the dashboard's starting location.
+        <?php endif; ?>
         </div>
 
         <form method="POST">
@@ -727,7 +756,7 @@ window.addEventListener('pageshow', snapTopAndFocus);
     <!-- ═══════════════════════════════════════════════════════════════ -->
     <div class="hero-card">
 
-        <div class="step-badge">Step 1 of <?= $pending_import ? 2 : 3 ?></div>
+        <div class="step-badge">Step 1 of <?= $pending_any ? 2 : 3 ?></div>
 
         <span class="hero-icon">
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -736,9 +765,14 @@ window.addEventListener('pageshow', snapTopAndFocus);
             </svg>
         </span>
 
-        <h1 class="hero-title"><?= $pending_import ? 'Create a dashboard for this route' : 'Create your dashboard' ?></h1>
+        <h1 class="hero-title"><?= $pending_any ? 'Create a dashboard for this ' . $import_what : 'Create your dashboard' ?></h1>
 
-        <?php if ($pending_import): ?>
+        <?php if ($pending_summit): ?>
+        <div class="hero-note">
+            You're saving <strong><?= htmlspecialchars($import_summit['name']) ?></strong> (<?= htmlspecialchars($import_summit['sota_ref']) ?>).
+            It will be waiting on your new dashboard, along with its trail research.
+        </div>
+        <?php elseif ($pending_any): ?>
         <div class="hero-note">
             You're adding <strong><?= htmlspecialchars($import_route['name'] ?: 'a multi-summit route') ?></strong>
             (<?= (int)$import_route['stops'] ?> stops<?= $import_route['created_by'] ? ', shared by ' . htmlspecialchars($import_route['created_by']) : '' ?>).
@@ -893,7 +927,7 @@ window.addEventListener('pageshow', snapTopAndFocus);
     <!-- ═══════════════════════════════════════════════════════════════ -->
     <div class="hero-card">
 
-        <div class="step-badge"><?= $pending_import ? 'Step 2 of 2' : 'Step 3 of 3' ?></div>
+        <div class="step-badge"><?= $pending_any ? 'Step 2 of 2' : 'Step 3 of 3' ?></div>
 
         <span class="hero-icon">
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -952,11 +986,11 @@ window.addEventListener('pageshow', snapTopAndFocus);
             </div>
 
             <button type="submit" name="add_address" class="btn-submit">
-                <?= $pending_import ? 'Save &amp; Add Route' : 'Save &amp; Go to Dashboard' ?> &nbsp;→
+                <?= $pending_summit ? 'Save &amp; Add Summit' : ($pending_any ? 'Save &amp; Add Route' : 'Save &amp; Go to Dashboard') ?> &nbsp;→
             </button>
         </form>
 
-        <a href="<?= $pending_import ? 'onboarding.php?skip_address=1' : 'index.php' ?>" class="btn-skip">Skip for now. I'll add an address later</a>
+        <a href="<?= $pending_any ? 'onboarding.php?skip_address=1' : 'index.php' ?>" class="btn-skip">Skip for now. I'll add an address later</a>
 
     </div>
 
