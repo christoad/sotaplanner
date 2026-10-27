@@ -201,7 +201,7 @@ $jsflags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
     .topbar-logo { display: flex; align-items: center; gap: 0.75rem; color: var(--ink); font-weight: 600; font-size: 0.95rem; letter-spacing: -0.01em; }
     .topbar-logo:hover { text-decoration: none; }
     .topbar-right { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; }
-    .page { padding: 2rem; max-width: 1100px; margin: 0 auto; }
+    .page { padding: 2rem; max-width: 1400px; margin: 0 auto; }
 
     .btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0 1rem; height: 36px; border-radius: var(--r-md); font-family: var(--font-sans); font-size: 0.875rem; font-weight: 500; cursor: pointer; border: none; transition: background 0.15s, box-shadow 0.15s, transform 0.1s; white-space: nowrap; line-height: 1; }
     .btn:hover { text-decoration: none; }
@@ -374,9 +374,9 @@ $jsflags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
           $sub = [];
           if (!empty($summit['region'])) $sub[] = htmlspecialchars($summit['region']);
           if ($summit['points']) $sub[] = (int)$summit['points'] . ' pts';
-          if ($total_acts !== null && $total_acts !== '') $sub[] = (int)$total_acts . ((int)$total_acts === 1 ? ' activation' : ' activations');
           echo implode(' &middot; ', $sub);
-        ?>
+          $acts_txt = ($total_acts !== null && $total_acts !== '') ? (int)$total_acts . ((int)$total_acts === 1 ? ' activation' : ' activations') : '';
+        ?><span id="subActs" data-has-lead="<?= $sub ? '1' : '0' ?>"><?= $acts_txt !== '' ? ($sub ? ' &middot; ' : '') . $acts_txt : '' ?></span>
       </div>
     </div>
     <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
@@ -924,6 +924,11 @@ fetch(feed('weather')).then(r => r.json()).then(function (d) {
 
 // ── Last activated (SOTA activations, cached) ────────────────────────────────
 fetch(feed('activations')).then(r => r.json()).then(function (j) {
+  // Total activations in the subtitle, from the same cached SOTA lookup (works for summits no dashboard has stored)
+  var sa = document.getElementById('subActs');
+  if (sa && j && j.ok) {
+    sa.textContent = (sa.dataset.hasLead === '1' ? ' · ' : '') + j.count + (j.count === 1 ? ' activation' : ' activations');
+  }
   var el = document.getElementById('lastActivated');
   if (!el) return;
   if (!j || !j.ok) { el.textContent = ''; return; }
