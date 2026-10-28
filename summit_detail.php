@@ -4,6 +4,7 @@ ini_set('display_errors', 1);
 
 require_once 'config.php';
 require_once 'weather_lib.php';
+require_once 'share_lib.php';
 session_start();
 requireLogin();
 
@@ -1294,6 +1295,17 @@ if ($tl_show) {
       opacity: 0; pointer-events: none; transition: opacity 0.15s, transform 0.15s;
     }
     .sota-ref-designator .copied-tip.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    /* Share button: same little "copied" pop-up as the designator, button itself never changes */
+    .share-tip-host { position: relative; }
+    .share-tip-host .copied-tip {
+      position: absolute; bottom: calc(100% + 6px); left: 50%;
+      transform: translateX(-50%) translateY(4px);
+      background: var(--ink); color: #fff; font-family: var(--font-sans);
+      font-size: 0.7rem; font-weight: 600; letter-spacing: 0;
+      padding: 0.25rem 0.55rem; border-radius: var(--r-sm); white-space: nowrap;
+      opacity: 0; pointer-events: none; transition: opacity 0.15s, transform 0.15s;
+    }
+    .share-tip-host .copied-tip.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
     /* GPS prefs block */
     .gps-prefs { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.875rem 1rem; margin-top: 0.75rem; }
@@ -1403,7 +1415,10 @@ if ($tl_show) {
         ?>
         <a href="<?= htmlspecialchars($invite_url0) ?>" target="_blank" class="btn btn-secondary btn-sm">Activation Invite</a>
       <?php else: ?>
-        <a href="#planned-activations" class="btn btn-secondary btn-sm">Create Invite</a>
+        <a href="#planned-activations" class="btn btn-secondary btn-sm" onclick="openCreateInvite()">Create Invite</a>
+      <?php endif; ?>
+      <?php if (!empty($summit['sota_ref'])): ?>
+        <button type="button" class="btn btn-secondary btn-sm share-tip-host" id="shareSummitBtn" data-url="<?= htmlspecialchars(shareUrl(shareMakeSlug($summit['sota_ref'], $summit['name']))) ?>" onclick="shareSummit(this)" title="Copy the public page link for this summit, anyone can open it without logging in"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg><span id="shareLbl">Share</span><span class="copied-tip">Link copied!</span></button>
       <?php endif; ?>
       <button class="btn btn-primary btn-sm" type="submit" form="main-edit-form" name="update_summit">Save Changes</button>
     </div>
@@ -2203,7 +2218,7 @@ if ($tl_show) {
         </fieldset>
       </details>
 
-      <details style="margin-top:0.875rem;">
+      <details id="create-invite-details" style="margin-top:0.875rem; scroll-margin-top:72px;">
         <summary style="cursor:pointer; font-size:0.875rem; font-weight:600; color:var(--accent); margin-bottom:0.875rem; display:inline-flex; align-items:center; gap:0.4rem;">
           + Create an Invite to This Activation
         </summary>
@@ -2385,6 +2400,16 @@ function geocodeAddress() {
 }
 
 // ── Copy invite link ────────────────────────────────────────────────────────
+// "Create Invite" at the top of the page jumps here: open the invite form so it is ready to fill in
+function openCreateInvite() {
+  var d = document.getElementById('create-invite-details');
+  if (!d) return;
+  d.open = true;
+  setTimeout(function () { d.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
+}
+if (window.location.hash === '#planned-activations') openCreateInvite();
+window.addEventListener('hashchange', function () { if (window.location.hash === '#planned-activations') openCreateInvite(); });
+
 function togglePaEdit(id) {
   var el = document.getElementById('pa-edit-' + id);
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
@@ -3107,6 +3132,32 @@ function saveActTime() {
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
         body: 'minutes=' + encodeURIComponent(minutes)
     }).then(() => { window.location.reload(); });
+}
+</script>
+<script>
+// Share button: copies this summit's public page link (every summit has one, nothing to set up)
+function shareSummit(btn) {
+  var url = btn.dataset.url, tip = btn.querySelector('.copied-tip');
+  var done = function () {
+    tip.classList.add('show');
+    clearTimeout(btn._copyTipTimer);
+    btn._copyTipTimer = setTimeout(function () { tip.classList.remove('show'); }, 1200);
+  };
+  // Older-browser fallback: copy through a temporary text box so no pop-up is needed
+  var legacy = function () {
+    var t = document.createElement('textarea');
+    t.value = url; t.style.position = 'fixed'; t.style.opacity = '0';
+    document.body.appendChild(t); t.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(t);
+    if (ok) done(); else window.prompt('Copy this link to share the summit:', url);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(done, legacy);
+  } else {
+    legacy();
+  }
 }
 </script>
 <script>

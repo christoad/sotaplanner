@@ -2,6 +2,8 @@
 
 ## Pending Work — Ask Chris at Session Start
 
+**Public summit pages (`/s/<designator>`, shipped 2026-10-27) and a queued idea (alternate destination and return-trip pulldown on summit detail):** see `research/public-summit-pages.md` before touching `summit_share.php`, `share_lib.php` or the summit page Share button.
+
 **Google Maps API — two-key setup (completed 2026-06-01):**
 Two separate API keys are used. Both are in the same paid Google Cloud project.
 
