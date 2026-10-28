@@ -274,6 +274,7 @@ session_start();
             <li>Activation count</li>
             <li>Summit to Summit mode with elevation plots</li>
             <li>Weather widget on the summit detail page</li>
+            <li>Radio interference (RFI) information for summits, in partnership with KM6AM's Summit RFI project, so you can see which summits are likely to have noisy radio environments before you hike</li>
         </ul>
     </div>
 
