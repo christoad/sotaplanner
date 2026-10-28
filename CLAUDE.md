@@ -74,6 +74,10 @@ The `sotaplanner` Keycloak client's `id_token` was missing verified `Callsign`/`
 
 **Idea, not scheduled (2026-10-24): email "invited, not signed in" users.** God Mode's Users tile shows callsigns added to a dashboard who have never completed SSO (11 of them at the time). Chris may someday email them to say they've been set up. Catch: the app has no email addresses for them (the `users` table is keyed by callsign and SSO only supplies the callsign claim), so this would need a new way to get contact info first.
 
+**Queued projects (added 2026-10-28), not started:**
+1. **Search bar on the main site.** Chris wants a site-wide search bar. Scope not yet defined (what it searches: summits on the current dashboard, the SOTA summit cache, help/about/changelog pages, or all of these). Confirm scope with Chris before building. The existing summit search in `sota_cache_helper.php` (indexed `sota_summit_index` table plus `sota_cache_norm.txt`) is the likely backend for summit lookups.
+2. **Accessibility and cookie disclosure, only if required.** First determine what is actually required for SOTAplanner (users worldwide, so consider GDPR/ePrivacy and UK rules for cookies, plus accessibility expectations such as WCAG 2.1 AA). Audit what the site sets: PHP session cookie, `sota_default_group` cookie, Google Maps and Google Fonts third-party loads, motion.dev CDN. Strictly necessary cookies may need only a disclosure line or privacy page rather than a consent banner. Then build whatever is needed: cookie/privacy notice, and an accessibility pass (contrast, focus states, keyboard navigation, alt text, ARIA labels, reduced-motion support). Report findings to Chris before adding banners.
+
 **Visual sophistication backlog (started 2026-08-23):**
 Chris asked for design inspiration from anime.js, motion.dev, Kokonut UI, Bklit UI, and Manus.im, wanting to make the site feel more polished/animated without changing the Alpine Precision visual language. Takeaways: motion.dev (Framer Motion) is the animation engine of choice — spring hovers, layout animation, scroll-linked reveals; Kokonut UI shows that pattern applied to ordinary cards/buttons; Bklit UI is a charts/data-viz kit (D3 + Motion) relevant to the Community Growth page; Manus.im is an aesthetic reference for hero gradients and staged scroll reveals rather than everything visible on load.
 
@@ -97,12 +101,16 @@ Always save Playwright screenshots to the `playwright/` folder in the project ro
 ### Playwright Login
 Use **staging** (christopherreddick.com/sotaplanner). Its login page has a small **"Developer access"** link in the bottom-left corner; click it, enter `KI6CR`, click **Go**. This passwordless sign-in exists on dev/staging only: `isProductionSite()` in `config.php` (host ends in `sotaplanner.com`) removes it from the production login page and rejects the POST server-side (removed 2026-10-13 after the podcast launch, because on production it let anyone log in as any callsign). Production login is SOTA SSO only.
 
-### Branches and release flow (changed 2026-10-13, after the podcast launch brought real users)
-**Day-to-day work happens on the `dev` branch. `main` is exactly what is live on production.** Chris never does git work himself; Claude handles all branching, merging and deploying (see memory `feedback_avoid_branch_merge_complexity`).
-1. Work and commit on `dev`. Deploy to **staging** (command below) so Chris can test. Do not touch production at this stage.
-2. When Chris says to ship it: fast-forward merge `dev` into `main` (`git checkout main && git merge --ff-only dev`), rsync only the files that changed to production, verify the live site, then `git checkout dev` again.
-3. Urgent security or outage fixes may go through the same flow quickly, but still tell Chris what went live.
-4. Chris pushes to GitHub via GitHub Desktop; remind him after commits.
+### Branches and release flow (changed 2026-10-28: `main` plus short-lived feature branches; the old long-lived `dev` branch is gone)
+**`main` is exactly what is live on production. Every piece of work gets its own short-lived branch, always created from the latest `main`.** Chris never does git work himself; Claude handles all branching, merging and deploying (see memory `feedback_avoid_branch_merge_complexity`).
+1. Create a branch off `main` named for the change (`git switch -c mobile-service-wording main`). Never start from another feature branch.
+2. Work on it and deploy to **staging** from that branch (command below) so Chris can test. Tell Chris which branch is currently on staging. Only one branch is on staging at a time; things tested together go on the same branch. Do not touch production at this stage.
+3. If Chris thinks of a tweak **before** saying it is tested, it goes on the same branch.
+4. When Chris says to ship it: merge the branch into `main` (fast-forward when possible), rsync only the files that changed to production, verify the live site, then delete the branch.
+5. A tweak found **after** shipping gets a new branch off the latest `main` (for example `mobile-service-wording-2`). Never reuse a merged branch.
+6. Urgent security or outage fixes use the same flow, quickly, and Chris is told what went live.
+7. Chris pushes to GitHub via GitHub Desktop; remind him after commits. Do not leave work on `main` that is not live: if something is committed but not yet approved to ship, keep it on its own branch.
+8. Sessions run in worktrees under `.claude/worktrees/`, and git operations can only target the session's own worktree. Tidy other worktrees from a session that lives in them, or ask Chris.
 
 **Staging and production share one database and `config.php`.** So schema changes are live for production the moment they run: keep migrations additive and backward compatible (new tables or nullable columns, never renames or drops), and run them before the code that needs them ships. Staging cannot test SOTA SSO, and the cron jobs run on production only.
 
@@ -113,11 +121,11 @@ Commit when Chris says so. Do **not** bump `APP_VERSION` per commit (see Version
 - **URL:** christopherreddick.com/sotaplanner/
 - **Server path:** `/home/chrisr069/christopherreddick.com/sotaplanner/`
 - **Database:** Same production DB (shared, see above)
-- **Deploy to staging** (from the `dev` branch working tree):
+- **Deploy to staging** (from the working tree of the branch being tested; if working in a worktree, change the source path to that worktree's root):
   ```
   rsync -avz --exclude='.git' --exclude='.claude' --exclude='.playwright-mcp' --exclude='playwright' "/Users/chris/Dropbox/ham - amateur radio/sotaplanner/" dreamhost-sota:/home/chrisr069/christopherreddick.com/sotaplanner/
   ```
-- **Deploy to production** only after Chris approves and `dev` is merged to `main`: rsync just the changed files (`git diff --name-only <old main>..main`) to `dreamhost-sota:/home/chrisr069/sotaplannerdotcom/`, from a checkout of `main`.
+- **Deploy to production** only after Chris approves and the branch is merged to `main`: rsync just the changed files (`git diff --name-only <old main>..main`) to `dreamhost-sota:/home/chrisr069/sotaplannerdotcom/`, from a checkout of `main`.
 - **GPX files + SOTA cache** are synced from production to staging daily at 2am via `/home/chrisr069/sync_sites.sh`. No need to manually copy GPX files when testing on staging.
 
 ### Hosting & Scaling — CDN Options (researched 2026-08-25)

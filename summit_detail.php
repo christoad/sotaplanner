@@ -1708,16 +1708,16 @@ if ($tl_show) {
         </div>
       </div>
 
-      <!-- Cell Service · Trailhead in one row -->
+      <!-- Summit Mobile Service · Trailhead in one row -->
       <div class="field-row-2" style="margin-bottom:1rem;">
         <div class="form-group" style="margin:0;">
-          <label class="form-label">Cell Service</label>
+          <label class="form-label">Summit Mobile Service</label>
           <select class="form-select" name="cell_service">
             <option value="">Unknown</option>
-            <option value="full"         <?= ($summit['cell_service'] ?? '') === 'full'         ? 'selected' : '' ?>>Full Coverage</option>
-            <option value="intermittent" <?= ($summit['cell_service'] ?? '') === 'intermittent' ? 'selected' : '' ?>>Intermittent</option>
-            <option value="summit_only"  <?= ($summit['cell_service'] ?? '') === 'summit_only'  ? 'selected' : '' ?>>Summit Only</option>
-            <option value="none"         <?= ($summit['cell_service'] ?? '') === 'none'         ? 'selected' : '' ?>>No Service</option>
+            <?php $cs = ($summit['cell_service'] ?? '') === 'summit_only' ? 'full' : ($summit['cell_service'] ?? ''); ?>
+            <option value="full"         <?= $cs === 'full'         ? 'selected' : '' ?>>Good Service</option>
+            <option value="intermittent" <?= $cs === 'intermittent' ? 'selected' : '' ?>>Spotty Service</option>
+            <option value="none"         <?= $cs === 'none'         ? 'selected' : '' ?>>No Service</option>
           </select>
         </div>
         <!-- Trailhead location -->

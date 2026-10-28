@@ -253,10 +253,10 @@ $callsign_list = array_filter(array_map('trim', explode(',', $pa['callsigns'])))
 
 // Cell service label
 $cell_labels = [
-    'full'         => ['Full Coverage Expected',      '📶', 'oklch(50% 0.13 155)', 'var(--green-bg)',  'oklch(82% 0.07 155)'],
-    'intermittent' => ['Intermittent Signal',          '📶', 'oklch(56% 0.14 58)',  'oklch(96% 0.05 58)', 'oklch(88% 0.08 58)'],
-    'summit_only'  => ['Coverage at Summit Only',      '📶', 'var(--accent)',        'var(--accent-bg)', 'var(--accent-border)'],
-    'none'         => ['No Cell Service Expected',     '📵', 'var(--red)',           'var(--red-bg)',    'oklch(85% 0.06 22)'],
+    'full'         => ['Mobile Service Expected at the Summit', '📶', 'oklch(50% 0.13 155)', 'var(--green-bg)',  'oklch(82% 0.07 155)'],
+    'intermittent' => ['Spotty Mobile Service at the Summit', '📶', 'oklch(56% 0.14 58)',  'oklch(96% 0.05 58)', 'oklch(88% 0.08 58)'],
+    'summit_only'  => ['Mobile Service Expected at the Summit', '📶', 'var(--accent)',        'var(--accent-bg)', 'var(--accent-border)'],
+    'none'         => ['No Mobile Service at the Summit', '📵', 'var(--red)',           'var(--red-bg)',    'oklch(85% 0.06 22)'],
 ];
 $cell_info = isset($cell_labels[$pa['cell_service']]) ? $cell_labels[$pa['cell_service']] : null;
 
@@ -1484,9 +1484,9 @@ $difficulty_labels = [
 </div>
 <?php endif; ?>
 
-<!-- CELL COVERAGE & SAFETY -->
+<!-- SUMMIT MOBILE SERVICE & SAFETY -->
 <div class="section">
-    <div class="section-title">Cell Coverage &amp; Safety</div>
+    <div class="section-title">Summit Mobile Service &amp; Safety</div>
 
     <?php if ($cell_info): ?>
     <div class="cell-banner" style="background:<?= $cell_info[4] ?>20; border:1px solid <?= $cell_info[4] ?>;">
@@ -1500,7 +1500,7 @@ $difficulty_labels = [
     <div class="cell-banner" style="background:var(--bg-2); border:1px solid var(--border);">
         <span class="cell-banner-icon">📵</span>
         <div class="cell-banner-text">
-            <span style="color:var(--ink-2);">Cell service coverage is unknown for this route. Let someone know your plans before heading out.</span>
+            <span style="color:var(--ink-2);">Mobile service at the summit is unknown. Let someone know your plans before heading out.</span>
         </div>
     </div>
     <?php endif; ?>
