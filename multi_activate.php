@@ -560,6 +560,13 @@ a:hover { text-decoration: underline; }
 .user-chip.open .user-dropdown { display: block; }
 .user-dropdown a { display: block; padding: 0.6rem 1rem; font-size: 0.82rem; font-weight: 500; color: var(--ink-2); text-decoration: none; }
 .user-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
+.hamburger-menu { display: none; position: relative; }
+.hamburger-btn { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--bg); color: var(--ink-2); cursor: pointer; flex-shrink: 0; }
+.hamburger-btn:hover { background: var(--bg-2); }
+.hamburger-dropdown { display: none; position: absolute; top: calc(100% + 6px); right: 0; background: #fff; border: 1px solid var(--border); border-radius: var(--r-sm); box-shadow: 0 4px 16px rgba(0,0,0,0.1); min-width: 190px; overflow: hidden; z-index: 200; }
+.hamburger-menu.open .hamburger-dropdown { display: block; }
+.hamburger-dropdown a { display: block; padding: 0.65rem 1rem; font-size: 0.85rem; font-weight: 500; color: var(--ink-2); text-decoration: none; }
+.hamburger-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
 
 .page { padding: 2rem; max-width: 1400px; margin: 0 auto; }
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
@@ -822,6 +829,8 @@ a:hover { text-decoration: underline; }
   .page { padding: 1rem; }
   .topbar { padding: 0 1rem; }
   .topbar-nav { display: none; }
+  .hamburger-menu { display: block; }
+  .dashboard-back-btn { display: none; }
   .page-header { flex-direction: column; }
   .map-wrap { height: 300px; }
 }
@@ -844,10 +853,27 @@ a:hover { text-decoration: underline; }
   </div>
   <div class="topbar-right">
     <?php if (getCurrentCallsign()): ?>
+    <div class="hamburger-menu" id="hamburgerMenu">
+      <button type="button" class="hamburger-btn" aria-label="Menu">
+        <svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="2" y1="4.5" x2="15" y2="4.5"/><line x1="2" y1="8.5" x2="15" y2="8.5"/><line x1="2" y1="12.5" x2="15" y2="12.5"/></svg>
+      </button>
+      <div class="hamburger-dropdown">
+        <a href="index.php">Dashboard</a>
+        <a href="planning_groups.php">Manage Dashboards</a>
+        <a href="about.php">About</a>
+      </div>
+    </div>
+    <a href="index.php" class="btn btn-ghost btn-sm dashboard-back-btn">← Dashboard</a>
     <div class="user-chip" id="userChip" onclick="this.classList.toggle('open')">
       <?= htmlspecialchars(getCurrentCallsign()) ?>
       <svg class="user-chip-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="2,3.5 5,6.5 8,3.5"/></svg>
-      <div class="user-dropdown"><a href="logout.php">Sign Out</a></div>
+      <div class="user-dropdown">
+        <?php if (getCurrentCallsign() === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
+          <a href="god_mode.php">God Mode</a>
+        <?php endif; ?>
+        <a href="user_settings.php">Settings</a>
+        <a href="logout.php">Sign Out</a>
+      </div>
     </div>
     <?php else: ?>
     <a href="<?= $public_view ? 'multi_login.php?id=' . (int)$multi_id : 'login.php' ?>" class="btn btn-ghost btn-sm">Login</a>
@@ -1363,6 +1389,14 @@ document.addEventListener('click', function(e) {
     const chip = document.getElementById('userChip');
     if (chip && !chip.contains(e.target)) chip.classList.remove('open');
 });
+
+// Mobile hamburger nav menu
+(function() {
+    var menu = document.getElementById('hamburgerMenu');
+    if (!menu) return;
+    menu.querySelector('.hamburger-btn').addEventListener('click', function(e) { e.stopPropagation(); menu.classList.toggle('open'); });
+    document.addEventListener('click', function() { menu.classList.remove('open'); });
+})();
 
 // ── Disable native HTML5 drag on touch/coarse-pointer devices. Mobile Safari
 // never fires dragstart from a single-finger touch, and worse, a draggable
