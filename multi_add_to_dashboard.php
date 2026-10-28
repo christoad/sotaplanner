@@ -17,6 +17,7 @@ if (!$stmt->fetch()) {
 }
 
 $_SESSION['pending_multi_import'] = $multi_id;
+unset($_SESSION['pending_multi_return']);
 unset($_SESSION['import_group_id'], $_SESSION['import_choose_new']);
 
 if (!getCurrentCallsign()) {

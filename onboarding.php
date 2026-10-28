@@ -65,7 +65,7 @@ function finishPendingImport(PDO $db, array $group, string $callsign, bool $allo
         $new_id = $source_id ? importMultiActivationIntoGroup($db, $source_id, (int)$group['id'], $callsign) : null;
         if ($new_id) logActivity($db, 'Multi-activation imported', 'shared route #' . $source_id, "new id=$new_id", $group['name']);
     }
-    unset($_SESSION['pending_multi_import'], $_SESSION['pending_summit_import'], $_SESSION['pending_share_return'], $_SESSION['import_group_id'], $_SESSION['import_choose_new'], $_SESSION['onboarding_crew_done']);
+    unset($_SESSION['pending_multi_import'], $_SESSION['pending_summit_import'], $_SESSION['pending_share_return'], $_SESSION['pending_multi_return'], $_SESSION['import_group_id'], $_SESSION['import_choose_new'], $_SESSION['onboarding_crew_done']);
 
     // Only a user's very first dashboard gets the dashboard tour
     $stmt = $db->prepare("

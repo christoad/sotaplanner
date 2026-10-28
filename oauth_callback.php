@@ -45,11 +45,12 @@ if (isset($_GET['action']) && $_GET['action'] === 'login') {
     }
 
     // Same for a shared summit page: either "Save this summit" (import) or plain "Login" (return to the page)
-    if (!empty($_SESSION['pending_summit_import']) || !empty($_SESSION['pending_share_return'])) {
+    if (!empty($_SESSION['pending_summit_import']) || !empty($_SESSION['pending_share_return']) || !empty($_SESSION['pending_multi_return'])) {
         $db->prepare("INSERT INTO app_settings (setting_key, setting_value, updated_at) VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=NOW()")
            ->execute(['oauth_share_' . $state, json_encode([
                'import' => (string)($_SESSION['pending_summit_import'] ?? ''),
                'ret'    => (string)($_SESSION['pending_share_return'] ?? ''),
+               'mret'   => (int)($_SESSION['pending_multi_return'] ?? 0),
            ])]);
     }
 
@@ -219,8 +220,15 @@ if (isset($_GET['code'])) {
     // dashboard; plain "Login" just returns to the page they came from.
     if (!empty($share_state['import']) && preg_match('~^[A-Z0-9]{1,6}/[A-Z0-9]{1,6}-\d{1,4}$~', $share_state['import'])) $_SESSION['pending_summit_import'] = $share_state['import'];
     if (!empty($share_state['ret']) && preg_match('/^[a-z0-9-]{1,120}$/', $share_state['ret'])) $_SESSION['pending_share_return'] = $share_state['ret'];
+    if (!empty($share_state['mret'])) $_SESSION['pending_multi_return'] = (int)$share_state['mret'];
     if (!empty($_SESSION['pending_summit_import'])) {
         header('Location: onboarding.php');
+        exit;
+    }
+    if (!empty($_SESSION['pending_multi_return'])) {
+        $mret = (int)$_SESSION['pending_multi_return'];
+        unset($_SESSION['pending_multi_return']);
+        header('Location: multi_activate.php?id=' . $mret);
         exit;
     }
     if (!empty($_SESSION['pending_share_return'])) {

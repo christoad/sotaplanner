@@ -9,6 +9,10 @@ if (isset($_SESSION['sota_callsign'])) {
         $ret = $_SESSION['pending_share_return']; unset($_SESSION['pending_share_return']);
         header('Location: summit_share.php?s=' . urlencode($ret)); exit;
     }
+    if (!empty($_SESSION['pending_multi_return'])) {
+        $mret = (int)$_SESSION['pending_multi_return']; unset($_SESSION['pending_multi_return']);
+        header('Location: multi_activate.php?id=' . $mret); exit;
+    }
     header('Location: ' . (isset($_SESSION['current_planning_group_id']) ? 'index.php' : 'planning_groups.php'));
     exit;
 }
@@ -35,6 +39,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $ret = $_SESSION['pending_share_return'];
                 unset($_SESSION['pending_share_return']);
                 header('Location: summit_share.php?s=' . urlencode($ret));
+                exit;
+            }
+
+            // Came from "Login" on a shared route page: go back to it
+            if (!empty($_SESSION['pending_multi_return'])) {
+                $mret = (int)$_SESSION['pending_multi_return'];
+                unset($_SESSION['pending_multi_return']);
+                header('Location: multi_activate.php?id=' . $mret);
                 exit;
             }
 
