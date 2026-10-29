@@ -492,6 +492,10 @@ When a user nominates a summit (`nominate.php`), the code checks `global_gpx_tra
 
 All pages use the **Alpine Precision** design system. When adding new pages or UI, match this exactly — do not invent new colors, fonts, or patterns.
 
+### No emoji as graphics (rule from Chris, 2026-10-28)
+
+Never use emoji as icons or graphics anywhere in the app (buttons, labels, stat tiles, empty states, map markers). Use inline SVG icons in the Alpine Precision style instead. Existing emoji (e.g. the mountain in `index.php`, `planning_groups.php`, `sota_magic.php`, `summit_gpx.php`) are leftovers to replace with SVG when those pages are touched.
+
 ### Font
 
 ```html

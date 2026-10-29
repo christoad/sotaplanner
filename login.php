@@ -692,11 +692,11 @@ try {
         <!-- SOTA SSO -->
         <?php if ($sota_oauth_enabled): ?>
             <a href="oauth_callback.php?action=login" class="sota-btn sota-btn-main login-card-item" style="opacity:0; transform:translateY(24px);">
-                ⛰️ Continue with SOTA Login (SSO)
+                Continue with SOTA Login (SSO)
             </a>
         <?php else: ?>
             <button class="sota-btn sota-btn-disabled login-card-item" style="opacity:0; transform:translateY(24px);" disabled>
-                ⛰️ SOTA SSO: Coming Soon
+                SOTA SSO: Coming Soon
             </button>
             <p class="coming-soon-note">OAuth client registration pending with SOTA team</p>
         <?php endif; ?>
