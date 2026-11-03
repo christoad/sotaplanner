@@ -1,14 +1,46 @@
 BROUTER HOSTING REQUEST FOR SOTAPLANNER
-Prepared 2026-10-16 for Mark, from Chris Reddick (KI6CR)
+Prepared 2026-10-16 for Mark (K3MGM), from Chris Reddick (KI6CR)
+Updated 2026-10-29 to cover how the planning tool will actually use it
+
+SUMMARY IN ONE PARAGRAPH (for Mark, or Mark's assistant preparing the setup)
+Please run BRouter (Java, MIT license) on a small Linux server on AWS, with
+the 431 map tiles listed in Appendix A (6.86 GB), behind an HTTPS reverse
+proxy that requires an API key header. SOTAplanner (on DreamHost) will call
+it from its server for hiking route estimates. Expected cost: about $2 a month
+for disk plus whatever the small server costs (see "COST AND SIZING"). The
+work is: install, download tiles, add a hiking profile later, reverse proxy
+with key, then send back the items in "WHAT MARK SHOULD SEND BACK TO CHRIS".
+
+ORDER OF WORK
+ 1. Create the server (see COST AND SIZING for size) and install Java.
+ 2. Install BRouter and start it on localhost.
+ 3. Download the 10 Phase 1 tiles (named in Appendix A) and run the test curl
+    against localhost. It should return a route.
+ 4. If the test passes, continue downloading the rest of the Appendix A list
+    without waiting for Chris. If it fails, stop and report what happened.
+ 5. Add the reverse proxy, HTTPS, API key, rate limit and firewall rules.
+ 6. Re-run the test through the public address, then send the checklist back.
+ The hiking profile (section 4) comes later from Chris; do not wait for it.
 
 ======================================================================
 WHAT THIS IS AND WHY
 ======================================================================
 SOTAplanner (sotaplanner.com) helps amateur radio operators plan summit hikes.
-Sometimes we know two points (for example two neighboring summits) but have no
-recorded trail between them, so we cannot estimate the hike. We want to ask a
-routing service: "what is the walking route and climb between point A and
-point B?"
+Sometimes we know two points (for example two neighboring summits, or a
+parking spot and a summit) but have no recorded trail between them, so we
+cannot estimate the hike. We want to ask a routing service: "does a walkable
+route exist between point A and point B, and if so what is its length, climb
+and how much of it is on real paths?"
+
+We will use it three ways:
+  1. Gap filling: a hike estimate between two summits in a multi-summit day
+     when no recorded track connects them.
+  2. Summits with no recorded track at all: a suggested route and estimate
+     from the starting point (trailhead or parking) to the summit, clearly
+     labelled as a guess.
+  3. A "does a hiking path exist?" check: from the answer we tell the user
+     whether the route follows trails or is mostly road, or whether no
+     route exists at all (an honest "no mapped path" is a useful result).
 
 The tool for this is BRouter, a free, open source (MIT license) route planner
 that follows OpenStreetMap trails. The public BRouter server (brouter.de) says
@@ -23,8 +55,12 @@ WHAT WE NEED MARK TO SET UP
 ======================================================================
 1. A Linux server (or VM/container) with:
    - Java runtime (a current LTS version, for example 17 or 21).
-   - About 2 GB RAM free for BRouter is plenty; 1 vCPU is enough.
-   - Disk space for map data, see step 3.
+   - About 2 GB RAM free for BRouter is plenty; 1 vCPU is enough. On AWS
+     that means roughly a t3.small or t4g.small (ARM is fine, Java runs
+     on both).
+   - Disk: at least 20 GB. NOTE: a default AWS root disk is often only 8 GB,
+     which the map tiles alone would fill, so enlarge it when creating the
+     server (see COST AND SIZING below).
 
 2. BRouter installed
    - Source and release downloads: https://github.com/abrensch/brouter
@@ -53,16 +89,18 @@ WHAT WE NEED MARK TO SET UP
          W125_N50  6 MB       W120_N50  9 MB
      W120_N30 covers longitude -120 to -115 and latitude 30 to 35, which
      includes the Santa Ana Mountains where our first test case is.
-   - Phase 2 (goal): the entire world, because SOTA summits exist on every
-     continent. Every tile in the segments4 listing (1,000+ files). Measured
-     2026-10-16: the full listing is 1,142 files, about 10.0 GB total.
-     Only the 396 tiles that actually contain a SOTA summit come to about
-     6.8 GB, which is enough for SOTAplanner. Plan for 15 to 20 GB of disk
-     to leave room for refreshed copies, logs and the BRouter install. Do the West Coast test first and only download the rest once
-     Chris says go.
-   - Download tip: a script that fetches the whole listing (wget, curl or
-     rsync-style "only newer files") makes both the first global download and
-     later refreshes easy.
+   - Phase 2 (goal): worldwide coverage, because SOTA summits exist on every
+     continent. We do NOT need all 1,142 files (10.0 GB). The exact list of
+     431 tiles to download (every tile with a SOTA summit, plus neighbors for
+     routes that cross tile edges) is in APPENDIX A at the end of this
+     document, with a ready-to-use download script. It totals 6.86 GB.
+     Plan for 15 to 20 GB of disk to leave room for refreshed copies, logs
+     and the BRouter install. Download the West Coast test files first
+     (those 10 are named in the appendix and are also part of its full list),
+     confirm the test route works, then continue with the rest of the list
+     (see ORDER OF WORK at the top).
+   - The appendix includes a download script that makes both the first
+     download and later refreshes easy.
 
    UPDATING THE TILES
    - The BRouter project regenerates the worldwide tiles weekly (the listing
@@ -78,15 +116,21 @@ WHAT WE NEED MARK TO SET UP
 
 4. A hiking profile
    - Routing behavior is controlled by "profile" files. The release includes
-     a "trekking" profile. We would also like a hiking-oriented profile (one
-     that prefers footpaths and avoids roads). Chris will supply or choose one
-     later; Mark just needs to know that a profile file is dropped into the
-     profiles folder and BRouter picks it up by file name.
+     a "trekking" profile, which is what we will start with. We also want a
+     hiking-oriented profile (one that prefers footpaths and avoids roads),
+     because that is what makes the "does a hiking path exist?" answer
+     meaningful. Chris will supply or choose one; Mark just needs to know
+     that a profile file is dropped into the profiles folder and BRouter
+     picks it up by file name. Please tell us how to add or replace a profile
+     (or let us send the file to Mark), since we expect to tune it a few
+     times.
+   - We will compare results from two profiles on the same pair of points
+     (for example trekking vs the hiking one), so both should stay available.
 
 5. A public HTTPS front door (reverse proxy)
    - Put nginx, Caddy or similar in front of BRouter, with a real domain or
      subdomain name and a TLS certificate (Let's Encrypt is fine), for
-     example https://routing.example.com.
+     example https://routing.sotaplanner.com.
    - Forward only the route path (/brouter) to the local BRouter port. Do not
      expose any other BRouter paths or the raw port.
    - Require a simple shared secret so strangers cannot use it. Easiest:
@@ -96,8 +140,38 @@ WHAT WE NEED MARK TO SET UP
      email in plain text if avoidable).
    - Rate limit it (for example 30 requests per minute per client) and set a
      request timeout of around 60 seconds.
-   - Firewall: allow inbound 443 (and 80 if needed for certificate renewal),
-     and SSH from Mark's own addresses only.
+   - Pass BRouter's response body through unchanged on errors, not just on
+     success. When there is no route, or a map tile is missing, BRouter
+     answers with a short plain-text message and an error status. We need to
+     read that message to tell "no path exists" apart from "server problem".
+   - Firewall (on AWS, the security group): allow inbound 443 (and 80 if
+     needed for certificate renewal), and SSH from Mark's own addresses only.
+     The BRouter port itself (17777) must NOT be open to the internet.
+
+======================================================================
+COST AND SIZING (AWS)
+======================================================================
+Prices below are approximate, from memory of AWS's public price list in a
+main US region. Please check the current AWS pricing page before relying on
+them; they vary by region.
+ - Disk (EBS gp3, about $0.08 per GB per month): 20 GB is about $1.60 a month.
+   Even if Mark wants more headroom, 30 GB is about $2.40 a month. Disk is
+   billed for the size of the volume, not how full it is.
+ - Data in: free. Downloading the tiles from brouter.de costs nothing.
+ - Data out: SOTAplanner's responses are small route files and the load is
+   low, so this should stay far inside AWS's free monthly outbound allowance
+   (about 100 GB). Even the bulk runs described below add very little.
+ - Compute: this is the real cost. A small always-on server (t3.small or
+   t4g.small, 2 GB RAM) is roughly $12 to $15 a month, less with a reserved
+   or savings plan. If Mark already runs a server with room to spare, running
+   BRouter there adds almost nothing apart from the 20 GB of disk.
+ - Cheaper idea if cost matters: stop the server when not needed. We do not
+   mind if it is down some of the time (see "Uptime" below). Though note
+   SOTAplanner shows "no estimate" for any leg requested while it is off.
+ - Total, rough estimate: about $15 a month for a dedicated small server, or
+   about $2 a month if it shares one Mark already has.
+ - Chris pays the AWS costs. Mark just needs to tell Chris if the bill ever
+   looks different from the estimate.
 
 ======================================================================
 WHAT SOTAPLANNER WILL CALL
@@ -105,8 +179,8 @@ WHAT SOTAPLANNER WILL CALL
 One simple web request, made by the SOTAplanner server (PHP), never from a
 visitor's browser:
 
-   GET https://routing.example.com/brouter
-       ?lonlats=-117.544,33.7201|-117.5316,33.7108
+   GET https://routing.sotaplanner.com/brouter
+       ?lonlats=-117.544,33.7201|-117.5342,33.7107
        &profile=trekking
        &alternativeidx=0
        &format=geojson
@@ -118,22 +192,65 @@ Notes:
  - profile is the profile file name (trekking now, a hiking profile later).
  - format=geojson returns the route line plus totals (distance in meters,
    climb, time). format=gpx is also available.
- - Expected load: very low. A handful of requests a day at first, because
-   SOTAplanner caches every result permanently. Occasional bursts if Chris
-   imports many routes at once.
+ - We need the per-segment "messages" table that BRouter adds to the geojson
+   (it lists each stretch of the route with its OpenStreetMap way tags, such
+   as highway=path or highway=track). That is how we measure how much of the
+   route is on real trails vs roads. Please confirm the test command below
+   returns it, and tell us if it needs a setting or profile option.
+ - Point pairs are usually straight from summit to summit or trailhead to
+   summit, 2 points per request. Distances are mostly under 20 km, but some
+   multi-summit days or remote summits may run to 50 to 100 km. Please do not
+   cap distance below that if BRouter allows it.
+ - We may occasionally ask for alternative routes (alternativeidx=1, 2, 3) to
+   compare against the first.
+ - Expected load, normal use: low. A handful of requests a day, because
+   SOTAplanner caches every result permanently (each pair is asked once).
+ - Expected load, bulk runs: the "summits with no recorded track" use means
+   we may someday sweep a large list of summits in the background, from a
+   scheduled job on our side. That would be sequential (one request at a
+   time) with a pause between requests, up to roughly 10 to 20 requests per
+   minute, running for hours or days at a time, and we would start with one
+   region (for example Southern California) before anything larger. Mark,
+   please tell us what rate and time of day you are comfortable with, and
+   we will set our job to stay under it. We can stop it instantly.
  - Typical response time for a few miles of trail: well under a second after
    BRouter warms up; longer routes can take several seconds.
 
 ======================================================================
 WHAT MARK SHOULD SEND BACK TO CHRIS
 ======================================================================
- [ ] The base URL (for example https://routing.example.com)
+Send everything below to Chris at chris@ki6cr-labs.com.
+
+HOW WE ACCESS THE TOOL
+ - We only use it over the web: SOTAplanner's server calls the HTTPS address
+   with the API key header. That is the whole interface.
+ - We do NOT need SSH or any login to Mark's server, and we do not want
+   access to anything else on it. Mark (or his assistant) keeps all admin
+   access.
+ - The API key: please do not put it in the same email as the base URL. Send
+   the URL by email and the key some other private way (for example a
+   text message, Signal, or a call), so one intercepted email is not enough.
+   If the key ever leaks, Mark generates a new one and tells Chris.
+ - Profile changes (see section 4) and extra map tiles need Mark's side to
+   act. Please say which you prefer: Mark drops in files Chris sends, or
+   Mark gives us a locked-down way to upload only into the profiles folder.
+   Either is fine. The first is simpler and keeps Mark in control.
+
+THE CHECKLIST
+ [ ] The base URL (for example https://routing.sotaplanner.com)
  [ ] The API key / shared secret
  [ ] Which tile files are installed (so we know the covered area)
  [ ] A one-line test command that works, for example:
-       curl -H "X-Api-Key: ..." "https://routing.example.com/brouter?lonlats=-117.544,33.7201%7C-117.5316,33.7108&profile=trekking&format=geojson"
+       curl -H "X-Api-Key: ..." "https://routing.sotaplanner.com/brouter?lonlats=-117.544,33.7201%7C-117.5342,33.7107&profile=trekking&format=geojson"
+     (Modjeska Peak to Santiago Peak, Santa Ana Mountains, about 3 miles.
+     A good result is a route of roughly 4.5 to 5 km with a few hundred
+     meters of climb and a couple of hundred track points.)
+ [ ] Confirmation that the geojson response includes the "messages" table
+     with way tags (see above)
+ [ ] How to add or update a routing profile
  [ ] How to ask for more map tiles or a restart
- [ ] Any limits Mark wants us to respect (hours, rate, bandwidth)
+ [ ] Any limits Mark wants us to respect (hours, rate, bandwidth), including
+     what pace is OK for the occasional bulk run
 
 ======================================================================
 THINGS TO AGREE ON (Chris and Mark)
@@ -141,8 +258,8 @@ THINGS TO AGREE ON (Chris and Mark)
  - Uptime expectations. This is a nice-to-have feature, not mission critical:
    if the server is down, SOTAplanner shows "no estimate" for that leg and
    carries on. So best-effort hosting is fine.
- - Cost and resources. BRouter is light, but map data takes disk space and
-   routing uses CPU in short bursts.
+ - Cost and resources. See COST AND SIZING above (about $2 a month for disk,
+   about $15 a month if it needs its own small server). Chris pays.
  - Who to contact for outages or upgrades.
  - Privacy: the server only ever sees pairs of coordinates (summit and
    trailhead locations). No user names, callsigns or personal data are sent.
@@ -155,9 +272,535 @@ WHAT CHRIS / CLAUDE WILL DO ON THE SOTAPLANNER SIDE
  - Store the URL and API key in sotaplanner_secrets.php (outside the web
    root, not in git).
  - Add a PHP routing helper with a short timeout and a graceful fallback.
- - Add an additive database table that caches each routed pair of summits
-   permanently, so each pair is only ever requested once.
+ - Add an additive database table that caches each routed pair of points
+   permanently (the route line, distance, climb, share of the route on real
+   paths, and the result: route found, no route, or error), so each pair is
+   only ever requested once. "No route" is cached too, with a recheck date,
+   so we do not keep asking.
  - Show routed legs in Multi-Activate as a flagged estimate, with hike time
    computed from distance and climb using the existing GPX pace logic.
+   BRouter's own time figure is a bike-style time and is ignored.
+ - Show a suggested route on the summit page for summits with no recorded
+   track, labelled as a guess, plus the "does a path exist?" result.
+ - A small admin test page and, later, an optional background job for the
+   bulk runs described above, both paced and easy to stop.
  - Test on staging first, then ship to production.
  See research/trail-gap-routing-and-vps.txt for the background research.
+
+
+======================================================================
+APPENDIX A: EXACT LIST OF MAP TILES TO DOWNLOAD
+======================================================================
+Computed 2026-10-29 from SOTA's published worldwide summit list
+(storage.sota.org.uk/summitslist.csv, 172,130 currently valid summits) and
+checked against the live BRouter listing at
+https://brouter.de/brouter/segments4/ (1,142 files, 10.03 GB in total).
+
+HOW THE LIST WAS BUILT
+ - A tile is named by its lower-left corner and covers 5 x 5 degrees. For
+   example W120_N30 covers longitude -120 to -115 and latitude 30 to 35.
+ - Core list: every tile that contains at least one valid SOTA summit.
+   404 tiles are needed; 396 of them exist upstream (the other 8 are empty or
+   remote and have no file: E0_S55, E145_N20, E175_S50, E20_N80, E25_N80,
+   E30_N80, W180_S35, W30_S60). Those 396 files total 6.77 GB.
+ - Border padding: a route from a trailhead to a summit near a tile edge can
+   cross into the neighboring tile, and BRouter needs every tile the route
+   touches. So the list below also includes any tile within about 0.5 degree
+   (roughly 50 km) of a summit. That adds 35 files (mostly sparse coastal or
+   northern tiles). FINAL LIST: 431 files, 6.86 GB.
+ - The "Summits" column below is the number of valid SOTA summits inside that
+   tile (0 means the tile is only included as border padding).
+ - If a request ever fails with a missing data file message, the error names
+   the tile; add that tile and retry.
+
+PHASE 1 (TEST) NOTE
+ - The 10 West Coast test tiles in step 3 span longitude -125 to -115 and
+   latitude 30 to 55, so they reach from Baja and Southern California up to
+   central British Columbia and Alberta. All 10 are on the final list below,
+   so Phase 1 is a subset of Phase 2. The 10 Phase 1 files are:
+     W125_N30.rd5  W125_N35.rd5  W125_N40.rd5  W125_N45.rd5  W125_N50.rd5
+     W120_N30.rd5  W120_N35.rd5  W120_N40.rd5  W120_N45.rd5  W120_N50.rd5
+   Disk estimate for those 10: about 392 MB.
+ - Our first test routes are in the Santa Ana Mountains (W120_N30).
+ - Suggested order: Phase 1 files, wait for Chris to confirm the test passes,
+   then everything else.
+
+DISK AND BANDWIDTH
+ - Tiles: 6.86 GB. Plan for 15 to 20 GB free so refreshed copies, logs and
+   the BRouter install have room.
+ - The source, brouter.de, is a volunteer-run public server. Please download
+   politely: one file at a time, a short pause between files (the script
+   below sleeps 2 seconds), run the full download once, and refresh no more
+   than about monthly after that.
+ - Optional: the same server publishes daily "diff" files under
+   segments4/diff/ for updating tiles in place. We do not need them; a full
+   re-download every 3 to 6 months is simpler.
+
+DOWNLOAD / REFRESH SCRIPT (suggested; adjust paths)
+ Save the file names from the table below, one per line, as tiles.txt (just
+ the first column plus ".rd5", for example "W120_N30.rd5"). Then:
+
+   #!/usr/bin/env bash
+   set -euo pipefail
+   BASE=https://brouter.de/brouter/segments4
+   SEG=/var/lib/brouter/segments4            # BRouter's segment folder
+   TMP=/var/lib/brouter/segments4.incoming   # same filesystem as $SEG
+   LIST=/var/lib/brouter/tiles.txt
+   mkdir -p "$SEG" "$TMP"
+   while read -r f; do
+     [ -z "$f" ] && continue
+     # -z: only download if the server copy is newer than ours (a 304 gives an
+     # empty file, which we discard). -R: keep the server's timestamp so -z
+     # works on the next run.
+     if ! curl -sS -f -R --retry 3 --retry-delay 10 -m 1800 \
+          -z "$SEG/$f" -o "$TMP/$f" "$BASE/$f"; then
+       echo "FAILED $f"; rm -f "$TMP/$f"; continue
+     fi
+     if [ -s "$TMP/$f" ]; then mv "$TMP/$f" "$SEG/$f"; echo "updated $f"
+     else rm -f "$TMP/$f"; fi
+     sleep 2
+   done < "$LIST"
+
+ Verify afterwards: the number of .rd5 files in the segment folder should be
+ 431 and the folder should total about 6.9 GB. Each file's size should match
+ the size in the BRouter listing page. A half-downloaded file (the script only
+ moves complete downloads into place) must never sit in the live folder.
+
+ A refresh as a cron job (for example the 1st of every third month, run at
+ night) is enough. No BRouter restart is normally needed, but check the
+ README for the version installed.
+
+TILE LIST (431 files). Columns: tile file name, SOTA summits inside, size MB
+(sizes from the BRouter listing on 2026-10-29)
+----------------------------------------------------------------------
+E0_N35.rd5          108     16.9
+E0_N40.rd5         1152    119.9
+E0_N45.rd5          256    127.7
+E0_N50.rd5           12     79.6
+E0_N55.rd5            0      0.0
+E0_N60.rd5           34      0.5
+E100_N0.rd5         434     35.4
+E100_N5.rd5          94     15.1
+E100_S10.rd5         51      1.2
+E100_S5.rd5         922     18.8
+E105_N0.rd5          94      2.3
+E105_N5.rd5           0      3.8
+E105_S10.rd5        372     41.7
+E105_S15.rd5          1      0.0
+E105_S5.rd5          58      4.1
+E10_N35.rd5         266     19.8
+E10_N40.rd5        1087     80.3
+E10_N45.rd5        3754    199.2
+E10_N50.rd5         140    125.2
+E10_N55.rd5          68     64.9
+E10_N60.rd5        1264     29.0
+E10_N65.rd5         865      4.9
+E10_N75.rd5         638      0.1
+E10_S20.rd5         930      1.9
+E10_S25.rd5         223      0.8
+E10_S30.rd5           1      0.0
+E110_N20.rd5         72     33.6
+E110_S10.rd5        264     38.4
+E110_S25.rd5          1      0.3
+E110_S30.rd5          2      0.5
+E110_S35.rd5          0      0.0
+E115_N10.rd5          0      0.4
+E115_N15.rd5          2      0.5
+E115_N20.rd5          1     10.9
+E115_N25.rd5          4     25.2
+E115_N5.rd5           1      7.4
+E115_S10.rd5         24     10.0
+E115_S25.rd5        189      1.7
+E115_S30.rd5         20      0.8
+E115_S35.rd5         80     12.0
+E115_S40.rd5         10      0.2
+E120_N10.rd5        354     25.8
+E120_N15.rd5        937     14.0
+E120_N20.rd5        590     22.2
+E120_N25.rd5         21     12.6
+E120_N30.rd5          0     16.6
+E120_N35.rd5          1      9.9
+E120_S15.rd5          0      1.4
+E120_S20.rd5         13      0.4
+E120_S25.rd5          3      0.5
+E120_S30.rd5          7      0.6
+E120_S35.rd5         19      0.8
+E125_N25.rd5         79      3.7
+E125_N30.rd5        539     12.7
+E125_N35.rd5       2087     67.5
+E125_S15.rd5          1      0.1
+E125_S20.rd5         77      0.9
+E125_S25.rd5         55      0.3
+E125_S30.rd5         57      0.3
+E130_N25.rd5          0      0.0
+E130_N30.rd5       2186     79.1
+E130_N35.rd5        441     10.3
+E130_S15.rd5          5      1.7
+E130_S20.rd5          6      0.6
+E130_S25.rd5        150      1.0
+E130_S30.rd5        146      0.6
+E130_S35.rd5          0      0.6
+E135_N30.rd5        519     34.5
+E135_N35.rd5       1884    100.5
+E135_N40.rd5         12      0.7
+E135_S20.rd5          1      0.6
+E135_S25.rd5         28      1.0
+E135_S30.rd5          3      0.8
+E135_S35.rd5        185      6.5
+E135_S40.rd5          2      1.9
+E140_N10.rd5          3      0.3
+E140_N20.rd5          3      0.0
+E140_N25.rd5          9      0.0
+E140_N30.rd5          1      0.0
+E140_N35.rd5        659     38.4
+E140_N40.rd5       1065     28.3
+E140_N45.rd5         13      3.2
+E140_S10.rd5          0      4.0
+E140_S15.rd5         72      0.5
+E140_S20.rd5         88      1.2
+E140_S25.rd5          7      1.7
+E140_S30.rd5          1      1.4
+E140_S35.rd5         10      2.7
+E140_S40.rd5        111     15.4
+E140_S45.rd5          8      0.1
+E145_N10.rd5          3      0.0
+E145_N15.rd5         12      0.1
+E145_N40.rd5         11      0.5
+E145_S15.rd5          5      0.2
+E145_S20.rd5        322      2.7
+E145_S25.rd5        468      2.4
+E145_S30.rd5         26      2.2
+E145_S35.rd5        179      6.3
+E145_S40.rd5        923     23.2
+E145_S45.rd5        774      6.3
+E150_S25.rd5        169      1.5
+E150_S30.rd5        461     17.6
+E150_S35.rd5        594     19.6
+E150_S40.rd5         20      0.7
+E155_S35.rd5          4      0.0
+E155_S55.rd5          3      0.0
+E15_N35.rd5         171     14.0
+E15_N40.rd5        1561     54.9
+E15_N45.rd5        1049    130.2
+E15_N50.rd5          87     90.5
+E15_N55.rd5           1     28.0
+E15_N60.rd5         348     17.7
+E15_N65.rd5        1429      9.0
+E15_N70.rd5          35      0.1
+E15_N75.rd5         656      0.2
+E15_N80.rd5          10      0.0
+E15_S20.rd5          83      2.4
+E15_S25.rd5         819      4.8
+E15_S30.rd5         933      2.2
+E15_S35.rd5         594     10.7
+E160_S20.rd5          3      0.0
+E160_S25.rd5         90      0.5
+E165_S20.rd5          0      0.6
+E165_S25.rd5        254      2.3
+E165_S30.rd5          2      0.0
+E165_S45.rd5        903      1.0
+E165_S50.rd5       1026      2.6
+E165_S55.rd5         21      0.0
+E170_S35.rd5         13      0.2
+E170_S40.rd5        155      8.5
+E170_S45.rd5       2088     10.1
+E170_S50.rd5         48      1.1
+E175_S40.rd5        931      9.0
+E175_S45.rd5        216      2.6
+E20_N30.rd5           1      2.6
+E20_N35.rd5         598     45.9
+E20_N40.rd5        1208     66.5
+E20_N45.rd5        1272     67.8
+E20_N50.rd5           5     68.8
+E20_N55.rd5           2     22.2
+E20_N60.rd5           5     38.3
+E20_N65.rd5         338     10.9
+E20_N70.rd5         270      0.9
+E20_N75.rd5          49      0.0
+E20_S30.rd5         110      4.3
+E20_S35.rd5        1070      6.9
+E25_N30.rd5           1      2.9
+E25_N35.rd5          88     27.3
+E25_N40.rd5         251     38.2
+E25_N45.rd5         539     41.0
+E25_N50.rd5           0     29.0
+E25_N55.rd5           6     23.8
+E25_N60.rd5          72     38.5
+E25_N65.rd5         178      9.8
+E25_N70.rd5         101      1.7
+E25_N75.rd5           8      0.0
+E25_S25.rd5         360     12.8
+E25_S30.rd5         495     30.9
+E25_S35.rd5         976     15.5
+E30_N25.rd5           2     13.9
+E30_N30.rd5          43     30.7
+E30_N35.rd5          12     24.8
+E30_N40.rd5          41     16.0
+E30_N45.rd5           1     21.5
+E30_N55.rd5           2     17.6
+E30_N60.rd5           2     11.8
+E30_N65.rd5          14      4.1
+E30_N70.rd5           5      0.2
+E30_S25.rd5         298     11.9
+E30_S30.rd5         461     23.6
+E30_S35.rd5          22      2.1
+E35_N25.rd5           0      3.1
+E35_N30.rd5          32     27.1
+E35_N40.rd5           6     18.9
+E35_N45.rd5           4     23.9
+E35_N50.rd5           1     25.4
+E35_N55.rd5           3     36.6
+E35_S50.rd5           2      0.0
+E40_N55.rd5           2     15.0
+E40_S15.rd5           0      2.4
+E45_N55.rd5           1     15.5
+E45_S15.rd5          11      6.8
+E50_S10.rd5           0      0.0
+E55_N20.rd5          25      8.5
+E55_N25.rd5          85     11.7
+E55_N50.rd5         202     10.5
+E55_N55.rd5         106     13.7
+E55_N60.rd5          21      3.1
+E55_S10.rd5           0      0.0
+E55_S20.rd5           3      0.0
+E55_S25.rd5          45      3.6
+E55_S5.rd5           23      0.2
+E5_N35.rd5          132     20.7
+E5_N40.rd5         1654     69.3
+E5_N45.rd5         2843    252.9
+E5_N50.rd5          149    182.5
+E5_N55.rd5          980     33.7
+E5_N60.rd5         2270     26.1
+E60_N50.rd5           1      3.3
+E60_N55.rd5          18     12.2
+E60_N60.rd5           0      2.7
+E70_S55.rd5           5      0.0
+E90_N5.rd5            0      0.1
+E95_N0.rd5         1072     13.7
+E95_N5.rd5          107      8.6
+E95_S5.rd5           26      0.3
+W100_N15.rd5       2675     40.9
+W100_N20.rd5       1388     14.5
+W100_N25.rd5         50     35.3
+W100_N30.rd5        118     64.2
+W100_N35.rd5         15     33.1
+W100_N40.rd5         12     22.1
+W100_N45.rd5          6     15.2
+W100_N50.rd5          2      2.0
+W100_N55.rd5          3      0.5
+W105_N15.rd5       2313     14.6
+W105_N20.rd5       2046     26.4
+W105_N25.rd5       2068     11.5
+W105_N30.rd5        251     19.5
+W105_N35.rd5         90     21.9
+W105_N40.rd5        198     13.5
+W105_N45.rd5         59     12.3
+W105_N50.rd5         11      3.7
+W105_N55.rd5         19      0.4
+W105_N60.rd5          0      0.1
+W10_N35.rd5         388     46.2
+W10_N40.rd5         982     76.8
+W10_N45.rd5           0      0.1
+W10_N50.rd5         372     43.2
+W10_N55.rd5         573      5.5
+W10_N60.rd5         108      0.7
+W10_N70.rd5           4      0.0
+W10_S20.rd5           4      0.1
+W10_S45.rd5           2      0.0
+W110_N15.rd5         23      0.2
+W110_N20.rd5       1002      5.1
+W110_N25.rd5       3426     13.7
+W110_N30.rd5       1640     16.0
+W110_N35.rd5       1872     36.8
+W110_N40.rd5       1236     20.6
+W110_N45.rd5        196      7.3
+W110_N50.rd5         20      4.6
+W110_N55.rd5         50      0.7
+W110_N60.rd5          0      0.2
+W115_N15.rd5          3      0.0
+W115_N20.rd5        103      0.6
+W115_N25.rd5       1556      2.8
+W115_N30.rd5       2409     33.3
+W115_N35.rd5       1915     17.3
+W115_N40.rd5       2129     31.4
+W115_N45.rd5       2507     16.8
+W115_N50.rd5        179     15.4
+W115_N55.rd5         15      1.2
+W115_N60.rd5          0      0.4
+W120_N25.rd5         36      0.1
+W120_N30.rd5       1243     53.3
+W120_N35.rd5       2768     31.2
+W120_N40.rd5       1490     21.3
+W120_N45.rd5       2098     28.7
+W120_N50.rd5       3312      8.7
+W120_N55.rd5         20      1.8
+W120_N60.rd5          0      0.4
+W125_N30.rd5         34      1.0
+W125_N35.rd5        957     55.9
+W125_N40.rd5       2282     37.8
+W125_N45.rd5       3634     67.1
+W125_N50.rd5        680      6.3
+W125_N55.rd5          5      2.0
+W130_N45.rd5        666      1.5
+W130_N50.rd5        609      3.4
+W130_N55.rd5         17      1.3
+W135_N50.rd5          3      0.3
+W135_N55.rd5       1034      1.4
+W135_N60.rd5        269      0.6
+W140_N55.rd5       1095      0.4
+W140_N60.rd5        370      1.0
+W145_N55.rd5          3      0.0
+W145_N60.rd5       3007      0.6
+W145_N65.rd5       1126      0.5
+W145_N70.rd5          0      0.0
+W150_N55.rd5        117      0.0
+W150_N60.rd5       3978      3.3
+W150_N65.rd5       1493      0.9
+W150_N70.rd5          0      0.1
+W155_N15.rd5          0      0.1
+W155_N55.rd5       1629      0.6
+W155_N60.rd5       2333      0.9
+W155_N65.rd5        582      0.7
+W15_N25.rd5          69      2.8
+W15_N50.rd5          48      0.7
+W15_N60.rd5          64      0.2
+W15_N65.rd5          72      0.4
+W15_S10.rd5           3      0.0
+W15_S40.rd5           3      0.0
+W15_S45.rd5           0      0.0
+W160_N15.rd5          5      0.7
+W160_N20.rd5         60      2.7
+W160_N55.rd5        759      0.5
+W160_N60.rd5         96      0.7
+W160_N65.rd5       1202      0.6
+W160_S25.rd5          7      0.1
+W165_N20.rd5          2      0.0
+W165_N50.rd5          1      0.0
+W165_N55.rd5          0      0.5
+W165_N60.rd5          1      2.2
+W165_N65.rd5        948      0.5
+W170_N50.rd5          1      0.1
+W170_N60.rd5          1      0.2
+W170_N65.rd5         47      0.2
+W170_S15.rd5          4      0.0
+W175_S15.rd5          7      0.4
+W180_S15.rd5          3      0.0
+W180_S30.rd5          2      0.0
+W180_S45.rd5          8      0.1
+W20_N25.rd5          53      6.8
+W20_N30.rd5          21      1.5
+W20_N60.rd5         260      1.3
+W20_N65.rd5         253      1.5
+W25_N10.rd5           4      0.3
+W25_N15.rd5          61      0.8
+W25_N60.rd5         152      2.7
+W25_N65.rd5         109      1.0
+W30_N15.rd5          22      0.3
+W30_N35.rd5          23      1.6
+W30_S25.rd5           2      0.0
+W35_N35.rd5           6      0.1
+W35_S5.rd5            2      0.0
+W40_S10.rd5         623     34.5
+W40_S15.rd5         546     14.6
+W40_S20.rd5         343      3.8
+W40_S5.rd5          336      6.0
+W40_S55.rd5         233      0.0
+W45_S10.rd5         204     12.9
+W45_S15.rd5        1212     13.6
+W45_S20.rd5        3670     28.5
+W45_S25.rd5        3107     32.8
+W45_S5.rd5          161      9.3
+W50_S10.rd5         182      7.6
+W50_S15.rd5         746      6.9
+W50_S20.rd5         252     21.9
+W50_S25.rd5        1146     52.4
+W50_S30.rd5         705     16.9
+W50_S5.rd5            7      6.9
+W55_N45.rd5          41      2.0
+W55_S15.rd5           8      3.6
+W55_S20.rd5         137      8.1
+W55_S25.rd5          85     20.8
+W55_S30.rd5         319     37.6
+W55_S35.rd5          44      6.7
+W55_S40.rd5           0      0.0
+W5_N35.rd5         1155     62.1
+W5_N40.rd5         1306     91.7
+W5_N45.rd5           26     64.4
+W5_N50.rd5          331    139.3
+W5_N55.rd5          666     26.4
+W5_N60.rd5           16      0.3
+W60_N10.rd5           1      0.5
+W60_N45.rd5         272      2.0
+W60_N50.rd5          63      0.7
+W60_S30.rd5           1     11.5
+W60_S35.rd5          12     14.4
+W60_S40.rd5          22      3.1
+W60_S55.rd5          35      0.4
+W65_N10.rd5          27      5.3
+W65_N15.rd5          31      3.1
+W65_N40.rd5           1      2.8
+W65_N45.rd5          70      6.5
+W65_N50.rd5         193      0.8
+W65_N55.rd5         128      0.2
+W65_N60.rd5           3      0.0
+W65_S30.rd5           5      3.6
+W65_S35.rd5          28     11.1
+W65_S40.rd5          26      3.5
+W65_S45.rd5           0      0.4
+W65_S55.rd5          41      0.1
+W70_N10.rd5           5      6.8
+W70_N15.rd5         162      8.1
+W70_N40.rd5          54      5.3
+W70_N45.rd5         782     12.4
+W70_N50.rd5         590      1.0
+W70_N55.rd5         119      0.4
+W70_N60.rd5           2      0.1
+W70_S25.rd5           0      9.9
+W70_S30.rd5        1584      5.6
+W70_S35.rd5         939      6.1
+W70_S40.rd5         246      3.2
+W70_S45.rd5          98      2.5
+W75_N10.rd5           0      5.3
+W75_N15.rd5         351     10.6
+W75_N20.rd5           0      0.6
+W75_N40.rd5        1363    119.8
+W75_N45.rd5        1058     29.9
+W75_N50.rd5         314      0.8
+W75_N55.rd5          16      0.3
+W75_N60.rd5          37      0.2
+W75_S30.rd5           2      2.4
+W75_S35.rd5         405     16.0
+W75_S40.rd5         677     22.0
+W75_S45.rd5         601      9.3
+W80_N35.rd5         497    115.2
+W80_N40.rd5         345     77.3
+W80_N45.rd5         312     14.9
+W80_N50.rd5          27      0.9
+W80_N55.rd5          48      0.2
+W80_N60.rd5          12      0.2
+W85_N10.rd5          82      5.2
+W85_N15.rd5          42      0.5
+W85_N30.rd5         136     69.9
+W85_N35.rd5        1460    101.3
+W85_N40.rd5          17     75.6
+W85_N45.rd5         543      8.8
+W85_N5.rd5          213      7.5
+W85_N50.rd5           2      0.4
+W85_N55.rd5           0      0.0
+W90_N10.rd5         681     20.6
+W90_N15.rd5         242      8.0
+W90_N30.rd5          90     41.9
+W90_N35.rd5          46     61.4
+W90_N40.rd5          22     79.4
+W90_N45.rd5         344     11.0
+W90_N5.rd5           32      0.3
+W90_N50.rd5          19      0.6
+W90_N55.rd5           0      0.1
+W95_N10.rd5           0      7.5
+W95_N15.rd5        1040     16.2
+W95_N30.rd5         122     33.9
+W95_N35.rd5         129     56.9
+W95_N40.rd5          22     39.7
+W95_N45.rd5          55     20.5
+W95_N50.rd5           3      1.1
+W95_N55.rd5           2      0.3
