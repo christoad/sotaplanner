@@ -1231,6 +1231,23 @@ select.form-input { cursor: pointer; }
             </div>
         </div>
 
+        <div class="card" style="margin-bottom:var(--sp-4);">
+            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:var(--sp-6);">
+                <div>
+                    <div style="font-weight:600; font-size:1rem; margin-bottom:0.3rem;">Hiking Path Finder (BRouter)</div>
+                    <div style="font-size:0.85rem; color:var(--ink-2); line-height:1.55;">
+                        Route between two summits (cached permanently, with hike time each way), and discover walking paths for summits with
+                        no recorded track: follows mapped paths from the activation zone out to a road, trailhead or parking lot and saves each
+                        way out for review. West Coast map tiles only for now.
+                    </div>
+                </div>
+                <div style="display:flex; gap:var(--sp-2); flex-shrink:0;">
+                    <a href="brouter_test.php" class="btn btn-ghost">Test bench</a>
+                    <a href="brouter_paths.php" class="btn btn-primary">Open →</a>
+                </div>
+            </div>
+        </div>
+
         <!-- Cron Activity Log -->
         <div class="section-head" style="margin-top:var(--sp-8);">
             <div>
