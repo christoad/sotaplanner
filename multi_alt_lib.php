@@ -159,8 +159,6 @@ function multi_alt_apply(array &$stops, array $alts, $pace) {
         $s['down_min'] = (int)$s['hike_min'] - $s['up_min'];
         $s['dist_up']  = is_numeric($s['dist_mi']) ? $s['dist_mi'] / 2 : null;
         $s['dist_down'] = $s['dist_up'];
-        $s['own_down_min'] = $s['down_min'];     // the summit's own full descent, kept for walk-back calculations
-        $s['own_dist_down'] = $s['dist_down'];
         $s['chained'] = false;
         $s['alt'] = null;
     }

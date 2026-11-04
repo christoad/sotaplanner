@@ -5,7 +5,6 @@ ini_set('display_errors', 1);
 require_once 'config.php';
 require_once 'sota_cache_helper.php'; // haversine_miles()
 require_once 'multi_alt_lib.php';     // alternate hike starts (see file header)
-require_once 'multi_leg_lib.php';     // car/hike between summits + finish address (BRouter)
 session_start();
 
 $db = getDbConnection();
@@ -214,7 +213,7 @@ foreach ($summit_ids as $sid) {
         'id' => (int)$s['id'], 'name' => $s['name'], 'ref' => $s['sota_ref'],
         'points' => (int)$s['points'], 'difficulty' => $s['difficulty'], 'status' => $s['status'],
         'lat' => $lat, 'lng' => $lng,
-        'summit_lat' => (float)$s['latitude'], 'summit_lng' => (float)$s['longitude'], 'elev_m' => (float)($s['elevation_m'] ?? 0),
+        'summit_lat' => (float)$s['latitude'], 'summit_lng' => (float)$s['longitude'],
         'hike_min' => (int)$hike_min, 'dist_mi' => $dist, 'elev_ft' => $elev,
         'is_drive_up' => $is_drive_up, 'gpx_path' => extractGpxPath($s['gpx_file_path'] ?? null),
         'gpx_file' => $s['gpx_file_path'] ?? null, 'track_type' => $track_type,
@@ -225,58 +224,19 @@ foreach ($summit_ids as $sid) {
 // ── Alternate hike starts: where the hike to a stop begins when it follows the
 // previous summit on foot (see multi_alt_lib.php). Rewrites hike numbers in place.
 $alt_lookup = multi_alt_lookup($db, $stops, $public_view ? null : getCurrentCallsign());
-
-// Explicit "back to the car" / "hike direct" choices for each pair of neighbouring summits
-// (multi_leg_lib.php). "Car" overrides a shared alternate start pin; "hike" uses the pin if there
-// is one, otherwise asks BRouter for a walkable route between the two summits.
-$leg_modes = multi_leg_load($db, $multi_id);
-$want_hike = [];
-$leg_set_idx = [];
-foreach ($stops as $i => $_st) {
-    $m = multi_leg_mode_for($leg_modes, $stops, $i);
-    if ($m === null) continue;
-    $leg_set_idx[$i] = true;
-    if ($m === 'car') unset($alt_lookup['active'][$i]);
-    elseif ($m === 'hike' && !$_st['is_drive_up']) { unset($alt_lookup['active'][$i]); $want_hike[$i] = true; }   // explicit choice: BRouter, not a pin
-}
-// Per-summit on-the-air time: a stop's own setting wins over the route-wide default
-$stop_times = multi_stop_times_load($db, $multi_id);
-foreach ($stops as $i => $_st) {
-    $stops[$i]['act_min'] = $stop_times[$_st['id']] ?? $activation_time_min;
-    $stops[$i]['act_custom'] = isset($stop_times[$_st['id']]);
-}
-$pace_mult = $current_group['pace_multiplier'] ?? 1.0;
-multi_alt_apply($stops, $alt_lookup['active'], $pace_mult);
-$exit_new = multi_exit_load($db, $multi_id);
-multi_leg_apply_brouter($stops, $want_hike, $pace_mult, $exit_new);
+multi_alt_apply($stops, $alt_lookup['active'], $current_group['pace_multiplier'] ?? 1.0);
 
 // Suggest an alternate start where the previous summit sits on the next one's trail
-// (skipped for pairs that already have a pin, that this user opted out of / dismissed, or that have an explicit choice)
-$alt_suggestions = $public_view ? [] : multi_alt_detect($stops, $alt_lookup['active'] + $alt_lookup['hidden'] + $alt_lookup['optout'] + $leg_set_idx);
+// (skipped for pairs that already have a pin or that this user opted out of / dismissed)
+$alt_suggestions = $public_view ? [] : multi_alt_detect($stops, $alt_lookup['active'] + $alt_lookup['hidden'] + $alt_lookup['optout']);
 
-// ── Finish address: where the last drive ends. Default is back at the starting address;
-// a route can instead finish at any other address saved on this dashboard (a road trip).
-// Never shown on the public view, same as the starting address.
-$dash_addresses = $public_view ? [] : multi_leg_addresses($db, $current_group['id']);
-$finish_addr = null; $finish_geo = null; $finish_warn = '';
-$finish_id = (int)($multi_row['finish_address_id'] ?? 0);
-if (!$public_view && $finish_id && (!$selected_address || (int)$selected_address['id'] !== $finish_id)) {
-    foreach ($dash_addresses as $_a) if ((int)$_a['id'] === $finish_id) $finish_addr = $_a;
-    if ($finish_addr) {
-        $finish_geo = addressGeo($db, $finish_addr);
-        if (!$finish_geo) { $finish_warn = 'Google could not locate "' . multi_leg_address_label($finish_addr) . '", so the route ends back at the start for now.'; $finish_addr = null; }
-    }
-}
-$end_other = (bool)$finish_geo;
-$end_label = $end_other ? multi_leg_address_label($finish_addr) : 'Home';
-
-// ── Google Maps directions link. Origin is the group's starting address if one is set,
-// otherwise the first stop. Destination is the finish address, or the origin again
-// (a round trip) when no other finish is chosen. Waypoints are each stop's trailhead (or summit
+// ── Round-trip Google Maps directions link — origin/destination is the group's
+// starting address if one is set, otherwise the first stop, so the trip always
+// comes back to where it started. Waypoints are each stop's trailhead (or summit
 // coordinate as a fallback), in route order. ──
 $gmaps_url = null;
 $gmaps_coords = array_values(array_filter(array_map(
-    fn($s) => ((!$s['chained'] || !empty($s['exit_new'])) && $s['lat'] !== null && $s['lng'] !== null) ? $s['lat'] . ',' . $s['lng'] : null,
+    fn($s) => (!$s['chained'] && $s['lat'] !== null && $s['lng'] !== null) ? $s['lat'] . ',' . $s['lng'] : null,
     $stops
 )));
 if (!empty($gmaps_coords)) {
@@ -287,8 +247,7 @@ if (!empty($gmaps_coords)) {
         $gmaps_endpoint = array_shift($gmaps_coords);
         $gmaps_waypoints = $gmaps_coords;
     }
-    $gmaps_dest = $end_other ? ($finish_geo['lat'] . ',' . $finish_geo['lng']) : $gmaps_endpoint;
-    $gmaps_params = ['api' => 1, 'origin' => $gmaps_endpoint, 'destination' => $gmaps_dest, 'travelmode' => 'driving'];
+    $gmaps_params = ['api' => 1, 'origin' => $gmaps_endpoint, 'destination' => $gmaps_endpoint, 'travelmode' => 'driving'];
     if (!empty($gmaps_waypoints)) $gmaps_params['waypoints'] = implode('|', $gmaps_waypoints);
     $gmaps_url = 'https://www.google.com/maps/dir/?' . http_build_query($gmaps_params);
 }
@@ -325,12 +284,6 @@ foreach ($stops as $i => $stop) {
         $leg_times[$i] = 0;
         $leg_distances_mi[$i] = 0;
         $leg_coords[$i] = ['from' => null, 'to' => null];
-        if (!empty($stop['exit_new']) && $stop['lat'] !== null && $stop['lng'] !== null) {
-            // Walked down to this summit's own trailhead: the next drive starts there
-            $prev_key = 'summit:' . $stop['id'];
-            $prev_coord = $stop['lat'] . ',' . $stop['lng'];
-            $prev_name = $stop['name'];
-        }
         continue;
     }
     $to_coord = ($stop['lat'] !== null && $stop['lng'] !== null) ? ($stop['lat'] . ',' . $stop['lng']) : null;
@@ -342,12 +295,10 @@ foreach ($stops as $i => $stop) {
     $prev_coord = $to_coord;
     $prev_name = $stop['name'];
 }
-$end_coord = $end_other ? ($finish_geo['lat'] . ',' . $finish_geo['lng']) : $origin_coord;
-$end_key   = $end_other ? ('faddr:' . $finish_addr['id']) : $origin_key;
-$return_leg = $get_leg($prev_key, $prev_coord, $end_key, $end_coord);
+$return_leg = $get_leg($prev_key, $prev_coord, $origin_key, $origin_coord);
 $return_leg_time = $return_leg['min'];
 $return_leg_distance_mi = $return_leg['mi'];
-$return_leg_coords = ['from' => $prev_coord, 'to' => $end_coord];
+$return_leg_coords = ['from' => $prev_coord, 'to' => $origin_coord];
 
 // ── Master timeline: segments (for the gantt bar) + milestones (arrival points) ──
 // Each drive leg gets its own color (cycled from this palette) so the map can
@@ -377,31 +328,23 @@ foreach ($stops as $i => $stop) {
         $elapsed += $stop['up_min'];
         $milestones[] = ['short' => 'On Summit', 'full' => 'On summit: ' . $stop['name'], 'min' => $elapsed];
     }
-    $segments[] = ['type' => 'radio', 'label' => "Radio #$n", 'minutes' => $stop['act_min'], 'stop' => $i];
-    $elapsed += $stop['act_min'];
+    $segments[] = ['type' => 'radio', 'label' => "Radio #$n", 'minutes' => $activation_time_min, 'stop' => $i];
+    $elapsed += $activation_time_min;
     if ($stop['down_min'] > 0) {
-        if (!empty($stop['back_routed'])) {
-            $down_label = 'Return to #' . ($stop['chain_head'] + 1) . (count($stop['back_via'] ?? []) > 1 ? ' via ' . implode(', ', array_map(fn($v) => '#' . $v, array_slice($stop['back_via'], 0, -1))) : '');
-        } elseif (!empty($stop['exit_new'])) {
-            $down_label = "Down to #$n trailhead";
-        } else {
-            $down_label = "Hike Down #$n";
-        }
-        $segments[] = ['type' => 'hike', 'label' => $down_label, 'minutes' => $stop['down_min'], 'stop' => $i];
+        $segments[] = ['type' => 'hike', 'label' => "Hike Down #$n", 'minutes' => $stop['down_min'], 'stop' => $i];
         $elapsed += $stop['down_min'];
     }
 }
 if ($return_leg_time) {
     $leg_key = 'return';
     $color = $LEG_COLORS[$leg_color_i % count($LEG_COLORS)]; $leg_color_i++;
-    $segments[] = ['type' => 'drive', 'label' => $end_other ? 'Drive to finish' : 'Drive home', 'minutes' => $return_leg_time, 'stop' => null, 'leg_key' => $leg_key, 'color' => $color];
+    $segments[] = ['type' => 'drive', 'label' => 'Return', 'minutes' => $return_leg_time, 'stop' => null, 'leg_key' => $leg_key, 'color' => $color];
     $elapsed += $return_leg_time;
-    $map_legs[] = ['key' => $leg_key, 'color' => $color, 'from' => $return_leg_coords['from'], 'to' => $return_leg_coords['to'], 'label' => $prev_name . ' → ' . $end_label];
+    $map_legs[] = ['key' => $leg_key, 'color' => $color, 'from' => $return_leg_coords['from'], 'to' => $return_leg_coords['to'], 'label' => $prev_name . ' → Home'];
 }
 $milestones[] = $public_view
     ? ['short' => 'Finish', 'full' => 'Last activation done', 'min' => $elapsed]
-    : ($end_other ? ['short' => 'Finish', 'full' => 'Arrive at ' . $end_label, 'min' => $elapsed]
-                  : ['short' => 'Home', 'full' => 'Arrive home', 'min' => $elapsed]);
+    : ['short' => 'Home', 'full' => 'Arrive home', 'min' => $elapsed];
 // With no drive to the first stop (no starting address, or the public view),
 // "Depart" and the first "Arrive" land on the same spot; keep just the later one.
 $milestones = array_values(array_filter($milestones, fn($m, $k) => !isset($milestones[$k + 1]) || $milestones[$k + 1]['min'] !== $m['min'], ARRAY_FILTER_USE_BOTH));
@@ -519,11 +462,8 @@ foreach ($stops as $i => $stop) {
         'order' => $i + 1, 'id' => $stop['id'], 'name' => $stop['name'], 'ref' => $stop['ref'],
         'lat' => (float)$stop['lat'], 'lng' => (float)$stop['lng'],
         'summit_lat' => $stop['summit_lat'], 'summit_lng' => $stop['summit_lng'],
-        // A summit reached by a BRouter walk is not hiked on its own recorded track (unless the walk
-        // down uses it), so drawing that track would show a route that is not part of the plan
-        'gpx_path' => (!empty($stop['chained']) && (($stop['alt']['method'] ?? '') === 'brouter') && empty($stop['exit_new'])) ? null : $stop['gpx_path'],
+        'gpx_path' => $stop['gpx_path'],
         'chained' => $stop['chained'],
-        'route' => $stop['route'] ?? null,
         'alt' => $stop['alt'] ? ['lat' => $stop['alt']['lat'], 'lng' => $stop['alt']['lng'], 'ret' => (($stop['alt']['mode'] ?? '') === 'return')] : null,
         'can_alt' => !$public_view && $i > 0 && !$stop['is_drive_up'] && $stops[$i - 1]['ref'] !== $stop['ref'],
         'prev_id' => $i > 0 ? $stops[$i - 1]['id'] : null,
@@ -679,27 +619,9 @@ a:hover { text-decoration: underline; }
 .footer a { color: var(--ink-3); }
 
 /* Tiles */
-.tiles-row { display: flex; gap: 0; align-items: stretch; overflow-x: auto; padding: 4px 4px 0.4rem; }
-.stop-col { flex: 0 0 220px; display: flex; flex-direction: column; }
-.stop-col .tile { flex: none; width: 100%; }
-.flow-down { flex: 1; min-height: 28px; display: flex; align-items: center; justify-content: center; color: var(--ink-4); font-size: 1.1rem; }
-.after-box { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 0.7rem 0.75rem; }
-.after-box.tile-next-err { border-color: var(--red); }
-.after-pick { font-size: 0.8rem; font-weight: 600; color: var(--ink); }
-.after-drive { font-size: 0.74rem; color: var(--ink-2); margin-top: 0.4rem; }
-.tile-next-msg.warn { color: var(--orange); background: var(--orange-bg); }
-.conn { flex: 0 0 44px; position: relative; --cc: var(--ink-4); }
-.conn-foot { --cc: var(--green); }
-.conn i { position: absolute; display: block; }
-.conn .c-h1 { left: 0; width: 50%; height: 2px; bottom: 44px; background: var(--cc); }
-.conn .c-v { left: calc(50% - 1px); width: 2px; top: 27px; bottom: 44px; background: var(--cc); }
-.conn .c-h2 { left: 50%; right: 7px; height: 2px; top: 27px; background: var(--cc); }
-.conn .c-head { right: 0; top: 21px; width: 0; height: 0; border-left: 8px solid var(--cc); border-top: 7px solid transparent; border-bottom: 7px solid transparent; }
-.tile-end { flex: 0 0 220px; align-self: stretch; display: flex; flex-direction: column; justify-content: center; gap: 0.9rem; }
+.tiles-row { display: flex; gap: 0.9rem; overflow-x: auto; padding: 4px 4px 0.4rem; }
 .tile { flex: 0 0 220px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 1rem; position: relative; box-shadow: var(--shadow-sm); transition: box-shadow 0.15s, border-color 0.15s, opacity 0.15s; }
-.tile-drag-handle, .tile-movable { cursor: grab; }
-.tile-movable button, .tile-movable select, .tile-movable a, .tile-movable input { cursor: pointer; }
-.tile-movable.dragging, .tile.dragging .tile-order { cursor: grabbing; }
+.tile-drag-handle { cursor: grab; }
 .tile.dragging .tile-drag-handle { cursor: grabbing; }
 .tile.dragging { opacity: 0.35; }
 .tile.drag-over { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-border); }
@@ -728,93 +650,6 @@ a:hover { text-decoration: underline; }
 .alt-help { font-size: 0.8rem; color: var(--ink-3); line-height: 1.5; margin-top: 0.85rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
 .alt-banner { display: none; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; background: var(--accent-bg); border: 1px solid var(--accent-border); color: var(--accent-2); border-radius: var(--r-md); padding: 0.6rem 0.85rem; font-size: 0.85rem; font-weight: 500; margin-bottom: 0.75rem; }
 .alt-banner.on { display: flex; }
-.tile-next { margin: 0 0 0.6rem; padding-top: 0.55rem; border-top: 1px dashed var(--border-2); }
-.tile-next-label { display: block; font-size: 0.68rem; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
-.tile-next-select { width: 100%; font-family: var(--font-sans); font-size: 0.78rem; color: var(--ink); background: var(--surface); border: 1px solid var(--border-2); border-radius: var(--r-sm); padding: 0.3rem 0.4rem; }
-.tile-next-msg { font-size: 0.72rem; line-height: 1.35; color: var(--red); background: var(--red-bg); border-radius: var(--r-sm); padding: 0.3rem 0.45rem; margin-top: 0.35rem; white-space: normal; }
-.act-stat { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem; }
-.act-stat .lbl { white-space: nowrap; }
-.act-input { width: 52px; }
-.act-custom { font-size: 0.62rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); background: var(--accent-bg); border-radius: var(--r-sm); padding: 0.05rem 0.3rem; margin-left: 0.2rem; }
-.act-edit { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: none; background: transparent; color: var(--ink-3); border-radius: var(--r-sm); cursor: pointer; }
-.act-edit:hover { background: var(--bg-2); color: var(--ink); }
-.act-input { width: 58px; font-family: var(--font-sans); font-size: 0.8rem; border: 1px solid var(--accent); border-radius: var(--r-sm); padding: 0.1rem 0.3rem; }
-.act-btn { font-family: var(--font-sans); font-size: 0.72rem; font-weight: 600; border: 1px solid var(--border-2); background: var(--surface); color: var(--ink-2); border-radius: var(--r-sm); padding: 0.12rem 0.45rem; cursor: pointer; }
-.act-btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
-.act-link { font-size: 0.7rem; color: var(--ink-3); background: none; border: none; text-decoration: underline; cursor: pointer; padding: 0; }
-.seg { display: flex; flex-direction: column; gap: 0.3rem; }
-.seg button { display: flex; align-items: center; gap: 0.5rem; width: 100%; text-align: left; font-family: var(--font-sans); font-size: 0.78rem; font-weight: 500; line-height: 1.25; padding: 0.42rem 0.55rem; border: 1px solid var(--border-2); border-radius: var(--r-md); background: var(--surface); color: var(--ink-2); cursor: pointer; transition: background 0.12s, border-color 0.12s, color 0.12s; }
-.seg button::before { content: ''; flex: 0 0 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--ink-4); background: var(--surface); box-sizing: border-box; }
-.seg button:hover:not(.on):not(:disabled) { border-color: var(--accent-border); background: var(--accent-bg); color: var(--ink); }
-.seg button.on { background: var(--accent-bg); border-color: var(--accent); color: var(--accent-2); font-weight: 600; cursor: default; }
-.seg button.on::before { border-color: var(--accent); background: radial-gradient(circle, var(--accent) 0 40%, var(--surface) 45%); }
-.seg button.on[data-auto] { cursor: pointer; }
-.seg button:disabled { color: var(--ink-4); background: var(--bg-2); cursor: not-allowed; }
-.seg button:disabled::before { border-color: var(--border-2); }
-.tile-next-msg.warn { color: var(--orange); background: var(--orange-bg); }
-.conn { flex: 0 0 44px; position: relative; --cc: var(--ink-4); }
-.conn-foot { --cc: var(--green); }
-.conn i { position: absolute; display: block; }
-.conn .c-h1 { left: 0; width: 50%; height: 2px; bottom: 44px; background: var(--cc); }
-.conn .c-v { left: calc(50% - 1px); width: 2px; top: 27px; bottom: 44px; background: var(--cc); }
-.conn .c-h2 { left: 50%; right: 7px; height: 2px; top: 27px; background: var(--cc); }
-.conn .c-head { right: 0; top: 21px; width: 0; height: 0; border-left: 8px solid var(--cc); border-top: 7px solid transparent; border-bottom: 7px solid transparent; }
-.tile-end { flex: 0 0 220px; align-self: stretch; display: flex; flex-direction: column; justify-content: center; gap: 0.9rem; }
-.tile { flex: 0 0 220px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 1rem; position: relative; box-shadow: var(--shadow-sm); transition: box-shadow 0.15s, border-color 0.15s, opacity 0.15s; }
-.tile-drag-handle, .tile-movable { cursor: grab; }
-.tile-movable button, .tile-movable select, .tile-movable a, .tile-movable input { cursor: pointer; }
-.tile-movable.dragging, .tile.dragging .tile-order { cursor: grabbing; }
-.tile.dragging .tile-drag-handle { cursor: grabbing; }
-.tile.dragging { opacity: 0.35; }
-.tile.drag-over { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-border); }
-.tile-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
-.tile-order { width: 26px; height: 26px; border-radius: 50%; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 700; flex-shrink: 0; }
-.tile-drag-handle { color: var(--ink-4); font-size: 0.85rem; letter-spacing: -1px; user-select: none; line-height: 1; }
-.tile-name { font-weight: 600; font-size: 0.92rem; margin: 0 0 0.1rem; }
-.tile-ref { font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-3); margin-bottom: 0.5rem; }
-.tile-stats { display: flex; flex-direction: column; gap: 3px; font-size: 0.78rem; color: var(--ink-2); margin-bottom: 0.6rem; }
-.tile-stats span.lbl { color: var(--ink-3); }
-.tile-controls { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; border-top: 1px solid var(--border); padding-top: 0.6rem; }
-.tile-reorder { display: flex; gap: 4px; }
-.tile-reorder a, .tile-reorder span { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: var(--r-sm); border: 1px solid var(--border-2); color: var(--ink-2); background: var(--bg); cursor: pointer; font-size: 0.75rem; text-decoration: none; }
-.tile-reorder a:hover { background: var(--bg-2); color: var(--ink); text-decoration: none; }
-.tile-reorder span { opacity: 0.3; cursor: default; }
-.tile-actions { display: flex; align-items: center; gap: 10px; }
-.tile-arrow-foot { color: var(--green); font-weight: 700; }
-.tile-alt { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.6rem; font-size: 0.72rem; white-space: nowrap; }
-.tile-alt-label { color: var(--green); font-weight: 600; background: var(--green-bg); border-radius: var(--r-sm); padding: 0.15rem 0.45rem; }
-.tile-alt-link { font-family: var(--font-sans); font-size: 0.72rem; color: var(--ink-3); background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline; }
-.tile-alt-link:hover { color: var(--ink); }
-.tile-alt-btn { font-family: var(--font-sans); font-size: 0.72rem; font-weight: 500; color: var(--ink-2); background: var(--surface); border: 1px solid var(--border-2); border-radius: var(--r-sm); padding: 0.2rem 0.5rem; cursor: pointer; }
-.tile-alt-btn:hover { background: var(--bg-2); color: var(--ink); }
-.alt-suggest { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem 1rem; flex-wrap: wrap; background: var(--green-bg); border: 1px solid #cfe6d8; border-radius: var(--r-md); padding: 0.65rem 0.85rem; margin-bottom: 0.75rem; font-size: 0.85rem; color: var(--ink-2); }
-.alt-suggest-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-.alt-help { font-size: 0.8rem; color: var(--ink-3); line-height: 1.5; margin-top: 0.85rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
-.alt-banner { display: none; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; background: var(--accent-bg); border: 1px solid var(--accent-border); color: var(--accent-2); border-radius: var(--r-md); padding: 0.6rem 0.85rem; font-size: 0.85rem; font-weight: 500; margin-bottom: 0.75rem; }
-.alt-banner.on { display: flex; }
-.tile-next { margin: 0 0 0.6rem; padding-top: 0.55rem; border-top: 1px dashed var(--border-2); }
-.tile-next-label { display: block; font-size: 0.68rem; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
-.tile-next-select { width: 100%; font-family: var(--font-sans); font-size: 0.78rem; color: var(--ink); background: var(--surface); border: 1px solid var(--border-2); border-radius: var(--r-sm); padding: 0.3rem 0.4rem; }
-.tile-next-msg { font-size: 0.72rem; line-height: 1.35; color: var(--red); background: var(--red-bg); border-radius: var(--r-sm); padding: 0.3rem 0.45rem; margin-top: 0.35rem; white-space: normal; }
-.act-stat { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem; }
-.act-stat .lbl { white-space: nowrap; }
-.act-input { width: 52px; }
-.act-custom { font-size: 0.62rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); background: var(--accent-bg); border-radius: var(--r-sm); padding: 0.05rem 0.3rem; margin-left: 0.2rem; }
-.act-edit { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: none; background: transparent; color: var(--ink-3); border-radius: var(--r-sm); cursor: pointer; }
-.act-edit:hover { background: var(--bg-2); color: var(--ink); }
-.act-input { width: 58px; font-family: var(--font-sans); font-size: 0.8rem; border: 1px solid var(--accent); border-radius: var(--r-sm); padding: 0.1rem 0.3rem; }
-.act-btn { font-family: var(--font-sans); font-size: 0.72rem; font-weight: 600; border: 1px solid var(--border-2); background: var(--surface); color: var(--ink-2); border-radius: var(--r-sm); padding: 0.12rem 0.45rem; cursor: pointer; }
-.act-btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
-.act-link { font-size: 0.7rem; color: var(--ink-3); background: none; border: none; text-decoration: underline; cursor: pointer; padding: 0; }
-.tile-end-add { display: flex; flex-direction: column; align-items: center; gap: 0.2rem; text-decoration: none; color: var(--ink-3); padding: 0.6rem; border: 1px dashed var(--border-2); border-radius: var(--r-md); }
-.tile-end-add:hover { color: var(--ink); background: var(--bg-2); }
-.tile-end-finish { padding-bottom: 0.2rem; }
-.finish-val { font-size: 0.85rem; font-weight: 500; }
-.finish-edit { display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem; }
-.finish-edit[hidden] { display: none; }
-.tile-or { display: flex; align-items: center; gap: 0.6rem; color: var(--ink-4); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em; }
-.tile-or::before, .tile-or::after { content: ''; flex: 1; height: 1px; background: var(--border-2); }
-.tile-next-msg.ok { color: var(--green); background: var(--green-bg); }
 #multi-map.picking,
 #multi-map.picking .leaflet-interactive,
 #multi-map.picking.leaflet-grab,
@@ -1084,7 +919,7 @@ a:hover { text-decoration: underline; }
       <div class="stat-cell-label">Drive Distance</div>
       <?php if ($total_drive_dist_mi_sum): ?>
         <div class="stat-cell-val"><?= number_format(convertDistance($total_drive_dist_mi_sum, $user_units), 2) ?> <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3);"><?= getDistanceUnit($user_units) ?></span></div>
-        <div class="stat-cell-sub"><?= $public_view ? 'between summits' : ($end_other ? 'start to finish' : 'round trip') ?></div>
+        <div class="stat-cell-sub"><?= $public_view ? 'between summits' : 'round trip' ?></div>
       <?php else: ?>
         <div class="stat-cell-val" style="color:var(--ink-3); font-size:0.875rem;">—</div>
         <div class="stat-cell-sub"><?= $selected_address ? 'No route yet' : 'Add a starting address' ?></div>
@@ -1118,49 +953,26 @@ a:hover { text-decoration: underline; }
       </div>
     </div>
     <?php endforeach; ?>
-    <?php
-      // Finish label: the address nickname, or the address itself when it has none
-      $finish_text = $end_other ? multi_leg_address_label($finish_addr)
-          : ($selected_address ? multi_leg_address_label($selected_address) : 'the last trailhead');
-      $EDIT_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5l2 2L5 13H3v-2l8.5-8.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
-    ?>
     <div class="tiles-row" id="tiles-row">
       <?php foreach ($stops as $i => $stop):
           $up_ids = $summit_ids;
           if ($i > 0) { [$up_ids[$i - 1], $up_ids[$i]] = [$up_ids[$i], $up_ids[$i - 1]]; }
           $down_ids = $summit_ids;
           if ($i < count($summit_ids) - 1) { [$down_ids[$i], $down_ids[$i + 1]] = [$down_ids[$i + 1], $down_ids[$i]]; }
-          // Remove/duplicate operate on this tile's POSITION, not the summit id: a summit can appear
-          // more than once (e.g. re-activating after UTC midnight for double points)
+          // Remove/duplicate operate on this tile's POSITION, not the summit id — a
+          // summit can appear more than once (e.g. re-activating after UTC midnight
+          // for double points), so removing/copying "by id" would hit every copy.
           $remove_ids = $summit_ids;
           unset($remove_ids[$i]);
           $remove_ids = array_values($remove_ids);
           $dup_ids = $summit_ids;
           array_splice($dup_ids, $i + 1, 0, [$stop['id']]);
-
-          $on_foot = !empty($stop['chained']);
-          $alt_ret = $on_foot && (($stop['alt']['mode'] ?? '') === 'return');
-          $has_next = $i < count($stops) - 1;
-          $nx = $has_next ? $stops[$i + 1] : null;
-          $nx_hike = $has_next && !empty($nx['chained']);
-          $nx_method = $nx['alt']['method'] ?? null;
-          $nx_can_hike = $has_next && !$nx['is_drive_up'] && $nx['ref'] !== $stop['ref'];
-          $is_new = !empty($stop['exit_new']);
-          $sel = $nx_hike ? 'hike' : ($is_new ? 'new' : 'back');
-          // Wording follows the flow: a drive-up summit has no hike to come back from, so the choice is
-          // simply what happens next
-          if (!empty($stop['is_drive_up'])) $back_label = $has_next ? 'Drive on to #' . ($i + 2) : ($end_other ? 'Drive to finish' : 'Drive home');
-          else $back_label = $on_foot ? 'Back the way we came' : 'Return to hike start point';
-          $can_alt = !$public_view && $has_next && !$nx['is_drive_up'] && $nx['ref'] !== $stop['ref'];
-          $me_cs = getCurrentCallsign();
       ?>
-      <?php if ($i > 0): ?><div class="conn<?= $on_foot ? ' conn-foot' : '' ?>" title="<?= $on_foot ? 'Hiked on foot from the previous summit' : 'Drive to the next starting point' ?>"><i class="c-h1"></i><i class="c-v"></i><i class="c-h2"></i><i class="c-head"></i></div><?php endif; ?>
-      <div class="stop-col">
+      <?php if ($i > 0): ?><div class="tile-arrow<?= $stop['chained'] ? ' tile-arrow-foot' : '' ?>"<?= $stop['chained'] ? ' title="Hiked on foot from the previous summit, no return to the car"' : '' ?>><?= $stop['chained'] ? '⇢' : '→' ?></div><?php endif; ?>
       <?php if ($public_view): ?>
       <div class="tile" data-pos="<?= $i ?>">
       <?php else: ?>
-      <div class="tile tile-movable" data-pos="<?= $i ?>" title="Drag to reorder"
-           onmousedown="this.draggable = !event.target.closest('button,input,select,a,textarea,label')"
+      <div class="tile" data-pos="<?= $i ?>"
            ondragstart="onTileDragStart(event, <?= $i ?>)"
            ondragover="onTileDragOver(event)"
            ondragleave="onTileDragLeave(event)"
@@ -1168,7 +980,7 @@ a:hover { text-decoration: underline; }
            ondragend="onTileDragEnd(event)">
       <?php endif; ?>
         <div class="tile-head">
-          <div class="tile-order"<?= $public_view ? '' : ' title="Drag to reorder" style="cursor:grab"' ?>><?= $i + 1 ?></div>
+          <div class="tile-order"><?= $i + 1 ?></div>
           <div style="display:flex; align-items:center; gap:6px;">
             <?php if (!$public_view && !$stop['is_drive_up'] && !$stop['has_trailhead']): ?>
               <a href="trail_research.php?id=<?= $stop['id'] ?>&group=<?= $current_group['id'] ?>" class="tile-warn" title="No starting point saved for <?= htmlspecialchars(addslashes($stop['name'])) ?>. Driving directions fall back to the summit's peak location. Add a starting point in Trail Research.">!</a>
@@ -1180,11 +992,36 @@ a:hover { text-decoration: underline; }
         <div class="tile-ref"><?= htmlspecialchars($stop['ref']) ?></div>
         <div class="tile-stats">
           <div><span class="lbl">Points:</span> <?= $stop['points'] ?><?php if ($stop['difficulty']): ?> · <span class="badge badge-<?= htmlspecialchars($stop['difficulty']) ?>"><?= ucwords(str_replace('-', ' ', $stop['difficulty'])) ?></span><?php endif; ?></div>
-          <div><span class="lbl">Drive here:</span> <?= $on_foot ? '-' : ($leg_times[$i] ? formatTime($leg_times[$i]) : '—') ?></div>
-          <div><span class="lbl">Hike:</span> <?= $alt_ret ? 'On the way down' : ($stop['up_min'] ? formatTime($stop['up_min']) : ($stop['is_drive_up'] ? 'Drive up' : '—')) ?><?= (($stop['alt']['method'] ?? '') === 'estimate') ? ' <span title="No trail track passes through this start point, so this is a straight-line estimate." style="color:var(--orange); font-weight:600;">(est.)</span>' : '' ?><?= (($stop['alt']['method'] ?? '') === 'brouter') ? ' <span title="Timed from a walkable route found on OpenStreetMap trails by BRouter. Climb figures from map data can run low, so treat it as an estimate." style="color:var(--orange); font-weight:600;">(est.)</span>' : '' ?></div>
-          <div class="act-stat" id="act-<?= $i ?>"><span class="lbl">On the air:</span> <span class="act-val"><?= (int)$stop['act_min'] ?> min<?= $stop['act_custom'] ? ' <span class="act-custom" title="Set for this summit; the rest use the route default">custom</span>' : '' ?></span><?php if (!$public_view): ?> <button type="button" class="act-edit" title="Change the time on the air at this summit" aria-label="Edit time on the air" onclick="editActTime(<?= $i ?>)"><?= $EDIT_SVG ?></button><?php endif; ?></div>
+          <div><span class="lbl">Drive here:</span> <?= $stop['chained'] ? 'On foot' : ($leg_times[$i] ? formatTime($leg_times[$i]) : '—') ?></div>
+          <div><span class="lbl"><?= $stop['chained'] ? (($stop['alt']['mode'] ?? '') === 'return' ? 'Hike (down):' : 'Hike:') : ($stop['continues'] ? 'Hike (up):' : ($stop['descends_to_next'] ? 'Hike (to #' . ($i + 2) . '):' : 'Hike (RT):')) ?></span> <?= $stop['hike_min'] ? formatTime($stop['hike_min']) : ($stop['is_drive_up'] ? 'Drive up' : '—') ?><?= ($stop['alt']['method'] ?? '') === 'estimate' ? ' <span title="No trail track passes through this start point, so this is a straight-line estimate." style="color:var(--orange); font-weight:600;">(est.)</span>' : '' ?></div>
           <div><span class="lbl">Status:</span> <span class="badge badge-<?= htmlspecialchars($stop['status']) ?>"><?= ucfirst($stop['status']) ?></span></div>
         </div>
+        <?php
+          $can_alt = !$public_view && $i > 0 && !$stop['is_drive_up'] && $stops[$i - 1]['ref'] !== $stop['ref'];
+          $me_cs = getCurrentCallsign();
+        ?>
+        <?php if ($stop['chained']):
+            $by = $stop['alt']['set_by'] ?? '';
+            $alt_ret = (($stop['alt']['mode'] ?? '') === 'return');
+            $alt_tip = ($alt_ret ? 'Reached on the way down from #' . $i . ', instead of returning to the car in between.' : 'Hikes on from #' . $i . ' instead of returning to the car.')
+                . ($by !== '' ? ' Start point set by ' . (strcasecmp($by, (string)$me_cs) === 0 ? 'you' : $by) . '.' : '');
+        ?>
+        <div class="tile-alt" title="<?= htmlspecialchars($alt_tip) ?>">
+          <span class="tile-alt-label">&#8674; <?= $alt_ret ? 'On the way down' : 'Alternate start' ?></span>
+          <?php if ($can_alt): ?>
+            <button type="button" class="tile-alt-link" onclick="startAltPin(<?= $i ?>)">Move</button>
+            <button type="button" class="tile-alt-link" onclick="altAction('reset', <?= $i ?>)">Reset</button>
+          <?php endif; ?>
+        </div>
+        <?php elseif ($can_alt): ?>
+        <div class="tile-alt">
+          <?php if (isset($alt_lookup['hidden'][$i])): ?>
+            <button type="button" class="tile-alt-btn" onclick="altAction('restore', <?= $i ?>)" title="A shared alternate start exists for this pair of summits. Click to use it.">Use shared start</button>
+          <?php else: ?>
+            <button type="button" class="tile-alt-btn" onclick="startAltPin(<?= $i ?>)" title="Use this if you hike straight to this summit from the previous one instead of returning to the car">Alternate start point</button>
+          <?php endif; ?>
+        </div>
+        <?php endif; ?>
         <?php if (!$public_view): ?>
         <div class="tile-controls">
           <div class="tile-reorder">
@@ -1204,91 +1041,22 @@ a:hover { text-decoration: underline; }
         </div>
         <?php endif; ?>
       </div>
-
-      <div class="flow-down">&#8595;</div>
-
-      <div class="after-box<?= ($has_next && !empty($nx['leg_error'])) ? ' tile-next-err' : '' ?>">
-        <span class="tile-next-label">After this summit</span>
-        <?php if (!$public_view): ?>
-        <div class="seg" role="radiogroup">
-          <?php if ($has_next): ?>
-          <button type="button" role="radio" aria-checked="<?= $sel === 'hike' ? 'true' : 'false' ?>" class="<?= $sel === 'hike' ? 'on' : '' ?>"<?= $nx_can_hike ? '' : ' disabled' ?><?= ($sel === 'hike' && $nx_method !== 'brouter') ? ' data-auto="1" title="Currently using a shared start point. Click to plan the walk with the path finder instead."' : '' ?> onclick="if(!this.classList.contains('on')||this.dataset.auto)setAfter(<?= $i ?>, 'hike')">Hike direct to #<?= $i + 2 ?></button>
-          <?php endif; ?>
-          <button type="button" role="radio" aria-checked="<?= $sel === 'back' ? 'true' : 'false' ?>" class="<?= $sel === 'back' ? 'on' : '' ?>" onclick="if(!this.classList.contains('on'))setAfter(<?= $i ?>, 'back')"><?= $back_label ?></button>
-          <?php if ($on_foot): ?>
-          <button type="button" role="radio" aria-checked="<?= $sel === 'new' ? 'true' : 'false' ?>" class="<?= $sel === 'new' ? 'on' : '' ?>" onclick="if(!this.classList.contains('on'))setAfter(<?= $i ?>, 'new')">Down to this summit's trailhead</button>
-          <?php endif; ?>
-        </div>
-        <?php else: ?>
-        <div class="after-pick"><?= $sel === 'hike' ? 'Hike direct to #' . ($i + 2) : ($sel === 'new' ? "Down to this summit's trailhead" : $back_label) ?></div>
-        <?php endif; ?>
-
-        <?php if ($sel === 'hike'): ?>
-          <?php if ($nx_method === 'brouter'): ?>
-            <div class="tile-next-msg ok">Hike <?= formatTime($nx['up_min']) ?> to #<?= $i + 2 ?>: <?= number_format($nx['leg_dist_mi'], 1) ?> mi, <?= number_format($nx['leg_gain_ft']) ?> ft climb, from the edge of this summit's activation zone.</div>
-          <?php else: ?>
-            <div class="tile-next-msg ok">Hike to #<?= $i + 2 ?> using the shared alternate start point.
-              <?php if ($can_alt): ?><button type="button" class="tile-alt-link" onclick="startAltPin(<?= $i + 1 ?>)">Move</button> <button type="button" class="tile-alt-link" onclick="altAction('reset', <?= $i + 1 ?>)">Reset</button><?php endif; ?></div>
-          <?php endif; ?>
-        <?php else: ?>
-          <?php if ($stop['down_min'] > 0): ?>
-            <div class="tile-next-msg ok">
-              <?php if ($sel === 'new'): ?>Walk <?= formatTime($stop['down_min']) ?> down this summit's own trail to its starting point.
-              <?php elseif (!empty($stop['back_routed'])): ?>Walk <?= formatTime($stop['down_min']) ?> (<?= number_format($stop['dist_down'], 1) ?> mi) back via <?= htmlspecialchars(implode(', ', array_map(fn($n) => '#' . $n, $stop['back_via'] ?? []))) ?> to the start.
-              <?php else: ?>Hike down <?= formatTime($stop['down_min']) ?>.<?php endif; ?>
-            </div>
-          <?php endif; ?>
-          <?php if ($sel === 'new'): ?><div class="tile-next-msg warn">A ride or car needs to be waiting at this starting point.</div><?php endif; ?>
-          <?php if ($has_next): ?>
-            <?php if (!empty($nx['leg_error'])): ?>
-              <div class="tile-next-msg"><strong>No path.</strong> <?= htmlspecialchars($nx['leg_error']) ?> Planned as a return to the hike start point instead.</div>
-            <?php endif; ?>
-            <?php if (!empty($leg_times[$i + 1])): ?><div class="after-drive">Then drive to #<?= $i + 2 ?>: <?= formatTime($leg_times[$i + 1]) ?></div>
-            <?php elseif (empty($nx['leg_error']) && $origin_geo): ?><div class="tile-next-msg">Drive time to #<?= $i + 2 ?> could not be calculated, so the totals leave it out. Check the starting points in Trail Research.</div><?php endif; ?>
-          <?php elseif ($return_leg_time && $public_view): ?>
-            <div class="after-drive">Then drive to the finish: <?= formatTime($return_leg_time) ?></div>
-          <?php endif; ?>
-          <?php if ($has_next && !$public_view && isset($alt_lookup['hidden'][$i + 1])): ?>
-            <button type="button" class="tile-alt-btn" onclick="altAction('restore', <?= $i + 1 ?>)" title="A shared alternate start exists for this pair of summits. Click to use it.">Use shared start</button>
-          <?php endif; ?>
-        <?php endif; ?>
-      </div>
-      </div>
       <?php endforeach; ?>
-      <?php if (!$public_view):
+      <?php if (!$public_view && count($summit_ids) < $MULTI_MAX):
           $add_qs = ['group' => $current_group['id'], 'multi_select' => implode(',', $summit_ids)];
           if ($multi_id) $add_qs['multi_edit_id'] = $multi_id;
           $add_summit_url = 'index.php?' . http_build_query($add_qs);
       ?>
-      <div class="conn"><i class="c-h1"></i><i class="c-v"></i><i class="c-h2"></i><i class="c-head"></i></div>
-      <div class="tile tile-end">
-        <div class="tile-end-finish">
-          <div class="tile-next-label">Finish at</div>
-          <div class="act-stat" id="finish-stat"><span class="act-val finish-val"><?= htmlspecialchars($finish_text) ?></span> <button type="button" class="act-edit" title="Change where the route finishes" aria-label="Edit finish address" onclick="editFinish()"><?= $EDIT_SVG ?></button></div>
-          <div class="finish-edit" id="finish-edit" hidden>
-            <select class="tile-next-select" id="finish-select" onchange="finishChosen(this.value)">
-              <option value="0"<?= !$end_other ? ' selected' : '' ?>><?= $selected_address ? htmlspecialchars(multi_leg_address_label($selected_address)) . ' (start address)' : 'Last trailhead (no address)' ?></option>
-              <?php foreach ($dash_addresses as $_a): if ($selected_address && (int)$_a['id'] === (int)$selected_address['id']) continue; ?>
-              <option value="<?= (int)$_a['id'] ?>"<?= ($end_other && (int)$finish_addr['id'] === (int)$_a['id']) ? ' selected' : '' ?>><?= htmlspecialchars(multi_leg_address_label($_a)) ?></option>
-              <?php endforeach; ?>
-              <option value="new">+ Add new address&hellip;</option>
-            </select>
-            <button type="button" class="act-link" onclick="cancelFinish()">Cancel</button>
-          </div>
-          <?php if ($return_leg_time): ?><div class="after-drive"><?= $end_other ? 'Drive to finish' : 'Drive home' ?>: <?= formatTime($return_leg_time) ?></div>
-          <?php elseif ($origin_geo || $end_other): ?><div class="tile-next-msg">The drive <?= $end_other ? 'to the finish' : 'home' ?> could not be calculated from where this route ends (Google found no road route from that starting point), so the totals leave it out. Check the last summit's starting point in Trail Research.</div><?php endif; ?>
-          <?php if ($finish_warn): ?><div class="tile-next-msg"><?= htmlspecialchars($finish_warn) ?></div><?php endif; ?>
-        </div>
-        <?php if (count($summit_ids) < $MULTI_MAX): ?>
-        <div class="tile-or"><span>OR</span></div>
-        <a href="<?= htmlspecialchars($add_summit_url) ?>" class="tile-end-add" title="Add another summit to this route">
-          <span class="tile-add-plus">+</span>
-          <span class="tile-add-label">Add Summit</span>
-        </a>
-        <?php endif; ?>
-      </div>
+      <div class="tile-arrow">→</div>
+      <a href="<?= htmlspecialchars($add_summit_url) ?>" class="tile tile-add" title="Add another summit to this route">
+        <div class="tile-add-plus">+</div>
+        <div class="tile-add-label">Add Summit</div>
+      </a>
       <?php endif; ?>
     </div>
+    <?php if (!$public_view): ?>
+    <div class="alt-help"><strong>Hiking straight from one summit to the next?</strong> If you won't return to the car in between, use <em>Alternate start point</em> on the later summit's tile, then click the map where that hike begins (for example, the first summit). The drive to it and the first summit's hike down are dropped, and the times update. The start point is saved for that pair of summits in that order only, so it never changes anyone's solo hike, and anyone who builds the same pair gets it too.</div>
+    <?php endif; ?>
   </div>
 
   <!-- Master Gantt -->
@@ -1296,7 +1064,7 @@ a:hover { text-decoration: underline; }
     <div class="card-title" style="display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
       <span>Outing Timeline</span>
       <?php if (!empty($segments)): ?>
-        <span style="font-size:0.78rem; font-weight:500; color:var(--ink-3);">Total: <strong style="color:var(--ink); font-weight:600;"><?= formatTime($total_min) ?></strong> <?= $public_view ? 'first trailhead to last' : ($end_other ? 'start to finish' : 'door-to-door, round trip') ?></span>
+        <span style="font-size:0.78rem; font-weight:500; color:var(--ink-3);">Total: <strong style="color:var(--ink); font-weight:600;"><?= formatTime($total_min) ?></strong> <?= $public_view ? 'first trailhead to last' : 'door-to-door, round trip' ?></span>
       <?php endif; ?>
     </div>
     <div class="timeline-controls">
@@ -1358,12 +1126,9 @@ a:hover { text-decoration: underline; }
   <div class="card">
     <div class="card-title" style="display:flex; align-items:center; justify-content:space-between;">
       <span>Route Map</span>
-      <div style="display:flex; gap:0.4rem;">
-        <button type="button" id="btn-zoom-summits" class="btn btn-ghost btn-sm" onclick="zoomToSummits()" title="Fit the map to the summits and hikes only, leaving out the drive">Zoom to Summits</button>
       <?php if (!empty($other_summits)): ?>
         <button type="button" id="btn-show-all-summits" class="btn btn-ghost btn-sm" onclick="toggleOtherSummits()">Show All Summits</button>
       <?php endif; ?>
-      </div>
     </div>
     <div class="alt-banner" id="alt-banner">
       <span id="alt-banner-text"></span>
@@ -1729,12 +1494,7 @@ async function initMap() {
         bounds.push(s.chained ? [s.summit_lat, s.summit_lng] : [s.lat, s.lng]);
 
         // Custom hike start: a green flag, with a dashed line to the summit it leads to
-        if (s.route && s.route.length > 1) {
-            // Hike direct: the walkable route BRouter found from the previous summit
-            L.polyline(s.route, { color: '#2D8653', weight: 4, dashArray: '8 6', opacity: 0.95, lineJoin: 'round' }).addTo(map)
-                .bindTooltip('Hike direct from #' + (s.order - 1) + ' to #' + s.order + ' ' + s.name);
-            s.route.forEach(function(p) { bounds.push(p); });
-        } else if (s.alt && !s.alt.ret) {
+        if (s.alt && !s.alt.ret) {
             const flag = L.divIcon({ className: '', html: '<div class="lmap-flag">' + s.order + '</div>', iconSize: [22, 22], iconAnchor: [11, 11] });
             L.marker([s.alt.lat, s.alt.lng], { icon: flag }).addTo(map)
                 .bindTooltip('Hike to #' + s.order + ' ' + s.name + ' starts here');
@@ -1819,20 +1579,6 @@ async function initMap() {
     });
 }
 initMap();
-
-// ── "Zoom to Summits": fit the view to the summits, their starting points and the hikes,
-// leaving out the home marker and the drive legs (which can span hundreds of miles) ──
-function zoomToSummits() {
-    if (!mapInstance) return;
-    const pts = [];
-    MAP_STOPS.forEach(function(s) {
-        pts.push([s.summit_lat, s.summit_lng]);
-        if (!s.chained && s.lat && s.lng) pts.push([s.lat, s.lng]);
-        if (s.route) s.route.forEach(function(p) { pts.push(p); });
-        if (s.gpx_path) s.gpx_path.forEach(function(p) { pts.push(p); });
-    });
-    if (pts.length) mapInstance.fitBounds(pts, { padding: [40, 40], maxZoom: 15 });
-}
 
 // ── "Show All Summits" map toggle — click a marker to add it to the route ──
 function buildOtherSummitsLayer() {
@@ -1939,79 +1685,6 @@ function altAction(action, i) {
     const s = MAP_STOPS[i];
     if (!s) return;
     altPost({ action: action, from_id: s.prev_id, to_id: s.id });
-}
-
-// ── Leg settings: back to the car or hike direct to the next summit, and the finish address ──
-const MULTI_ID = <?= (int)$multi_id ?>;
-function legPost(params) {
-    params.multi_id = MULTI_ID;
-    return fetch('multi_leg_save.php', { method: 'POST', credentials: 'same-origin', body: new URLSearchParams(params) })
-        .then(r => r.json())
-        .then(d => {
-            if (!d.ok) { alert(d.error || 'Could not save that change.'); return; }
-            window.location.reload();
-        })
-        .catch(() => alert('Could not save that change. Check your connection and try again.'));
-}
-function setLegMode(i, mode) {
-    const a = MAP_STOPS[i], b = MAP_STOPS[i + 1];
-    if (!a || !b) return;
-    if (mode === 'hike') {
-        const sel = document.getElementById('legmode-' + i);
-        if (sel) sel.disabled = true;
-        document.body.style.cursor = 'progress';   // first time for a pair, the path finder may take a few seconds
-    }
-    legPost({ action: 'mode', from_id: a.id, to_id: b.id, mode: mode });
-}
-function editActTime(i) {
-    const s = MAP_STOPS[i];
-    const row = document.getElementById('act-' + i);
-    if (!s || !row) return;
-    const cur = parseInt(row.querySelector('.act-val').textContent, 10) || 30;
-    row.innerHTML = '<span class="lbl">On the air:</span> '
-        + '<input type="number" class="act-input" min="5" max="480" step="5" value="' + cur + '" aria-label="Minutes on the air"> min '
-        + '<button type="button" class="act-btn primary">Save</button> '
-        + '<button type="button" class="act-btn">Cancel</button>'
-        + (row.querySelector('.act-custom') || row.dataset.custom ? ' <button type="button" class="act-link">Use route default</button>' : '');
-    const inp = row.querySelector('input'), btns = row.querySelectorAll('button');
-    inp.focus(); inp.select();
-    const save = () => { const v = parseInt(inp.value, 10); if (v >= 5) { btns[0].disabled = true; setActTime(i, v); } };
-    btns[0].onclick = save;
-    btns[1].onclick = () => window.location.reload();
-    if (btns[2]) btns[2].onclick = () => setActTime(i, 0);
-    inp.onkeydown = e => { if (e.key === 'Enter') save(); else if (e.key === 'Escape') window.location.reload(); };
-}
-function setAfter(i, choice) {
-    const a = MAP_STOPS[i], b = MAP_STOPS[i + 1];
-    if (!a) return;
-    if (choice === 'hike') document.body.style.cursor = 'progress';   // first time for a pair, the path finder may take a few seconds
-    legPost({ action: 'after', from_id: a.id, to_id: b ? b.id : 0, choice: choice });
-}
-function setExit(i, which) {
-    const s = MAP_STOPS[i];
-    if (!s) return;
-    legPost({ action: 'exit', summit_id: s.id, exit: which });
-}
-function setActTime(i, minutes) {
-    const s = MAP_STOPS[i];
-    if (!s) return;
-    legPost({ action: 'act_time', summit_id: s.id, minutes: minutes });
-}
-function editFinish() {
-    document.getElementById('finish-stat').style.display = 'none';
-    document.getElementById('finish-edit').hidden = false;
-    document.getElementById('finish-select').focus();
-}
-function cancelFinish() {
-    document.getElementById('finish-edit').hidden = true;
-    document.getElementById('finish-stat').style.display = '';
-}
-function finishChosen(v) {
-    if (v === 'new') { window.location.href = 'planning_groups.php?group=<?= (int)$current_group['id'] ?>'; return; }
-    setFinish(v);
-}
-function setFinish(addressId) {
-    legPost({ action: 'finish', address_id: addressId });
 }
 
 function addSummitToRoute(id) {

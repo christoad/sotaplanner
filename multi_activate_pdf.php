@@ -6,7 +6,6 @@ set_time_limit(180);
 require_once 'config.php';
 require_once __DIR__ . '/lib/fpdf.php';
 require_once __DIR__ . '/multi_alt_lib.php';
-require_once __DIR__ . '/multi_leg_lib.php';
 require_once __DIR__ . '/pdf_map_lib.php';
 session_start();
 requireLogin();
@@ -21,11 +20,10 @@ $user_units = getUserUnits($db);
 $multi_id = isset($_GET['id']) ? (int)$_GET['id'] : null;
 $multi_name = '';
 if ($multi_id) {
-    $stmt = $db->prepare("SELECT * FROM multi_activations WHERE id = ? AND planning_group_id = ?");
+    $stmt = $db->prepare("SELECT name FROM multi_activations WHERE id = ? AND planning_group_id = ?");
     $stmt->execute([$multi_id, $current_group['id']]);
     $row = $stmt->fetch();
     if ($row) $multi_name = $row['name'] ?? '';
-    $multi_finish_id = (int)($row['finish_address_id'] ?? 0);
 }
 
 $ids_param = $_GET['ids'] ?? '';
@@ -91,7 +89,7 @@ foreach ($summit_ids as $sid) {
     $lng = $s['trailhead_lng'] ?? $s['longitude'];
 
     $stops[] = [
-        'id' => (int)$s['id'], 'name' => $s['name'], 'ref' => $s['sota_ref'], 'elev_m' => (float)($s['elevation_m'] ?? 0),
+        'id' => (int)$s['id'], 'name' => $s['name'], 'ref' => $s['sota_ref'],
         'points' => (int)$s['points'], 'difficulty' => $s['difficulty'], 'status' => $s['status'],
         'lat' => $lat, 'lng' => $lng,
         'summit_lat' => (float)$s['latitude'], 'summit_lng' => (float)$s['longitude'],
@@ -105,27 +103,7 @@ foreach ($summit_ids as $sid) {
 
 // Alternate hike starts (see multi_alt_lib.php): rewrites hike numbers in place
 $alt_lookup = multi_alt_lookup($db, $stops, getCurrentCallsign());
-$stop_times = multi_stop_times_load($db, $multi_id);
-foreach ($stops as $i => $_st) $stops[$i]['act_min'] = $stop_times[$_st['id']] ?? $activation_time_min;
-// Car / hike-direct choices and the finish address (see multi_leg_lib.php), same as the page
-$leg_modes = multi_leg_load($db, $multi_id);
-$want_hike = [];
-foreach ($stops as $i => $_st) {
-    $m = multi_leg_mode_for($leg_modes, $stops, $i);
-    if ($m === 'car') unset($alt_lookup['active'][$i]);
-    elseif ($m === 'hike' && !$_st['is_drive_up']) { unset($alt_lookup['active'][$i]); $want_hike[$i] = true; }
-}
-$pace_mult = $current_group['pace_multiplier'] ?? 1.0;
-multi_alt_apply($stops, $alt_lookup['active'], $pace_mult);
-multi_leg_apply_brouter($stops, $want_hike, $pace_mult, multi_exit_load($db, $multi_id));
-
-$finish_addr = null; $finish_geo = null;
-if (!empty($multi_finish_id) && (!$selected_address || (int)$selected_address['id'] !== $multi_finish_id)) {
-    foreach (multi_leg_addresses($db, $current_group['id']) as $_a) if ((int)$_a['id'] === $multi_finish_id) $finish_addr = $_a;
-    if ($finish_addr) { $finish_geo = addressGeo($db, $finish_addr); if (!$finish_geo) $finish_addr = null; }
-}
-$end_other = (bool)$finish_geo;
-$end_label = $end_other ? multi_leg_address_label($finish_addr) : 'Home';
+multi_alt_apply($stops, $alt_lookup['active'], $current_group['pace_multiplier'] ?? 1.0);
 
 // ── Per-leg drive times + distances: reuses the same session cache the
 // interactive page warms, so regenerating the PDF right after viewing the
@@ -155,9 +133,6 @@ foreach ($stops as $i => $stop) {
         // Reached on foot from the previous summit: the car doesn't move
         $leg_times[$i] = 0; $leg_distances_mi[$i] = 0;
         $leg_coords[$i] = ['from' => null, 'to' => null, 'from_key' => null, 'to_key' => null];
-        if (!empty($stop['exit_new']) && $stop['lat'] !== null && $stop['lng'] !== null) {
-            $prev_key = 'summit:' . $stop['id']; $prev_coord = $stop['lat'] . ',' . $stop['lng']; $prev_name = $stop['name'];
-        }
         continue;
     }
     $to_coord = ($stop['lat'] !== null && $stop['lng'] !== null) ? ($stop['lat'] . ',' . $stop['lng']) : null;
@@ -169,12 +144,10 @@ foreach ($stops as $i => $stop) {
     $prev_coord = $to_coord;
     $prev_name = $stop['name'];
 }
-$end_coord = $end_other ? ($finish_geo['lat'] . ',' . $finish_geo['lng']) : $origin_coord;
-$end_key   = $end_other ? ('faddr:' . $finish_addr['id']) : $origin_key;
-$return_leg = $get_leg($prev_key, $prev_coord, $end_key, $end_coord);
+$return_leg = $get_leg($prev_key, $prev_coord, $origin_key, $origin_coord);
 $return_leg_time = $return_leg['min'];
 $return_leg_distance_mi = $return_leg['mi'];
-$return_leg_coords = ['from' => $prev_coord, 'to' => $end_coord, 'from_key' => $prev_key, 'to_key' => $end_key];
+$return_leg_coords = ['from' => $prev_coord, 'to' => $origin_coord, 'from_key' => $prev_key, 'to_key' => $origin_key];
 
 // ── Timeline (segments + milestones), same shape as the interactive Gantt ──
 $LEG_COLORS = ['#2B5CA0', '#7B4FA0', '#1B8A8A', '#C08A20', '#B03A6B', '#4A56C4', '#8A5A2E', '#5C7080', '#7A7A2E', '#D46A35', '#2E9FBF', '#A83E5C'];
@@ -199,22 +172,21 @@ foreach ($stops as $i => $stop) {
         $elapsed += $stop['up_min'];
         $milestones[] = ['short' => 'On Summit', 'full' => 'On summit: ' . $stop['name'], 'min' => $elapsed, 'stop_i' => $i];
     }
-    $elapsed += $stop['act_min'];
+    $elapsed += $activation_time_min;
     $elapsed += $stop['down_min'];
     $milestones[] = ['short' => 'Depart', 'full' => 'Depart ' . $stop['name'], 'min' => $elapsed, 'stop_i' => $i];
 }
 if ($return_leg_time) {
     $color = $LEG_COLORS[$leg_color_i % count($LEG_COLORS)]; $leg_color_i++;
     $legs[] = [
-        'label' => $prev_name . ' → ' . $end_label, 'color' => $color,
+        'label' => $prev_name . ' → Home', 'color' => $color,
         'from' => $return_leg_coords['from'], 'to' => $return_leg_coords['to'],
         'from_key' => $return_leg_coords['from_key'], 'to_key' => $return_leg_coords['to_key'],
         'min' => $return_leg_time, 'mi' => $return_leg_distance_mi, 'stop_i' => null,
     ];
     $elapsed += $return_leg_time;
 }
-$milestones[] = $end_other ? ['short' => 'Finish', 'full' => 'Arrive at ' . $end_label, 'min' => $elapsed, 'stop_i' => null]
-                          : ['short' => 'Home', 'full' => 'Arrive home', 'min' => $elapsed, 'stop_i' => null];
+$milestones[] = ['short' => 'Home', 'full' => 'Arrive home', 'min' => $elapsed, 'stop_i' => null];
 $total_min = $elapsed;
 
 $total_points_sum = array_sum(array_column($stops, 'points'));
@@ -432,7 +404,7 @@ $stat_vals = [
 $stat_subs = [
     count($stops) . ' summit' . (count($stops) !== 1 ? 's' : ''),
     $total_elev_ft_sum ? number_format(convertElevation($total_elev_ft_sum, $user_units)) . ' ' . getElevationUnit($user_units) . ' gain' : '',
-    $end_other ? 'start to finish' : 'round trip',
+    'round trip',
     'doorstep to doorstep',
 ];
 $tile_w = $page_w / 4;
@@ -470,7 +442,6 @@ $overview_img = null;
 {
     $fit = []; $lines = []; $polys = []; $mk = [];
     if ($origin_geo) { $fit[] = [(float)$origin_geo['lat'], (float)$origin_geo['lng']]; $mk[] = ['lat' => (float)$origin_geo['lat'], 'lng' => (float)$origin_geo['lng'], 'color' => '#1C1B19', 'text' => 'H']; }
-    if ($end_other) { $fit[] = [(float)$finish_geo['lat'], (float)$finish_geo['lng']]; $mk[] = ['lat' => (float)$finish_geo['lat'], 'lng' => (float)$finish_geo['lng'], 'color' => '#2B5CA0', 'text' => 'F']; }
     foreach ($stops as $stop) {
         if (!empty($stop['az_ring'])) $polys[] = ['pts' => $stop['az_ring'], 'color' => '#CC2200', 'fill' => 0.15, 'weight' => 2];
         if (!empty($stop['gpx_pts'])) $lines[] = ['pts' => $stop['gpx_pts'], 'color' => '#2d7a4f', 'weight' => 3];
@@ -513,7 +484,6 @@ $overview_type = 'JPG';
 if (!$overview_img) {
     $markers = []; $paths = [];
     if ($origin_geo) $markers[] = 'color:0x1C1B19|label:H|' . $origin_geo['lat'] . ',' . $origin_geo['lng'];
-    if ($end_other) $markers[] = 'color:0x2B5CA0|label:F|' . $finish_geo['lat'] . ',' . $finish_geo['lng'];
     foreach ($stops as $i => $stop) {
         if ($stop['lat'] === null || $stop['lng'] === null) continue;
         $markers[] = 'color:' . static_map_marker_hex($LEG_COLORS[$i % count($LEG_COLORS)]) . '|label:' . leg_label_char($i) . '|' . $stop['lat'] . ',' . $stop['lng'];
@@ -576,7 +546,7 @@ $pdf->SetFont('Helvetica', 'B', 14);
 $pdf->Cell(0, 0.3, 'Schedule', 0, 1);
 $pdf->SetFont('Helvetica', 'I', 8.5);
 $pdf->SetTextColor(140, 138, 134);
-$pdf->MultiCell($page_w, 0.18, pdftext('Clock times assume a ' . multi_clock_label($start_time_min) . ' start and ' . $activation_time_min . ' min on the air per summit' . ($stop_times ? ' unless noted otherwise' : '') . '. Treat them as planning estimates, not a guarantee.'));
+$pdf->MultiCell($page_w, 0.18, pdftext('Clock times assume a ' . multi_clock_label($start_time_min) . ' start and ' . $activation_time_min . ' min on the air per summit. Treat them as planning estimates, not a guarantee.'));
 $pdf->SetTextColor(28, 27, 25);
 $pdf->Ln(0.05);
 
