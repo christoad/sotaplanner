@@ -1,7 +1,11 @@
 <?php
-// One-off migration for the BRouter path tools: two new tables (additive, safe to run twice).
+// One-off migration for the BRouter path tools and Multi-Activate leg settings (additive, safe to run twice).
 //   brouter_route_cache      permanent cache of every routed pair of points
 //   brouter_path_candidates  hiking paths discovered for a summit, kept for manual review
+//   multi_leg_modes          per route: car or hike between neighbouring summits
+//   multi_stop_times         per route: on-the-air minutes for one summit (overrides the route default)
+//   multi_stop_exit          per route: summits where the walk down goes on to a new trailhead
+//   multi_activations.finish_address_id  where a route's last drive ends (NULL = starting address)
 // Delete this file after running.
 require_once 'config.php';
 
@@ -64,6 +68,43 @@ step('Create brouter_path_candidates', function () use ($db) {
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uq_cand (sota_ref, exit_key),
         KEY idx_ref (sota_ref)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    return 'ready';
+});
+
+step('Create multi_leg_modes', function () use ($db) {
+    $db->exec("CREATE TABLE IF NOT EXISTS multi_leg_modes (
+        multi_activation_id INT NOT NULL,
+        from_summit_id INT NOT NULL,
+        to_summit_id INT NOT NULL,
+        mode VARCHAR(8) NOT NULL,
+        PRIMARY KEY (multi_activation_id, from_summit_id, to_summit_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    return 'ready';
+});
+
+step('Add multi_activations.finish_address_id', function () use ($db) {
+    $has = $db->query("SHOW COLUMNS FROM multi_activations LIKE 'finish_address_id'")->fetch();
+    if ($has) return 'already there (skipped)';
+    $db->exec("ALTER TABLE multi_activations ADD COLUMN finish_address_id INT NULL DEFAULT NULL");
+    return 'added';
+});
+
+step('Create multi_stop_times', function () use ($db) {
+    $db->exec("CREATE TABLE IF NOT EXISTS multi_stop_times (
+        multi_activation_id INT NOT NULL,
+        summit_id INT NOT NULL,
+        activation_min SMALLINT NOT NULL,
+        PRIMARY KEY (multi_activation_id, summit_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    return 'ready';
+});
+
+step('Create multi_stop_exit', function () use ($db) {
+    $db->exec("CREATE TABLE IF NOT EXISTS multi_stop_exit (
+        multi_activation_id INT NOT NULL,
+        summit_id INT NOT NULL,
+        PRIMARY KEY (multi_activation_id, summit_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     return 'ready';
 });
