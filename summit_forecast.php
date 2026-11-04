@@ -3,10 +3,12 @@
 // Same Open-Meteo data and cache as the compact card, so it is adjusted to the summit's elevation.
 require_once 'config.php';
 require_once 'weather_lib.php';
+require_once 'sota_cache_helper.php';
 session_start();
-requireLogin();
+// Public: the summit page links here for anyone. Signed-in users use their own units; everyone else gets imperial.
 $db = getDbConnection();
-$units = getUserUnits($db);
+$signed_in = (bool)getCurrentCallsign();
+$units = $signed_in ? getUserUnits($db) : 'imperial';
 session_write_close();
 
 $lat    = (float)($_GET['lat'] ?? 0);
@@ -14,6 +16,20 @@ $lon    = (float)($_GET['lon'] ?? 0);
 $elev_m = (int)($_GET['elev_m'] ?? 0);
 $name   = trim($_GET['name'] ?? '');
 $ref    = trim($_GET['ref'] ?? '');
+
+// Signed-out visitors can only open forecasts for real SOTA summits, using SOTA's own coordinates,
+// so this page cannot be used as a general-purpose weather lookup.
+if (!$signed_in) {
+    $known = $ref !== '' ? get_sota_cache_summit($ref) : null;
+    if (!$known) {
+        http_response_code(404);
+        die('Forecast not found');
+    }
+    $lat = (float)$known['lat'];
+    $lon = (float)$known['lon'];
+    $elev_m = (int)round($known['altFt'] * 0.3048);
+    $name = $known['name'];
+}
 
 $w = weather_fetch($lat, $lon, $elev_m);
 $d = $w['daily'] ?? null;

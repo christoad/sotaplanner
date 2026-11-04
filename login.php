@@ -4,7 +4,15 @@ session_start();
 
 // Already logged in, go to dashboard (or group picker if no group set)
 if (isset($_SESSION['sota_callsign'])) {
-    if (!empty($_SESSION['pending_multi_import'])) { header('Location: onboarding.php'); exit; }
+    if (!empty($_SESSION['pending_multi_import']) || !empty($_SESSION['pending_summit_import'])) { header('Location: onboarding.php'); exit; }
+    if (!empty($_SESSION['pending_share_return'])) {
+        $ret = $_SESSION['pending_share_return']; unset($_SESSION['pending_share_return']);
+        header('Location: summit_share.php?s=' . urlencode($ret)); exit;
+    }
+    if (!empty($_SESSION['pending_multi_return'])) {
+        $mret = (int)$_SESSION['pending_multi_return']; unset($_SESSION['pending_multi_return']);
+        header('Location: multi_activate.php?id=' . $mret); exit;
+    }
     header('Location: ' . (isset($_SESSION['current_planning_group_id']) ? 'index.php' : 'planning_groups.php'));
     exit;
 }
@@ -21,8 +29,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['sota_login_type'] = 'early_access';
 
             // Came from "Add this Multi-Summit to your own dashboard" on a shared route
-            if (!empty($_SESSION['pending_multi_import'])) {
+            if (!empty($_SESSION['pending_multi_import']) || !empty($_SESSION['pending_summit_import'])) {
                 header('Location: onboarding.php');
+                exit;
+            }
+
+            // Came from "Login" on a shared summit page: go back to it
+            if (!empty($_SESSION['pending_share_return'])) {
+                $ret = $_SESSION['pending_share_return'];
+                unset($_SESSION['pending_share_return']);
+                header('Location: summit_share.php?s=' . urlencode($ret));
+                exit;
+            }
+
+            // Came from "Login" on a shared route page: go back to it
+            if (!empty($_SESSION['pending_multi_return'])) {
+                $mret = (int)$_SESSION['pending_multi_return'];
+                unset($_SESSION['pending_multi_return']);
+                header('Location: multi_activate.php?id=' . $mret);
                 exit;
             }
 
@@ -668,11 +692,11 @@ try {
         <!-- SOTA SSO -->
         <?php if ($sota_oauth_enabled): ?>
             <a href="oauth_callback.php?action=login" class="sota-btn sota-btn-main login-card-item" style="opacity:0; transform:translateY(24px);">
-                ⛰️ Continue with SOTA Login (SSO)
+                Continue with SOTA Login (SSO)
             </a>
         <?php else: ?>
             <button class="sota-btn sota-btn-disabled login-card-item" style="opacity:0; transform:translateY(24px);" disabled>
-                ⛰️ SOTA SSO: Coming Soon
+                SOTA SSO: Coming Soon
             </button>
             <p class="coming-soon-note">OAuth client registration pending with SOTA team</p>
         <?php endif; ?>

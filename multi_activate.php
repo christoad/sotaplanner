@@ -59,7 +59,7 @@ $user_units = getUserUnits($db);
 $MULTI_MAX = 11;
 
 // ── POST actions ──────────────────────────────────────────────────────────
-// Saving the route itself is automatic (see the auto-save block below) — the
+// Saving the route itself is automatic (see the auto-save block below), the
 // only remaining mutating POST action is dropping the whole route.
 if (!$public_view && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['delete_multi'])) {
@@ -133,7 +133,7 @@ if ($selected_address) {
     $origin_geo = addressGeo($db, $selected_address);
 }
 
-// Light-effort auto-order (nearest neighbor) — only on first arrival for a brand-new plan
+// Light-effort auto-order (nearest neighbor), only on first arrival for a brand-new plan
 if (!$multi_id && !isset($_GET['ordered'])) {
     if ($origin_geo) {
         $start_lat = $origin_geo['lat']; $start_lng = $origin_geo['lng'];
@@ -168,7 +168,7 @@ if (!$multi_id && !isset($_GET['ordered'])) {
     exit;
 }
 
-// Manual "recalculate travel times" — clear the session's cached leg times once, then reload clean
+// Manual "recalculate travel times", clear the session's cached leg times once, then reload clean
 if (isset($_GET['recalc'])) {
     unset($_SESSION['multi_drive_cache']);
     $qs = $_GET; unset($qs['recalc']);
@@ -296,7 +296,7 @@ if (!empty($gmaps_coords)) {
 
 // ── Per-leg drive times + distances, cached per directed pair for the life of
 // the session. Distance is cached alongside time (one Distance Matrix call per
-// leg, not two) — total drive distance is the EV-range-anxiety stat below.
+// leg, not two), total drive distance is the EV-range-anxiety stat below.
 $drive_cache = &$_SESSION['multi_drive_cache'];
 $get_leg = function ($fromKey, $fromCoord, $toKey, $toCoord) use (&$drive_cache) {
     if ($fromCoord === null || $toCoord === null) return ['min' => null, 'mi' => null];
@@ -447,21 +447,21 @@ function multi_clock_label($minutes_from_midnight) {
 
 $SEG_COLORS = ['drive' => '#7A6858', 'hike' => '#6E8155', 'radio' => '#C07840'];
 
-// Aggregate stats snapshot — persisted on save so the dashboard can show a
+// Aggregate stats snapshot, persisted on save so the dashboard can show a
 // summary row for the whole route without recomputing hike/drive times live.
 $total_points_sum = array_sum(array_column($stops, 'points'));
 $total_hike_min_sum = array_sum(array_column($stops, 'hike_min'));
 $total_drive_min_sum = array_sum(array_filter($leg_times)) + ($return_leg_time ?: 0);
 $total_dist_mi_sum = array_sum(array_map(fn($s) => $s['dist_mi'] ?? 0, $stops));
 $total_elev_ft_sum = array_sum(array_map(fn($s) => $s['elev_ft'] ?? 0, $stops));
-// Driving distance only (not persisted — a live stat-tile figure, same as the hike stats above it)
+// Driving distance only (not persisted, a live stat-tile figure, same as the hike stats above it)
 $total_drive_dist_mi_sum = array_sum(array_filter($leg_distances_mi)) + ($return_leg_distance_mi ?: 0);
 
 // ── Auto-save: a multi-activation is always saved, from the moment you land on
-// this page — reorder/duplicate/remove/add-summit links all just navigate here
+// this page, reorder/duplicate/remove/add-summit links all just navigate here
 // with a new "ids" list, and every full render re-syncs that composition (and
 // the totals snapshot) to the DB. Naming is the only separate, explicit action
-// (a small GET form in the header) — see $_GET['name'] below.
+// (a small GET form in the header), see $_GET['name'] below.
 $is_saved = true;
 $renaming = !$public_view && array_key_exists('name', $_GET);
 if ($renaming) $multi_name = trim($_GET['name']);
@@ -498,7 +498,7 @@ if (!$public_view) {
 }
 
 // Canonicalize the URL after a fresh save or a rename, so a reload/bookmark
-// never re-triggers either — everything else (reorder etc.) renders in place.
+// never re-triggers either, everything else (reorder etc.) renders in place.
 if ($renaming || $was_new) {
     $qs = ['id' => $multi_id, 'ids' => implode(',', $summit_ids), 'group' => $current_group['id'], 'activation_time' => $activation_time_min];
     if ($was_new) $qs['new'] = 1;
@@ -544,7 +544,7 @@ foreach ($map_legs as $leg) {
     ];
 }
 
-// Every other summit on this dashboard — for the map's "Show All Summits" toggle,
+// Every other summit on this dashboard, for the map's "Show All Summits" toggle,
 // so the user can spot a nearby summit and add it to the route without leaving the page.
 // Not shown on the public view: that's the owner's private wishlist.
 $other_summits = [];
@@ -621,6 +621,13 @@ a:hover { text-decoration: underline; }
 .user-chip.open .user-dropdown { display: block; }
 .user-dropdown a { display: block; padding: 0.6rem 1rem; font-size: 0.82rem; font-weight: 500; color: var(--ink-2); text-decoration: none; }
 .user-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
+.hamburger-menu { display: none; position: relative; }
+.hamburger-btn { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--bg); color: var(--ink-2); cursor: pointer; flex-shrink: 0; }
+.hamburger-btn:hover { background: var(--bg-2); }
+.hamburger-dropdown { display: none; position: absolute; top: calc(100% + 6px); right: 0; background: #fff; border: 1px solid var(--border); border-radius: var(--r-sm); box-shadow: 0 4px 16px rgba(0,0,0,0.1); min-width: 190px; overflow: hidden; z-index: 200; }
+.hamburger-menu.open .hamburger-dropdown { display: block; }
+.hamburger-dropdown a { display: block; padding: 0.65rem 1rem; font-size: 0.85rem; font-weight: 500; color: var(--ink-2); text-decoration: none; }
+.hamburger-dropdown a:hover { background: var(--bg-2); color: var(--ink); }
 
 .page { padding: 2rem; max-width: 1400px; margin: 0 auto; }
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
@@ -653,7 +660,7 @@ a:hover { text-decoration: underline; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 1.5rem; box-shadow: var(--shadow-sm); margin-bottom: 1.5rem; }
 .card-title { font-size: 0.95rem; font-weight: 600; margin-bottom: 1rem; }
 
-/* Stat tiles — matches the 4-cell grid on the summit detail page */
+/* Stat tiles, matches the 4-cell grid on the summit detail page */
 .stat-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; margin-bottom: 1.5rem; }
 .stat-cell { background: var(--surface); padding: 1rem 1.25rem; }
 .stat-cell-label { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); margin-bottom: 5px; }
@@ -855,7 +862,7 @@ a:hover { text-decoration: underline; }
 #multi-map { width: 100%; height: 100%; }
 .lmap-num { width: 26px; height: 26px; border-radius: 50%; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,0.35); }
 /* Wider pill instead of a circle when a summit is visited more than once in the
-   route (e.g. re-activated across UTC midnight for double points) — shows every
+   route (e.g. re-activated across UTC midnight for double points), shows every
    visit's stop number instead of the later marker hiding the earlier one. */
 .lmap-num-multi { width: auto; min-width: 34px; padding: 0 6px; border-radius: 13px; font-size: 0.68rem; letter-spacing: -0.02em; white-space: nowrap; }
 .lmap-home { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; box-shadow: 0 1px 4px rgba(0,0,0,0.35); }
@@ -871,7 +878,7 @@ a:hover { text-decoration: underline; }
 .legend-chip { cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: background 0.12s, color 0.12s; }
 .legend-chip:hover, .legend-chip.hl-active { background: var(--bg-2); color: var(--ink); font-weight: 600; }
 
-/* Map loading overlay (recalculating routes on reorder / initial load) — same
+/* Map loading overlay (recalculating routes on reorder / initial load), same
    mountain-trace mark used elsewhere on the site (see summit_detail.php). */
 .map-loading-overlay {
   position: absolute; inset: 0; z-index: 10;
@@ -956,7 +963,7 @@ a:hover { text-decoration: underline; }
 .timeline-controls { display: flex; align-items: flex-end; gap: 0.75rem; margin-bottom: 1.25rem; }
 
 /* Inset the whole leg-row/time-bar/tick-row assembly from the card edges so the
-   first and last tick labels (Depart / Home) have room to breathe — all three
+   first and last tick labels (Depart / Home) have room to breathe, all three
    rows share this narrower coordinate space so their percentage positions stay
    aligned with each other. */
 .timeline-track { margin: 0 2rem; }
@@ -965,14 +972,31 @@ a:hover { text-decoration: underline; }
 .save-inline { display: flex; align-items: center; gap: 0.4rem; }
 .save-inline .form-input { width: 150px; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
 .btn-icon { width: 36px; padding: 0; flex-shrink: 0; }
-.import-cta { display: flex; justify-content: center; margin: 0.5rem 0 1.5rem; }
-.import-cta-btn { height: auto; padding: 0.9rem 2rem; font-size: 1.05rem; font-weight: 600; border-radius: var(--r-md); box-shadow: 0 4px 12px rgba(28,27,25,0.18); text-align: center; white-space: normal; }
-.import-cta-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(28,27,25,0.24); }
+.save-banner { background: var(--accent-bg); border: 1px solid var(--accent-border); border-radius: var(--r-lg); padding: 0.875rem 1.25rem; margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem 1.5rem; flex-wrap: wrap; }
+.save-banner-text { min-width: 0; }
+.save-banner-title { font-size: 1rem; font-weight: 600; letter-spacing: -0.01em; }
+.save-banner-sub { font-size: 0.85rem; color: var(--ink-2); margin-top: 0.1rem; }
+.save-banner-sub strong { color: var(--ink); font-weight: 700; }
+.save-banner .btn-primary { flex-shrink: 0; }
+/* Share button: little "Link copied!" pop-up, button itself never changes (same as summit detail) */
+.share-tip-host { position: relative; }
+.share-tip-host .copied-tip {
+  position: absolute; bottom: calc(100% + 6px); left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  background: var(--ink); color: #fff; font-family: var(--font-sans);
+  font-size: 0.7rem; font-weight: 600; letter-spacing: 0;
+  padding: 0.25rem 0.55rem; border-radius: var(--r-sm); white-space: nowrap;
+  opacity: 0; pointer-events: none; transition: opacity 0.15s, transform 0.15s;
+}
+.share-tip-host .copied-tip.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+@media (max-width: 768px) { .save-banner .btn-primary { width: 100%; } }
 
 @media (max-width: 768px) {
   .page { padding: 1rem; }
   .topbar { padding: 0 1rem; }
   .topbar-nav { display: none; }
+  .hamburger-menu { display: block; }
+  .dashboard-back-btn { display: none; }
   .page-header { flex-direction: column; }
   .map-wrap { height: 300px; }
 }
@@ -995,13 +1019,30 @@ a:hover { text-decoration: underline; }
   </div>
   <div class="topbar-right">
     <?php if (getCurrentCallsign()): ?>
+    <div class="hamburger-menu" id="hamburgerMenu">
+      <button type="button" class="hamburger-btn" aria-label="Menu">
+        <svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="2" y1="4.5" x2="15" y2="4.5"/><line x1="2" y1="8.5" x2="15" y2="8.5"/><line x1="2" y1="12.5" x2="15" y2="12.5"/></svg>
+      </button>
+      <div class="hamburger-dropdown">
+        <a href="index.php">Dashboard</a>
+        <a href="planning_groups.php">Manage Dashboards</a>
+        <a href="about.php">About</a>
+      </div>
+    </div>
+    <a href="index.php" class="btn btn-ghost btn-sm dashboard-back-btn">← Dashboard</a>
     <div class="user-chip" id="userChip" onclick="this.classList.toggle('open')">
       <?= htmlspecialchars(getCurrentCallsign()) ?>
       <svg class="user-chip-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="2,3.5 5,6.5 8,3.5"/></svg>
-      <div class="user-dropdown"><a href="logout.php">Sign Out</a></div>
+      <div class="user-dropdown">
+        <?php if (getCurrentCallsign() === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
+          <a href="god_mode.php">God Mode</a>
+        <?php endif; ?>
+        <a href="user_settings.php">Settings</a>
+        <a href="logout.php">Sign Out</a>
+      </div>
     </div>
     <?php else: ?>
-    <a href="login.php" class="btn btn-ghost btn-sm">Sign In</a>
+    <a href="<?= $public_view ? 'multi_login.php?id=' . (int)$multi_id : 'login.php' ?>" class="btn btn-ghost btn-sm">Login</a>
     <?php endif; ?>
   </div>
 </nav>
@@ -1022,7 +1063,7 @@ a:hover { text-decoration: underline; }
         <?= count($stops) ?> summits · <?= $total_min ? formatTime($total_min) : '—' ?> total<?= $public_view ? "" : ", door-to-door" ?>
         <?php if ($public_view): ?>
           <?php if (!empty($multi_row['created_by'])): ?> · Shared by <?= htmlspecialchars($multi_row['created_by']) ?><?php endif; ?>
-          · <span style="color:var(--ink-3)">Drive times shown between summits only. Add it to your own dashboard for times from your starting point.</span>
+          · <span style="color:var(--ink-3)">Drive times shown between summits only. Save it to your own dashboard for times from your starting point.</span>
         <?php elseif (!$selected_address): ?> · <span style="color:var(--orange)">No starting address selected. Add one for travel times</span><?php endif; ?>
       </div>
     </div>
@@ -1032,7 +1073,7 @@ a:hover { text-decoration: underline; }
         <a href="<?= htmlspecialchars($gmaps_url) ?>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" title="Open a driving route through every stop in Google Maps">Directions ↗</a>
       <?php endif; ?>
       <?php else: ?>
-      <button type="button" class="btn btn-ghost btn-sm" onclick="copyShareLink(this)" title="Copy a public link to this route that anyone can open">Share Link</button>
+      <button type="button" class="btn btn-secondary btn-sm share-tip-host" onclick="copyShareLink(this)" title="Copy the public page link for this route, anyone can open it without logging in"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg><span>Share</span><span class="copied-tip">Link copied!</span></button>
       <a href="<?= htmlspecialchars('multi_activate.php?' . http_build_query(array_merge($url_base, ['ids' => implode(',', $summit_ids), 'ordered' => 1, 'recalc' => 1]))) ?>" class="btn btn-ghost btn-sm">Recalculate Travel Times</a>
       <?php if ($gmaps_url): ?>
         <a href="<?= htmlspecialchars($gmaps_url) ?>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" title="Open a round-trip driving route through every stop in Google Maps">Directions ↗</a>
@@ -1059,8 +1100,12 @@ a:hover { text-decoration: underline; }
   </div>
 
   <?php if ($public_view): ?>
-  <div class="import-cta">
-    <a href="multi_add_to_dashboard.php?id=<?= (int)$multi_id ?>" class="btn btn-primary import-cta-btn">Add this Multi-Summit to your own dashboard</a>
+  <div class="save-banner">
+    <div class="save-banner-text">
+      <div class="save-banner-title">Keep this route for your own planning</div>
+      <div class="save-banner-sub"><strong>No signup required.</strong> Just sign in with your <strong>SOTA login</strong> (SOTA SSO). The summits, trail research and maps come along.</div>
+    </div>
+    <a class="btn btn-primary" href="multi_add_to_dashboard.php?id=<?= (int)$multi_id ?>">Save this route</a>
   </div>
   <?php endif; ?>
 
@@ -1404,6 +1449,12 @@ a:hover { text-decoration: underline; }
     </div>
   </div>
 
+  <?php if ($public_view): ?>
+  <div style="text-align:center; margin-top:1.5rem;">
+    <a class="btn btn-primary" href="multi_add_to_dashboard.php?id=<?= (int)$multi_id ?>">Save this route</a>
+    <div style="margin-top:0.5rem; font-size:0.82rem; color:var(--ink-2);"><strong>No signup required.</strong> Uses your SOTA login (SOTA SSO).</div>
+  </div>
+  <?php endif; ?>
 
 </div>
 
@@ -1425,7 +1476,7 @@ let otherSummitsVisible = false;
 let baseLayers = null;
 let activeBase = 'street';
 
-// Cross-highlight state — populated as the map builds its layers
+// Cross-highlight state, populated as the map builds its layers
 let legLayers = {};      // legKey -> { layer: L.Polyline, color }
 let stopMarkerEls = {};  // 0-based stop index -> the marker's DOM element
 let stopTrails = {};     // 0-based stop index -> L.Polyline (GPX trail), if any
@@ -1487,7 +1538,7 @@ function clearHighlight() {
 }
 
 function highlightLeg(legKey) {
-    // Drive-to-a-stop legs are keyed "stop-<i>" — highlighting one of these
+    // Drive-to-a-stop legs are keyed "stop-<i>", highlighting one of these
     // (from the map, the gantt drive block, or the legend) should also light up
     // that summit's whole trip block (drive there, hike up, radio, hike down),
     // not just the drive segment itself.
@@ -1545,7 +1596,7 @@ function updateStartTime() {
 }
 
 // Builds the offline-PDF link with the same start time currently shown on
-// screen (localStorage, since the server never stores it — see above).
+// screen (localStorage, since the server never stores it, see above).
 function downloadMultiPdf(link) {
     const params = new URLSearchParams({
         group: URL_BASE.group,
@@ -1576,10 +1627,18 @@ document.addEventListener('click', function(e) {
     if (chip && !chip.contains(e.target)) chip.classList.remove('open');
 });
 
+// Mobile hamburger nav menu
+(function() {
+    var menu = document.getElementById('hamburgerMenu');
+    if (!menu) return;
+    menu.querySelector('.hamburger-btn').addEventListener('click', function(e) { e.stopPropagation(); menu.classList.toggle('open'); });
+    document.addEventListener('click', function() { menu.classList.remove('open'); });
+})();
+
 // ── Disable native HTML5 drag on touch/coarse-pointer devices. Mobile Safari
 // never fires dragstart from a single-finger touch, and worse, a draggable
 // container can swallow taps on the links nested inside it (the ◀ ▶ arrows,
-// Duplicate, Remove, trailhead-warning icon) — so on these devices reordering
+// Duplicate, Remove, trailhead-warning icon), so on these devices reordering
 // falls back to the arrow buttons, which are real links and always work. ──
 if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
     document.querySelectorAll('.tile[draggable]').forEach(function(el) { el.removeAttribute('draggable'); });
@@ -1595,7 +1654,7 @@ function navigateToOrder(ids) {
     params.set('ordered', '1');
     window.location = 'multi_activate.php?' + params.toString();
 }
-// Position-based, not id-based — a summit can appear more than once in the
+// Position-based, not id-based, a summit can appear more than once in the
 // route (re-activated after UTC midnight for double points), so tracking the
 // dragged tile by its summit id would move every copy of it. The dragged
 // tile's starting index is kept in a variable rather than re-derived with
@@ -1655,7 +1714,7 @@ async function fetchLegGeometry(from, to) {
     return null;
 }
 
-// One color-coded polyline per leg, fetched in parallel — lets outbound and
+// One color-coded polyline per leg, fetched in parallel, lets outbound and
 // return trips over the same road show as visibly different colors, and lets
 // hovering a leg (here or in the gantt) highlight just that leg.
 async function loadLegRoutes(map) {
@@ -1697,7 +1756,7 @@ async function initMap() {
 
     // Group stops that revisit the same summit (e.g. re-activated after UTC
     // midnight for double SOTA points) so their markers don't just stack on top
-    // of each other — one marker shows every visit's stop number instead of the
+    // of each other, one marker shows every visit's stop number instead of the
     // later marker hiding the earlier one.
     const stopGroups = {};
     const stopGroupOrder = [];
@@ -1786,7 +1845,7 @@ async function initMap() {
         map.setView([45, -110], 5);
     }
 
-    // Real driving routes, one color-coded polyline per leg — falls back to a
+    // Real driving routes, one color-coded polyline per leg, falls back to a
     // dashed straight line per leg if OSRM is unavailable for that leg.
     await loadLegRoutes(map);
 
@@ -1836,7 +1895,7 @@ function zoomToSummits() {
     if (pts.length) mapInstance.fitBounds(pts, { padding: [40, 40], maxZoom: 15 });
 }
 
-// ── "Show All Summits" map toggle — click a marker to add it to the route ──
+// ── "Show All Summits" map toggle, click a marker to add it to the route ──
 function buildOtherSummitsLayer() {
     const layer = L.layerGroup();
     OTHER_SUMMITS.forEach(function(s) {
@@ -1867,9 +1926,11 @@ function toggleOtherSummits() {
 
 const SHARE_URL = <?= json_encode($share_url) ?>;
 function copyShareLink(btn) {
+    const tip = btn.querySelector('.copied-tip');
     const done = function() {
-        btn.textContent = 'Link Copied!';
-        setTimeout(() => { btn.textContent = 'Share Link'; }, 1800);
+        tip.classList.add('show');
+        clearTimeout(btn._copyTipTimer);
+        btn._copyTipTimer = setTimeout(() => tip.classList.remove('show'), 1200);
     };
     if (navigator.clipboard && window.isSecureContext) {
         navigator.clipboard.writeText(SHARE_URL).then(done).catch(() => fallbackCopy(SHARE_URL, done));

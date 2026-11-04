@@ -2,6 +2,8 @@
 
 ## Pending Work — Ask Chris at Session Start
 
+**Public summit pages (`/s/<designator>`, shipped 2026-10-27) and a queued idea (alternate destination and return-trip pulldown on summit detail):** see `research/public-summit-pages.md` before touching `summit_share.php`, `share_lib.php` or the summit page Share button.
+
 **Google Maps API — two-key setup (completed 2026-06-01):**
 Two separate API keys are used. Both are in the same paid Google Cloud project.
 
@@ -114,6 +116,10 @@ Ideas for how it could appear in SOTAplanner (none decided):
 
 **Idea, not scheduled (2026-10-24): email "invited, not signed in" users.** God Mode's Users tile shows callsigns added to a dashboard who have never completed SSO (11 of them at the time). Chris may someday email them to say they've been set up. Catch: the app has no email addresses for them (the `users` table is keyed by callsign and SSO only supplies the callsign claim), so this would need a new way to get contact info first.
 
+**Queued projects (added 2026-10-28), not started:**
+1. **Search bar on the main site.** Chris wants a site-wide search bar. Scope not yet defined (what it searches: summits on the current dashboard, the SOTA summit cache, help/about/changelog pages, or all of these). Confirm scope with Chris before building. The existing summit search in `sota_cache_helper.php` (indexed `sota_summit_index` table plus `sota_cache_norm.txt`) is the likely backend for summit lookups.
+2. **Accessibility and cookie disclosure, only if required.** First determine what is actually required for SOTAplanner (users worldwide, so consider GDPR/ePrivacy and UK rules for cookies, plus accessibility expectations such as WCAG 2.1 AA). Audit what the site sets: PHP session cookie, `sota_default_group` cookie, Google Maps and Google Fonts third-party loads, motion.dev CDN. Strictly necessary cookies may need only a disclosure line or privacy page rather than a consent banner. Then build whatever is needed: cookie/privacy notice, and an accessibility pass (contrast, focus states, keyboard navigation, alt text, ARIA labels, reduced-motion support). Report findings to Chris before adding banners.
+
 **Visual sophistication backlog (started 2026-08-23):**
 Chris asked for design inspiration from anime.js, motion.dev, Kokonut UI, Bklit UI, and Manus.im, wanting to make the site feel more polished/animated without changing the Alpine Precision visual language. Takeaways: motion.dev (Framer Motion) is the animation engine of choice — spring hovers, layout animation, scroll-linked reveals; Kokonut UI shows that pattern applied to ordinary cards/buttons; Bklit UI is a charts/data-viz kit (D3 + Motion) relevant to the Community Growth page; Manus.im is an aesthetic reference for hero gradients and staged scroll reveals rather than everything visible on load.
 
@@ -137,12 +143,16 @@ Always save Playwright screenshots to the `playwright/` folder in the project ro
 ### Playwright Login
 Use **staging** (christopherreddick.com/sotaplanner). Its login page has a small **"Developer access"** link in the bottom-left corner; click it, enter `KI6CR`, click **Go**. This passwordless sign-in exists on dev/staging only: `isProductionSite()` in `config.php` (host ends in `sotaplanner.com`) removes it from the production login page and rejects the POST server-side (removed 2026-10-13 after the podcast launch, because on production it let anyone log in as any callsign). Production login is SOTA SSO only.
 
-### Branches and release flow (changed 2026-10-13, after the podcast launch brought real users)
-**Day-to-day work happens on the `dev` branch. `main` is exactly what is live on production.** Chris never does git work himself; Claude handles all branching, merging and deploying (see memory `feedback_avoid_branch_merge_complexity`).
-1. Work and commit on `dev`. Deploy to **staging** (command below) so Chris can test. Do not touch production at this stage.
-2. When Chris says to ship it: fast-forward merge `dev` into `main` (`git checkout main && git merge --ff-only dev`), rsync only the files that changed to production, verify the live site, then `git checkout dev` again.
-3. Urgent security or outage fixes may go through the same flow quickly, but still tell Chris what went live.
-4. Chris pushes to GitHub via GitHub Desktop; remind him after commits.
+### Branches and release flow (changed 2026-10-28: `main` plus short-lived feature branches; the old long-lived `dev` branch is gone)
+**`main` is exactly what is live on production. Every piece of work gets its own short-lived branch, always created from the latest `main`.** Chris never does git work himself; Claude handles all branching, merging and deploying (see memory `feedback_avoid_branch_merge_complexity`).
+1. Create a branch off `main` named for the change (`git switch -c mobile-service-wording main`). Never start from another feature branch.
+2. Work on it and deploy to **staging** from that branch (command below) so Chris can test. Tell Chris which branch is currently on staging. Only one branch is on staging at a time; things tested together go on the same branch. Do not touch production at this stage.
+3. If Chris thinks of a tweak **before** saying it is tested, it goes on the same branch.
+4. When Chris says to ship it: merge the branch into `main` (fast-forward when possible), rsync only the files that changed to production, verify the live site, then delete the branch.
+5. A tweak found **after** shipping gets a new branch off the latest `main` (for example `mobile-service-wording-2`). Never reuse a merged branch.
+6. Urgent security or outage fixes use the same flow, quickly, and Chris is told what went live.
+7. Chris pushes to GitHub via GitHub Desktop; remind him after commits. Do not leave work on `main` that is not live: if something is committed but not yet approved to ship, keep it on its own branch.
+8. Sessions run in worktrees under `.claude/worktrees/`, and git operations can only target the session's own worktree. Tidy other worktrees from a session that lives in them, or ask Chris.
 
 **Staging and production share one database and `config.php`.** So schema changes are live for production the moment they run: keep migrations additive and backward compatible (new tables or nullable columns, never renames or drops), and run them before the code that needs them ships. Staging cannot test SOTA SSO, and the cron jobs run on production only.
 
@@ -153,15 +163,31 @@ Commit when Chris says so. Do **not** bump `APP_VERSION` per commit (see Version
 - **URL:** christopherreddick.com/sotaplanner/
 - **Server path:** `/home/chrisr069/christopherreddick.com/sotaplanner/`
 - **Database:** Same production DB (shared, see above)
-- **Deploy to staging** (from the `dev` branch working tree):
+- **Deploy to staging** (from the working tree of the branch being tested; if working in a worktree, change the source path to that worktree's root):
   ```
   rsync -avz --exclude='.git' --exclude='.claude' --exclude='.playwright-mcp' --exclude='playwright' "/Users/chris/Dropbox/ham - amateur radio/sotaplanner/" dreamhost-sota:/home/chrisr069/christopherreddick.com/sotaplanner/
   ```
-- **Deploy to production** only after Chris approves and `dev` is merged to `main`: rsync just the changed files (`git diff --name-only <old main>..main`) to `dreamhost-sota:/home/chrisr069/sotaplannerdotcom/`, from a checkout of `main`.
+- **Deploy to production** only after Chris approves and the branch is merged to `main`: rsync just the changed files (`git diff --name-only <old main>..main`) to `dreamhost-sota:/home/chrisr069/sotaplannerdotcom/`, from a checkout of `main`.
 - **GPX files + SOTA cache** are synced from production to staging daily at 2am via `/home/chrisr069/sync_sites.sh`. No need to manually copy GPX files when testing on staging.
 
 ### Hosting & Scaling — CDN Options (researched 2026-08-25)
 DreamHost Shared Hosting (what sotaplanner.com runs on) has **no built-in CDN**. If international traffic grows and page-load latency becomes a concern, the path is a free **Cloudflare** setup (DreamHost has a direct partner integration for this): create a free Cloudflare account, then point sotaplanner.com's nameservers at Cloudflare's two assigned nameservers. This gives global edge caching for static assets (CSS/JS/images/SVGs), SSL termination closer to the user, DDoS protection, and basic analytics — DreamHost remains the origin server. Note: since most of SOTAplanner's pages are dynamic PHP (DB-backed dashboard/maps), a CDN mainly speeds up static assets and connection setup, not the PHP/DB round-trip itself — if response time becomes the bottleneck under heavy load, that requires scaling the DreamHost plan or database, not just adding a CDN. Nameserver changes affect live DNS/email routing, so treat this as a change requiring Chris's explicit go-ahead, not something to do unprompted.
+
+### Idea, not scheduled: Mapterhorn terrain tiles (researched 2026-11-04)
+Chris asked whether `https://mapterhorn.com/data-access/` could help as the site discovers more of its own information. Verdict: yes, worth a small prototype. Nothing is built. I had not checked what the site currently uses for elevation when I wrote this, so compare against that first.
+
+**What it is:** an open-data project publishing public terrain elevation tiles for web maps. Maintained by Oliver Wipfli (with Brandon Liu and Sascha Brawer sharing admin rights), funded by an NGI0 Core Fund grant (NLnet / European Commission), hosted on donated Cloudflare R2/Workers/bandwidth. Code is BSD-3 (`github.com/mapterhorn/mapterhorn`).
+- **Format:** Terrarium-encoded terrain-RGB tiles as 512 px WebP, bundled in PMTiles archives. No COG seen.
+- **Coverage:** global 30 m; USA country-wide 10 m with partial 1 m; UK 1 m; Austria 1 m; Switzerland 2 m (partial 0.5 m); most of Germany 1 m; France 5 m; Italy 10 m; Spain 2 m; Japan 1/5/10 m; plus Australia, Canada, Nordics, NZ and others. Exact polygons at `mapterhorn.com/coverage`.
+- **Access:** single tile `https://tiles.mapterhorn.com/{z}/{x}/{y}.webp`; TileJSON `https://tiles.mapterhorn.com/tilejson.json`; area extracts with the `pmtiles` CLI (`pmtiles extract --bbox=... https://download.mapterhorn.com/planet.pmtiles out.pmtiles`; planet file is z0-z12, z13-z17 are per-tile files); full downloads at `https://download.mapterhorn.com/` (index `download_urls.json`).
+
+**Possible uses here:** elevation profile and gain/loss for routes with no GPX (pairs with the BRouter paths project); computing our own activation-zone polygons (25 m vertical) for summits SOTLAS and activation.zone lack; slope/steepness flags to sharpen hike-time estimates; a hillshade/relief layer on the maps; higher-resolution terrain than the SRTM 30 m KM6AM uses for his RFI terrain-shadow model (worth mentioning to him).
+
+**Open questions and cautions:**
+- **License unresolved:** the pages name no data license or required attribution string. Per-source terms are in `https://download.mapterhorn.com/attribution.json` (not yet read). Read it before shipping anything, and add attribution in the UI.
+- **No stated rate limits, fees or keys**, but bandwidth is donated. Fetch only the tiles a user is viewing, cache results, and never run bulk jobs against `tiles.mapterhorn.com` (same courtesy rule as SOTA and KM6AM). Confirm with the project's GitHub/privacy page if heavier use is planned.
+- **DreamHost shared hosting is a poor fit for server-side use** (needs PHP GD with WebP, and hosting PMTiles is heavy). Prefer browser-side lookups: fetch a tile, draw it to a canvas, decode Terrarium (`elevation_m = R*256 + G + B/256 - 32768`) from the pixels.
+- **Suggested first step:** a prototype on a feature branch showing summit elevation and a route profile from these tiles next to the current values, deployed to staging for Chris to judge.
 
 ---
 
@@ -487,6 +513,10 @@ When a user nominates a summit (`nominate.php`), the code checks `global_gpx_tra
 ## Design System: Alpine Precision
 
 All pages use the **Alpine Precision** design system. When adding new pages or UI, match this exactly — do not invent new colors, fonts, or patterns.
+
+### No emoji as graphics (rule from Chris, 2026-10-28)
+
+Never use emoji as icons or graphics anywhere in the app (buttons, labels, stat tiles, empty states, map markers). Use inline SVG icons in the Alpine Precision style instead. Existing emoji (e.g. the mountain in `index.php`, `planning_groups.php`, `sota_magic.php`, `summit_gpx.php`) are leftovers to replace with SVG when those pages are touched.
 
 ### Font
 
