@@ -555,6 +555,8 @@ function dashboard_hike_stats($summit, $current_group) {
             ? calculateHikeTime($distance_display_mi ?? 0, $elevation_for_display ?? 0, $current_group['pace_multiplier'] ?? 1.0)
             : 0;
     }
+    // Drive Up has no hike, whatever distance/gain/GPX data is still on file
+    if (($summit['difficulty'] ?? '') === 'drive-up') $hike_time_total = 0;
     return [$distance_display_mi, $elevation_for_display, $hike_time_total];
 }
 
@@ -738,6 +740,7 @@ foreach ($summits as $sm) {
     } else {
         $hike_min = ($dist || $elev) ? calculateHikeTime($dist ?? 0, $elev ?? 0, $current_group['pace_multiplier'] ?? 1.0) : 0;
     }
+    if (($sm['difficulty'] ?? '') === 'drive-up') $hike_min = 0;
     $drv = $sm['drive_time_min'] ?? 0;
     $tot = $hike_min + $drv + $activation_time;
     $is_drive_up = ($sm['difficulty'] ?? '') === 'drive-up';

@@ -769,23 +769,20 @@ if ($gpx_data && $gpx_data['use_for_hike_time'] && $has_timestamps) {
     $hike_time_source = ($gpx_data && $gpx_data['use_for_hike_time'] && !$has_timestamps)
         ? 'Estimated' : 'Calculated';
 }
+// Drive Up means no hike at all, whatever distance/gain/GPX data is still on file.
+$is_drive_up = (($summit['difficulty'] ?? '') === 'drive-up');
+if ($is_drive_up) $hike_time_total = 0;
 $directions_lat = $summit['trailhead_lat'] ?? $summit['latitude'];
 $directions_lng = $summit['trailhead_lng'] ?? $summit['longitude'];
 
 // --- Timeline Gantt data ---
 $tl_drive_one = $summit['drive_time_min'] ? intval(round($summit['drive_time_min'] / 2)) : 0;
-if ($hike_time_total) {
-    // Always use the live $hike_time_total (GPS or Naismith) so the Gantt
-    // matches the stats shown above it and is never stale.
-    $tl_hike_up   = intval(round($hike_time_total * 0.6));
-    $tl_hike_down = $hike_time_total - $tl_hike_up;
-} elseif ($summit['hike_time_up_min'] && $summit['hike_time_down_min']) {
-    // Fallback: pre-stored leg times (only reached if no distance/elevation data at all)
-    $tl_hike_up   = $summit['hike_time_up_min'];
-    $tl_hike_down = $summit['hike_time_down_min'];
-} else {
-    $tl_hike_up = $tl_hike_down = 0;
-}
+// The Gantt is always driven by the live $hike_time_total (GPS or Naismith) so it matches the
+// stats above it. The stored summits.hike_time_up_min / hike_time_down_min columns are only a
+// stale cache from earlier saves, so they are never used here (they used to leak in whenever
+// the live value rounded to 0, e.g. a 1 ft gain, or after a GPX was dropped or Drive Up chosen).
+$tl_hike_up   = $hike_time_total ? intval(round($hike_time_total * 0.6)) : 0;
+$tl_hike_down = $hike_time_total ? $hike_time_total - $tl_hike_up : 0;
 // Always use the user's configured radio time for planning, never the GPX-recorded activation time
 $tl_activation = $default_activation_min;
 $tl_total = $tl_drive_one * 2 + $tl_hike_up + $tl_activation + $tl_hike_down;

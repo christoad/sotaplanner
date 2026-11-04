@@ -177,15 +177,13 @@ if ($gpx && $gpx['use_for_elevation']) {
     $elevation_gain_display = $pa['hike_elevation_gain_ft'];
 }
 
-if ($hike_time_total > 0) {
-    $hike_up_min   = intval(round($hike_time_total * 0.6));
-    $hike_down_min = $hike_time_total - $hike_up_min;
-} elseif ($pa['hike_time_up_min'] && $pa['hike_time_down_min']) {
-    $hike_up_min   = (int)$pa['hike_time_up_min'];
-    $hike_down_min = (int)$pa['hike_time_down_min'];
-} else {
-    $hike_up_min = $hike_down_min = 0;
-}
+// Drive Up means no hike, whatever distance/gain/GPX data is still on file.
+if (($pa['difficulty'] ?? '') === 'drive-up') $hike_time_total = 0;
+
+// Always the live value. The stored hike_time_up_min / hike_time_down_min columns are a stale
+// cache and are never used (they leaked in after a GPX was dropped or Drive Up was chosen).
+$hike_up_min   = $hike_time_total > 0 ? intval(round($hike_time_total * 0.6)) : 0;
+$hike_down_min = $hike_time_total > 0 ? $hike_time_total - $hike_up_min : 0;
 
 $hike_start_ts    = strtotime($pa['planned_date'] . ' ' . $pa['hike_start_time']);
 $leave_home_ts    = $drive_one_way > 0 ? $hike_start_ts - ($drive_one_way * 60) : null;

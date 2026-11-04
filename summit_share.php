@@ -133,6 +133,7 @@ if ($gpx_data && $gpx_data['use_for_hike_time'] && $has_timestamps) {
 } else {
     $hike_min = ($dist_mi || $gain_ft) ? (int)calculateHikeTime($dist_mi ?? 0, $gain_ft ?? 0, 1.0) : 0;
 }
+if (($summit['difficulty'] ?? '') === 'drive-up') $hike_min = 0;
 
 // Radio time: the signed-in viewer's own default, otherwise 60 minutes
 $act_min = 60;
