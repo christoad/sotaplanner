@@ -167,6 +167,22 @@ Commit when Chris says so. Do **not** bump `APP_VERSION` per commit (see Version
 ### Hosting & Scaling — CDN Options (researched 2026-08-25)
 DreamHost Shared Hosting (what sotaplanner.com runs on) has **no built-in CDN**. If international traffic grows and page-load latency becomes a concern, the path is a free **Cloudflare** setup (DreamHost has a direct partner integration for this): create a free Cloudflare account, then point sotaplanner.com's nameservers at Cloudflare's two assigned nameservers. This gives global edge caching for static assets (CSS/JS/images/SVGs), SSL termination closer to the user, DDoS protection, and basic analytics — DreamHost remains the origin server. Note: since most of SOTAplanner's pages are dynamic PHP (DB-backed dashboard/maps), a CDN mainly speeds up static assets and connection setup, not the PHP/DB round-trip itself — if response time becomes the bottleneck under heavy load, that requires scaling the DreamHost plan or database, not just adding a CDN. Nameserver changes affect live DNS/email routing, so treat this as a change requiring Chris's explicit go-ahead, not something to do unprompted.
 
+### Idea, not scheduled: Mapterhorn terrain tiles (researched 2026-11-04)
+Chris asked whether `https://mapterhorn.com/data-access/` could help as the site discovers more of its own information. Verdict: yes, worth a small prototype. Nothing is built. I had not checked what the site currently uses for elevation when I wrote this, so compare against that first.
+
+**What it is:** an open-data project publishing public terrain elevation tiles for web maps. Maintained by Oliver Wipfli (with Brandon Liu and Sascha Brawer sharing admin rights), funded by an NGI0 Core Fund grant (NLnet / European Commission), hosted on donated Cloudflare R2/Workers/bandwidth. Code is BSD-3 (`github.com/mapterhorn/mapterhorn`).
+- **Format:** Terrarium-encoded terrain-RGB tiles as 512 px WebP, bundled in PMTiles archives. No COG seen.
+- **Coverage:** global 30 m; USA country-wide 10 m with partial 1 m; UK 1 m; Austria 1 m; Switzerland 2 m (partial 0.5 m); most of Germany 1 m; France 5 m; Italy 10 m; Spain 2 m; Japan 1/5/10 m; plus Australia, Canada, Nordics, NZ and others. Exact polygons at `mapterhorn.com/coverage`.
+- **Access:** single tile `https://tiles.mapterhorn.com/{z}/{x}/{y}.webp`; TileJSON `https://tiles.mapterhorn.com/tilejson.json`; area extracts with the `pmtiles` CLI (`pmtiles extract --bbox=... https://download.mapterhorn.com/planet.pmtiles out.pmtiles`; planet file is z0-z12, z13-z17 are per-tile files); full downloads at `https://download.mapterhorn.com/` (index `download_urls.json`).
+
+**Possible uses here:** elevation profile and gain/loss for routes with no GPX (pairs with the BRouter paths project); computing our own activation-zone polygons (25 m vertical) for summits SOTLAS and activation.zone lack; slope/steepness flags to sharpen hike-time estimates; a hillshade/relief layer on the maps; higher-resolution terrain than the SRTM 30 m KM6AM uses for his RFI terrain-shadow model (worth mentioning to him).
+
+**Open questions and cautions:**
+- **License unresolved:** the pages name no data license or required attribution string. Per-source terms are in `https://download.mapterhorn.com/attribution.json` (not yet read). Read it before shipping anything, and add attribution in the UI.
+- **No stated rate limits, fees or keys**, but bandwidth is donated. Fetch only the tiles a user is viewing, cache results, and never run bulk jobs against `tiles.mapterhorn.com` (same courtesy rule as SOTA and KM6AM). Confirm with the project's GitHub/privacy page if heavier use is planned.
+- **DreamHost shared hosting is a poor fit for server-side use** (needs PHP GD with WebP, and hosting PMTiles is heavy). Prefer browser-side lookups: fetch a tile, draw it to a canvas, decode Terrarium (`elevation_m = R*256 + G + B/256 - 32768`) from the pixels.
+- **Suggested first step:** a prototype on a feature branch showing summit elevation and a route profile from these tiles next to the current values, deployed to staging for Chris to judge.
+
 ---
 
 
