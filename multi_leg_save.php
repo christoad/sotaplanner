@@ -59,6 +59,12 @@ if ($action === 'mode') {
     $st->execute(array_merge([$group['id']], $ids));
     if ((int)$st->fetchColumn() < count($ids)) leg_fail('Summit not found in this dashboard');
     if ($choice === 'hike') {
+        $rows = $db->prepare("SELECT id, sota_ref, latitude, longitude, elevation_m FROM summits WHERE planning_group_id = ? AND id IN (?, ?)");
+        $rows->execute([$group['id'], $from_id, $to_id]);
+        $sm = [];
+        foreach ($rows->fetchAll() as $r) $sm[(int)$r['id']] = ['ref' => $r['sota_ref'], 'summit_lat' => (float)$r['latitude'], 'summit_lng' => (float)$r['longitude'], 'elev_m' => (float)$r['elevation_m']];
+        $pair = multi_leg_route_pair($sm[$from_id], $sm[$to_id]);
+        if (!$pair['ok']) leg_fail('Hike direct is not possible here. ' . $pair['error']);
         multi_leg_set($db, $multi_id, $from_id, $to_id, 'hike');
     } else {
         if ($to_id) multi_leg_set($db, $multi_id, $from_id, $to_id, 'car');

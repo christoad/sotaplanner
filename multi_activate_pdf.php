@@ -112,7 +112,7 @@ $leg_modes = multi_leg_load($db, $multi_id);
 $want_hike = [];
 foreach ($stops as $i => $_st) {
     $m = multi_leg_mode_for($leg_modes, $stops, $i);
-    if ($m === 'car') unset($alt_lookup['active'][$i]);
+    if ($m === null || $m === 'car') unset($alt_lookup['active'][$i]);
     elseif ($m === 'hike' && !$_st['is_drive_up']) { unset($alt_lookup['active'][$i]); $want_hike[$i] = true; }
 }
 $pace_mult = $current_group['pace_multiplier'] ?? 1.0;

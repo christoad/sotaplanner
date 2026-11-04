@@ -126,6 +126,42 @@ function multi_leg_address_label(array $a) {
 }
 
 /**
+ * Asks the path finder for a walk from the edge of $prev's activation zone to $cur's summit and checks it is a
+ * complete, sensible hike. Used by the page and by the save endpoint, so a "Hike direct" choice that cannot be
+ * planned is refused instead of being saved. $prev / $cur need: ref, summit_lat, summit_lng, elev_m.
+ * Returns ['ok' => true, 'route' => <brouter result>, 'from' => [lat, lon]] or ['ok' => false, 'error' => text].
+ */
+function multi_leg_route_pair(array $prev, array $cur) {
+    if ($prev['ref'] === $cur['ref']) return ['ok' => false, 'error' => 'These two stops are the same summit.'];
+    // Start where the previous summit's activation zone ends nearest the next summit, finish on the next summit
+    $from = multi_leg_zone_exit($prev, $cur['summit_lat'], $cur['summit_lng']);
+    $r = brouter_route_cached($from[0], $from[1], $cur['summit_lat'], $cur['summit_lng']);
+    if (!$r['ok']) return ['ok' => false, 'error' => multi_leg_friendly_error($r['error'] ?? 'unknown error')];
+
+    // A route that begins or ends far from where we asked is a partial path: the path finder snapped to
+    // the nearest trail it could find, which does not actually connect the two summits.
+    $co = $r['coords'];
+    $first = $co[0] ?? null; $last = $co ? $co[count($co) - 1] : null;
+    $short_start = $first ? bp_dist($first[0], $first[1], $from[0], $from[1]) : 99999;
+    $short_end   = $last  ? bp_dist($last[0], $last[1], $cur['summit_lat'], $cur['summit_lng']) : 99999;
+    // 600 m allows for a trail that ends a short walk from an off-trail summit (Mount Lewis is about 480 m)
+    // while still refusing real gaps (Jupiter Mountain to Bee Benchmark misses by about 1 km).
+    if ($short_start > 600 || $short_end > 600) {
+        $worst = max($short_start, $short_end);
+        return ['ok' => false, 'error' => 'No complete walkable path between these summits. The closest the path finder could get is about '
+            . round($worst / 1609.344, 1) . ' mi from the '
+            . ($short_start >= $short_end ? 'start' : 'end') . ' point.'];
+    }
+    // A "path" that wanders far more than the straight line is not a sensible hike
+    $straight = bp_dist($prev['summit_lat'], $prev['summit_lng'], $cur['summit_lat'], $cur['summit_lng']);
+    if ($straight > 0 && $r['distance_m'] > $straight * 2.5 && $r['distance_m'] - $straight > 1200) {
+        return ['ok' => false, 'error' => 'The only route found is ' . round($r['distance_m'] / 1609.344, 1) . ' mi for a '
+            . round($straight / 1609.344, 1) . ' mi gap, which is too indirect to count as a hike.'];
+    }
+    return ['ok' => true, 'route' => $r, 'from' => $from];
+}
+
+/**
  * Turns the "hike direct" legs into on-foot chains using BRouter.
  *
  * @param array $stops      the stop list after multi_alt_apply() (modified in place)
@@ -143,20 +179,9 @@ function multi_leg_apply_brouter(array &$stops, array $want_hike, $pace, array $
         $cur  = $stops[$i];
         if ($prev['ref'] === $cur['ref']) { $stops[$i]['leg_error'] = 'These two stops are the same summit.'; continue; }
 
-        // Start where the previous summit's activation zone ends nearest the next summit, finish on the next summit
-        $from = multi_leg_zone_exit($prev, $cur['summit_lat'], $cur['summit_lng']);
-        $r = brouter_route_cached($from[0], $from[1], $cur['summit_lat'], $cur['summit_lng']);
-        if (!$r['ok']) {
-            $stops[$i]['leg_error'] = multi_leg_friendly_error($r['error'] ?? 'unknown error');
-            continue;
-        }
-        // A "path" that wanders far more than the straight line is not a sensible hike
-        $straight = bp_dist($prev['summit_lat'], $prev['summit_lng'], $cur['summit_lat'], $cur['summit_lng']);
-        if ($straight > 0 && $r['distance_m'] > $straight * 2.5 && $r['distance_m'] - $straight > 1200) {
-            $stops[$i]['leg_error'] = 'The only route found is ' . round($r['distance_m'] / 1609.344, 1) . ' mi for a '
-                . round($straight / 1609.344, 1) . ' mi gap, which is too indirect to count as a hike.';
-            continue;
-        }
+        $pair = multi_leg_route_pair($prev, $cur);
+        if (!$pair['ok']) { $stops[$i]['leg_error'] = $pair['error']; continue; }
+        $r = $pair['route'];
         $mi = $r['distance_m'] / 1609.344;
         $gain_ft = $r['ascend_m'] * 3.28084;
         $stops[$i]['up_min'] = max(1, (int)calculateHikeTime($mi, $gain_ft, $pace));

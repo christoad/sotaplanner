@@ -234,7 +234,7 @@ $want_hike = [];
 $leg_set_idx = [];
 foreach ($stops as $i => $_st) {
     $m = multi_leg_mode_for($leg_modes, $stops, $i);
-    if ($m === null) continue;
+    if ($m === null) { unset($alt_lookup['active'][$i]); continue; }   // default: return to the hike start point
     $leg_set_idx[$i] = true;
     if ($m === 'car') unset($alt_lookup['active'][$i]);
     elseif ($m === 'hike' && !$_st['is_drive_up']) { unset($alt_lookup['active'][$i]); $want_hike[$i] = true; }   // explicit choice: BRouter, not a pin
@@ -252,7 +252,8 @@ multi_leg_apply_brouter($stops, $want_hike, $pace_mult, $exit_new);
 
 // Suggest an alternate start where the previous summit sits on the next one's trail
 // (skipped for pairs that already have a pin, that this user opted out of / dismissed, or that have an explicit choice)
-$alt_suggestions = $public_view ? [] : multi_alt_detect($stops, $alt_lookup['active'] + $alt_lookup['hidden'] + $alt_lookup['optout'] + $leg_set_idx);
+$alt_suggestions = []; // shared start pins are no longer applied automatically; Hike direct uses the path finder
+$_unused_alt_suggestions = $public_view ? [] : multi_alt_detect($stops, $alt_lookup['active'] + $alt_lookup['hidden'] + $alt_lookup['optout'] + $leg_set_idx);
 
 // ── Finish address: where the last drive ends. Default is back at the starting address;
 // a route can instead finish at any other address saved on this dashboard (a road trip).
@@ -1211,14 +1212,15 @@ a:hover { text-decoration: underline; }
         <span class="tile-next-label">After this summit</span>
         <?php if (!$public_view): ?>
         <div class="seg" role="radiogroup">
+          <button type="button" role="radio" aria-checked="<?= $sel === 'back' ? 'true' : 'false' ?>" class="<?= $sel === 'back' ? 'on' : '' ?>" onclick="if(!this.classList.contains('on'))setAfter(<?= $i ?>, 'back')"><?= $back_label ?></button>
           <?php if ($has_next): ?>
           <button type="button" role="radio" aria-checked="<?= $sel === 'hike' ? 'true' : 'false' ?>" class="<?= $sel === 'hike' ? 'on' : '' ?>"<?= $nx_can_hike ? '' : ' disabled' ?><?= ($sel === 'hike' && $nx_method !== 'brouter') ? ' data-auto="1" title="Currently using a shared start point. Click to plan the walk with the path finder instead."' : '' ?> onclick="if(!this.classList.contains('on')||this.dataset.auto)setAfter(<?= $i ?>, 'hike')">Hike direct to #<?= $i + 2 ?></button>
           <?php endif; ?>
-          <button type="button" role="radio" aria-checked="<?= $sel === 'back' ? 'true' : 'false' ?>" class="<?= $sel === 'back' ? 'on' : '' ?>" onclick="if(!this.classList.contains('on'))setAfter(<?= $i ?>, 'back')"><?= $back_label ?></button>
           <?php if ($on_foot): ?>
           <button type="button" role="radio" aria-checked="<?= $sel === 'new' ? 'true' : 'false' ?>" class="<?= $sel === 'new' ? 'on' : '' ?>" onclick="if(!this.classList.contains('on'))setAfter(<?= $i ?>, 'new')">Down to this summit's trailhead</button>
           <?php endif; ?>
         </div>
+        <div class="tile-next-msg" id="after-err-<?= $i ?>" hidden></div>
         <?php else: ?>
         <div class="after-pick"><?= $sel === 'hike' ? 'Hike direct to #' . ($i + 2) : ($sel === 'new' ? "Down to this summit's trailhead" : $back_label) ?></div>
         <?php endif; ?>
@@ -1984,8 +1986,20 @@ function editActTime(i) {
 function setAfter(i, choice) {
     const a = MAP_STOPS[i], b = MAP_STOPS[i + 1];
     if (!a) return;
+    const err = document.getElementById('after-err-' + i);
+    if (err) err.hidden = true;
     if (choice === 'hike') document.body.style.cursor = 'progress';   // first time for a pair, the path finder may take a few seconds
-    legPost({ action: 'after', from_id: a.id, to_id: b ? b.id : 0, choice: choice });
+    const params = { action: 'after', from_id: a.id, to_id: b ? b.id : 0, choice: choice, multi_id: MULTI_ID };
+    fetch('multi_leg_save.php', { method: 'POST', credentials: 'same-origin', body: new URLSearchParams(params) })
+        .then(r => r.json())
+        .then(d => {
+            document.body.style.cursor = '';
+            if (d.ok) { window.location.reload(); return; }
+            // Refused (for example no complete walkable path): keep the current choice and say why
+            if (err) { err.textContent = d.error || 'Could not save that change.'; err.hidden = false; }
+            else alert(d.error || 'Could not save that change.');
+        })
+        .catch(() => { document.body.style.cursor = ''; alert('Could not save that change. Check your connection and try again.'); });
 }
 function setExit(i, which) {
     const s = MAP_STOPS[i];
