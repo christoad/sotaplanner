@@ -78,25 +78,47 @@ function brouter_route_cached($lat1, $lon1, $lat2, $lon2, $profile = 'hiking-mou
     $fk = bp_key($lat1, $lon1);
     $tk = bp_key($lat2, $lon2);
     try {
+        // Same direction first, then the opposite direction (a walkable path is the same path both ways:
+        // same distance, climb and descent swapped, coordinates reversed).
         $st = $db->prepare("SELECT * FROM brouter_route_cache WHERE from_key = ? AND to_key = ? AND profile = ?");
-        $st->execute([$fk, $tk, $profile]);
-        if ($row = $st->fetch()) {
+        foreach ([[$fk, $tk, false], [$tk, $fk, true]] as [$a, $b, $flip]) {
+            $st->execute([$a, $b, $profile]);
+            $row = $st->fetch();
+            if (!$row) continue;
+            if ((float)$row['distance_m'] < 0) {
+                // Remembered "no walkable route" answer; trusted for 30 days, then asked again
+                if (strtotime($row['created_at']) > time() - 30 * 86400) {
+                    return ['ok' => false, 'cached' => true, 'error' => (string)$row['coords_json'], 'http' => 0];
+                }
+                continue;
+            }
+            $coords = json_decode($row['coords_json'], true) ?: [];
+            if ($flip) $coords = array_reverse($coords);
             return ['ok' => true, 'cached' => true, 'distance_m' => (float)$row['distance_m'],
-                    'ascend_m' => (float)$row['ascend_m'], 'descend_m' => (float)$row['descend_m'],
-                    'time_s' => 0, 'coords' => json_decode($row['coords_json'], true) ?: [], 'profile' => $profile, 'ms' => 0];
+                    'ascend_m' => (float)($flip ? $row['descend_m'] : $row['ascend_m']),
+                    'descend_m' => (float)($flip ? $row['ascend_m'] : $row['descend_m']),
+                    'time_s' => 0, 'coords' => $coords, 'profile' => $profile, 'ms' => 0];
         }
     } catch (Exception $e) { /* table missing: fall through and just route */ }
 
     $r = brouter_route([[$lat1, $lon1], [$lat2, $lon2]], $profile);
     $r['cached'] = false;
-    if ($r['ok']) {
-        try {
+    try {
+        if ($r['ok']) {
             $st = $db->prepare("INSERT IGNORE INTO brouter_route_cache (from_key, to_key, profile, distance_m, ascend_m, descend_m, coords_json)
                                 VALUES (?, ?, ?, ?, ?, ?, ?)");
             $st->execute([$fk, $tk, $profile, $r['distance_m'], $r['ascend_m'], $r['descend_m'],
                           json_encode(array_map(fn($c) => [round($c[0], 5), round($c[1], 5), $c[2] === null ? null : round($c[2])], bp_thin($r['coords'], 600)))]);
-        } catch (Exception $e) { /* ignore cache write problems */ }
-    }
+        } elseif (!empty($r['http']) && $r['http'] >= 400 && !in_array($r['http'], [401, 403, 408, 429, 502, 503, 504], true)
+                  && !preg_match('/time|busy|reach|key/i', (string)($r['error'] ?? ''))) {
+            // BRouter answered and said there is no route (not a timeout or outage): remember it, so a
+            // page showing this pair does not ask the server again every time it loads.
+            $db->prepare("INSERT INTO brouter_route_cache (from_key, to_key, profile, distance_m, ascend_m, descend_m, coords_json)
+                          VALUES (?, ?, ?, -1, 0, 0, ?)
+                          ON DUPLICATE KEY UPDATE distance_m = -1, coords_json = VALUES(coords_json), created_at = CURRENT_TIMESTAMP")
+               ->execute([$fk, $tk, $profile, substr((string)$r['error'], 0, 300)]);
+        }
+    } catch (Exception $e) { /* ignore cache write problems */ }
     return $r;
 }
 
