@@ -286,6 +286,7 @@ session_start();
         </div>
         <p class="version-desc">Adding summits to your dashboard is faster when you have a list to work through.</p>
         <ul>
+            <li>The About page now has a Data Sources and Credits section thanking the projects and communities behind the summit data, routes, maps and weather in SOTA Planner, with a Credits link in the footer of every page</li>
             <li>The Nominate page has a new "Nominate + Add more" button, on both the Name / Reference and Search by Area tabs. It adds the summit and leaves you on the same page with the search cleared, so you can look up the next summit by name and add it, over and over, without going back to the dashboard each time</li>
         </ul>
     </div>
