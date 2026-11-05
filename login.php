@@ -424,7 +424,7 @@ try {
           </g>
         </svg>
     </div>
-    <p class="tagline">Trail research from activators who've already been there. Get to the summit faster, with less research effort.</p>
+    <p class="tagline">Summit research from activators who have already been there. Get to the summit faster with all your research in one place.</p>
     <?php if ($ready_count > 0): ?>
     <span class="hero-stat-pill">
         <span class="hero-stat-dot"></span>
