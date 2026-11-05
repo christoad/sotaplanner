@@ -308,50 +308,12 @@ $bkey = defined('GOOGLE_MAPS_BROWSER_KEY') ? GOOGLE_MAPS_BROWSER_KEY : '';
     <div class="about-section">
         <h2>What It Does</h2>
         <p>
-            <strong>SOTA Planner</strong> adds up everything it takes to activate a summit: travel
-            time from your front door, hike distance and elevation, time on the air, and the trip
-            back. You see the full door-to-door picture and know right away whether a summit fits
-            the time you have.
+            <strong>SOTA Planner</strong> gathers everything you would want to review when choosing
+            a summit, so you can pick one and get to it with as little outside research as possible.
+            Travel time from your front door, hike distance and elevation, time on the air, and the
+            trip back all add up to one door-to-door estimate, so you know right away whether a
+            summit fits the time you have.
         </p>
-    </div>
-
-    <div class="about-section">
-        <h2>Key Features</h2>
-        <div class="feature-tiles">
-            <div class="feature-tile">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="9"/>
-                    <polyline points="12 7 12 12 15 15"/>
-                </svg>
-                <h3>Total Time Estimate</h3>
-                <p>Travel + hike + activation + return, all in one number</p>
-            </div>
-            <div class="feature-tile">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 1 1 18 0z"/>
-                    <circle cx="12" cy="10" r="3"/>
-                </svg>
-                <h3>Travel Time</h3>
-                <p>Automatic routing from your address to each starting point</p>
-            </div>
-            <div class="feature-tile">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-                </svg>
-                <h3>GPX Analysis</h3>
-                <p>Upload a recorded track to get real-world hike and activation times</p>
-            </div>
-            <div class="feature-tile">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                    <circle cx="9" cy="7" r="4"/>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                </svg>
-                <h3>Dashboards</h3>
-                <p>Share summit research and notes with co-activators</p>
-            </div>
-        </div>
     </div>
 
     <div class="about-section">
