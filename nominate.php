@@ -875,6 +875,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
     .btn-primary { background: var(--ink); color: #fff; width: 100%; height: 40px; font-size: 0.9rem; }
     .btn-primary:hover:not(:disabled) { background: var(--ink-2); }
     .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+    .nom-btn-row { display: flex; gap: 0.5rem; align-items: center; }
+    .nom-btn-row .nom-btn-main { flex: 1; width: auto; height: 40px; }
+    .nom-btn-row .nom-btn-more { width: auto; height: 40px; padding: 0 1.75rem; }
+    @media (max-width: 640px) {
+      .nom-btn-row { flex-direction: column; align-items: stretch; }
+      .nom-btn-row .nom-btn-main, .nom-btn-row .nom-btn-more { flex: none; width: 100%; padding: 0 1rem; }
+    }
 
     /* Group badge */
     .group-badge {
@@ -1163,9 +1170,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
             </div>
           </div>
 
-          <div style="display:flex; gap:0.5rem; align-items:center;">
-            <button type="submit" id="nominate-btn" class="btn btn-primary" style="flex:1; width:auto;" disabled>Nominate Summit</button>
-            <button type="button" id="nominate-more-btn" class="btn btn-primary" style="width:auto; height:40px; padding:0 var(--sp-8);" disabled>Nominate + Add more</button>
+          <div class="nom-btn-row">
+            <button type="submit" id="nominate-btn" class="btn btn-primary nom-btn-main" disabled>Nominate Summit</button>
+            <button type="button" id="nominate-more-btn" class="btn btn-primary nom-btn-more" disabled>Nominate + Add more</button>
           </div>
         </div>
       </div>
@@ -2087,9 +2094,9 @@ function renderAreaResults(data) {
     html += '<button type="button" onclick="areaSelectAll(false)" style="background:none; border:none; font-size:0.75rem; color:var(--ink-3); cursor:pointer; font-family:var(--font-sans); padding:0;">None</button>';
     html += '</div></div>';
 
-    html += '<div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.75rem;">';
-    html += '<button type="button" class="btn btn-primary" id="area_nominate_btn" onclick="submitAreaSelection(false)" style="height:40px; flex:1; width:auto;" disabled>Nominate 0 Summits</button>';
-    html += '<button type="button" class="btn btn-primary" id="area_nominate_more_btn" onclick="submitAreaSelection(true)" style="height:40px; width:auto; padding:0 var(--sp-8);" disabled>Nominate + Add more</button>';
+    html += '<div class="nom-btn-row" style="margin-bottom:0.75rem;">';
+    html += '<button type="button" class="btn btn-primary nom-btn-main" id="area_nominate_btn" onclick="submitAreaSelection(false)" style="height:40px;" disabled>Nominate 0 Summits</button>';
+    html += '<button type="button" class="btn btn-primary nom-btn-more" id="area_nominate_more_btn" onclick="submitAreaSelection(true)" disabled>Nominate + Add more</button>';
     html += '</div>';
 
     html += '<div id="area_list" style="max-height:400px; overflow-y:auto; border:1px solid var(--border); border-radius:var(--r-md); margin-bottom:0.875rem;">';
