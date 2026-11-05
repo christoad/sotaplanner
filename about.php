@@ -308,8 +308,8 @@ $bkey = defined('GOOGLE_MAPS_BROWSER_KEY') ? GOOGLE_MAPS_BROWSER_KEY : '';
     <div class="about-section">
         <h2>What It Does</h2>
         <p>
-            <strong>SOTA Planner</strong> brings everything you need to choose a summit and get
-            there into one place, with as little outside research as possible.
+            <strong>SOTA Planner</strong> brings everything you need into one place to select a
+            summit and go activate with as little outside research as possible.
         </p>
     </div>
 
