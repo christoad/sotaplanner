@@ -278,11 +278,22 @@ session_start();
         </ul>
     </div>
 
-    <!-- October 2026 -->
+    <!-- November 2026 -->
     <div class="version-block current">
         <div class="version-header">
-            <span class="version-number">October 2026 update</span>
+            <span class="version-number">November 2026 update</span>
             <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Adding summits to your dashboard is faster when you have a list to work through.</p>
+        <ul>
+            <li>The Nominate page has a new "Nominate + Add more" button, on both the Name / Reference and Search by Area tabs. It adds the summit and leaves you on the same page with the search cleared, so you can look up the next summit by name and add it, over and over, without going back to the dashboard each time</li>
+        </ul>
+    </div>
+
+    <!-- October 2026 -->
+    <div class="version-block">
+        <div class="version-header">
+            <span class="version-number">October 2026 update</span>
         </div>
         <p class="version-desc">Driving routes now appear on the summit map, and the offline PDF for Multi-Activate routes shows the same maps you see on the site.</p>
         <ul>
