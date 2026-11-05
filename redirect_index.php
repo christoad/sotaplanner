@@ -113,7 +113,7 @@
             Head to <strong>SOTAplanner.com</strong> to plan your next activation.
         </p>
         <a href="https://sotaplanner.com" class="btn">🏔 Go to SOTAplanner.com</a>
-        <div class="new-url"><a href="https://sotaplanner.com">sotaplanner.com</a></div>
+        <div class="new-url"><a href="about.php#credits">Credits</a> &nbsp;·&nbsp; <a href="https://sotaplanner.com">sotaplanner.com</a></div>
     </div>
 </body>
 </html>

@@ -2369,7 +2369,7 @@ if ($tl_show) {
 </div><!-- .page -->
 
 <footer class="footer">
-  SOTAplanner &middot; <a href="about.php">About</a> &middot; <a href="https://sotaplanner.com">sotaplanner.com</a>
+  SOTAplanner &middot; <a href="about.php">About</a> &middot; <a href="about.php#credits">Credits</a> &nbsp;·&nbsp; <a href="https://sotaplanner.com">sotaplanner.com</a>
 </footer>
 
 <script>
