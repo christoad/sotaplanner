@@ -308,11 +308,8 @@ $bkey = defined('GOOGLE_MAPS_BROWSER_KEY') ? GOOGLE_MAPS_BROWSER_KEY : '';
     <div class="about-section">
         <h2>What It Does</h2>
         <p>
-            <strong>SOTA Planner</strong> gathers everything you would want to review when choosing
-            a summit, so you can pick one and get to it with as little outside research as possible.
-            Travel time from your front door, hike distance and elevation, time on the air, and the
-            trip back all add up to one door-to-door estimate, so you know right away whether a
-            summit fits the time you have.
+            <strong>SOTA Planner</strong> brings everything you need to choose a summit and get
+            there into one place, with as little outside research as possible.
         </p>
     </div>
 
