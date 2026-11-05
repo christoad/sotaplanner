@@ -1165,7 +1165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
 
           <div style="display:flex; gap:0.5rem; align-items:center;">
             <button type="submit" id="nominate-btn" class="btn btn-primary" style="flex:1; width:auto;" disabled>Nominate Summit</button>
-            <button type="button" id="nominate-more-btn" class="btn btn-primary" style="width:auto; height:34px; font-size:0.8rem; padding:0 var(--sp-4);" disabled>Nominate + Add more</button>
+            <button type="button" id="nominate-more-btn" class="btn btn-primary" style="width:auto; height:40px; padding:0 var(--sp-8);" disabled>Nominate + Add more</button>
           </div>
         </div>
       </div>
@@ -2089,7 +2089,7 @@ function renderAreaResults(data) {
 
     html += '<div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.75rem;">';
     html += '<button type="button" class="btn btn-primary" id="area_nominate_btn" onclick="submitAreaSelection(false)" style="height:40px; flex:1; width:auto;" disabled>Nominate 0 Summits</button>';
-    html += '<button type="button" class="btn btn-primary" id="area_nominate_more_btn" onclick="submitAreaSelection(true)" style="height:34px; width:auto; font-size:0.8rem; padding:0 var(--sp-4);" disabled>Nominate + Add more</button>';
+    html += '<button type="button" class="btn btn-primary" id="area_nominate_more_btn" onclick="submitAreaSelection(true)" style="height:40px; width:auto; padding:0 var(--sp-8);" disabled>Nominate + Add more</button>';
     html += '</div>';
 
     html += '<div id="area_list" style="max-height:400px; overflow-y:auto; border:1px solid var(--border); border-radius:var(--r-md); margin-bottom:0.875rem;">';
