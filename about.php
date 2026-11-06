@@ -29,7 +29,7 @@ $bkey = defined('GOOGLE_MAPS_BROWSER_KEY') ? GOOGLE_MAPS_BROWSER_KEY : '';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>About — SOTA Planner</title>
+    <title>About | SOTA Planner</title>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -134,6 +134,12 @@ $bkey = defined('GOOGLE_MAPS_BROWSER_KEY') ? GOOGLE_MAPS_BROWSER_KEY : '';
       margin-bottom: 0.875rem;
     }
     .about-section p:last-child { margin-bottom: 0; }
+    .credits-list { list-style: none; margin: var(--sp-4) 0 0; padding: 0; }
+    .credits-list li { padding: var(--sp-3) 0; border-top: 1px solid var(--border); font-size: 0.9rem; color: var(--ink-2); line-height: 1.5; }
+    .credits-list li:first-child { border-top: none; padding-top: 0; }
+    .credits-list a { color: var(--accent-2); font-weight: 600; text-decoration: none; }
+    .credits-list a:hover { text-decoration: underline; }
+    .credits-list .credit-what { display: block; color: var(--ink-3); font-size: 0.82rem; }
     .about-section strong { color: var(--ink); font-weight: 600; }
     .about-section a { color: var(--accent); text-decoration: none; }
     .about-section a:hover { text-decoration: underline; }
@@ -302,50 +308,9 @@ $bkey = defined('GOOGLE_MAPS_BROWSER_KEY') ? GOOGLE_MAPS_BROWSER_KEY : '';
     <div class="about-section">
         <h2>What It Does</h2>
         <p>
-            <strong>SOTA Planner</strong> adds up everything it takes to activate a summit: travel
-            time from your front door, hike distance and elevation, time on the air, and the trip
-            back. You see the full door-to-door picture and know right away whether a summit fits
-            the time you have.
+            <strong>SOTA Planner</strong> brings everything you need into one place to select a
+            summit and activate with as little outside research as possible.
         </p>
-    </div>
-
-    <div class="about-section">
-        <h2>Key Features</h2>
-        <div class="feature-tiles">
-            <div class="feature-tile">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="9"/>
-                    <polyline points="12 7 12 12 15 15"/>
-                </svg>
-                <h3>Total Time Estimate</h3>
-                <p>Travel + hike + activation + return, all in one number</p>
-            </div>
-            <div class="feature-tile">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 1 1 18 0z"/>
-                    <circle cx="12" cy="10" r="3"/>
-                </svg>
-                <h3>Travel Time</h3>
-                <p>Automatic routing from your address to each starting point</p>
-            </div>
-            <div class="feature-tile">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-                </svg>
-                <h3>GPX Analysis</h3>
-                <p>Upload a recorded track to get real-world hike and activation times</p>
-            </div>
-            <div class="feature-tile">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4A4844" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                    <circle cx="9" cy="7" r="4"/>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                </svg>
-                <h3>Dashboards</h3>
-                <p>Share summit research and notes with co-activators</p>
-            </div>
-        </div>
     </div>
 
     <div class="about-section">
@@ -358,6 +323,58 @@ $bkey = defined('GOOGLE_MAPS_BROWSER_KEY') ? GOOGLE_MAPS_BROWSER_KEY : '';
         <p>
             More at <a href="https://ki6cr.com" target="_blank">ki6cr.com</a>
         </p>
+    </div>
+
+    <div class="about-section" id="credits">
+        <h2>Data Sources and Credits</h2>
+        <p>
+            SOTA Planner is built on the work of many people and projects. Thank you to everyone
+            who shares their data and tools with the community.
+        </p>
+        <ul class="credits-list">
+            <li>
+                <a href="https://www.sota.org.uk/" target="_blank" rel="noopener">Summits on the Air (SOTA)</a>
+                <span class="credit-what">The worldwide summit list (including winter bonus points), SOTA account sign-in, SOTAwatch alerts, activation history, and the articles and links in Community Notes.</span>
+            </li>
+            <li>
+                <a href="https://www.sotamaps.org/" target="_blank" rel="noopener">SOTA Mapping Project (SOTAmaps)</a>
+                <span class="credit-what">Community-recorded GPS routes for thousands of summits. Each route belongs to the activator who recorded and shared it.</span>
+            </li>
+            <li>
+                <a href="https://sotlas.com/" target="_blank" rel="noopener">SOTLAS</a>
+                <span class="credit-what">High-precision activation zone boundaries and summit reference links.</span>
+            </li>
+            <li>
+                <a href="https://activation.zone/" target="_blank" rel="noopener">activation.zone</a>
+                <span class="credit-what">Activation zone boundaries for summits SOTLAS does not cover yet.</span>
+            </li>
+            <li>
+                <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">&copy; OpenStreetMap contributors</a>
+                <span class="credit-what">Trailhead and parking locations, and the base map in downloadable PDFs. Data is available under the Open Database License.</span>
+            </li>
+            <li>
+                <a href="https://opentopomap.org/" target="_blank" rel="noopener">OpenTopoMap</a>
+                <span class="credit-what">Topographic map tiles in downloadable PDFs (map style CC-BY-SA).</span>
+            </li>
+            <li>
+                <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a>
+                <span class="credit-what">Summit weather forecasts, shared under the CC BY 4.0 license.</span>
+            </li>
+            <li>
+                <a href="https://mapsplatform.google.com/" target="_blank" rel="noopener">Google Maps Platform</a>
+                <span class="credit-what">Interactive maps, address search, and travel time calculations.</span>
+            </li>
+            <li>
+                <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri and ArcGIS</a>
+                <span class="credit-what">Satellite imagery, and the AT&amp;T, T-Mobile and Verizon LTE cell coverage layers (United States).</span>
+            </li>
+            <li>
+                <a href="https://leafletjs.com/" target="_blank" rel="noopener">Leaflet</a>,
+                <a href="https://fonts.google.com/" target="_blank" rel="noopener">Google Fonts</a> (DM Sans and DM Mono) and
+                <a href="https://motion.dev/" target="_blank" rel="noopener">Motion</a>
+                <span class="credit-what">Open-source mapping, typefaces, and animation used throughout the site.</span>
+            </li>
+        </ul>
     </div>
 
     <div class="about-section">
@@ -427,7 +444,7 @@ $bkey = defined('GOOGLE_MAPS_BROWSER_KEY') ? GOOGLE_MAPS_BROWSER_KEY : '';
     SOTA Planner &nbsp;·&nbsp;
     <a href="changelog.php">v<?= APP_VERSION ?></a>
     &nbsp;·&nbsp;
-    <a href="https://sotaplanner.com">sotaplanner.com</a>
+    <a href="about.php#credits">Credits</a> &nbsp;·&nbsp; <a href="https://sotaplanner.com">sotaplanner.com</a>
 </footer>
 
 <script>
@@ -479,7 +496,7 @@ document.getElementById('toggle-table-btn')?.addEventListener('click', function 
     });
     svg.appendChild(gridGroup);
 
-    // X-axis labels — thin out so they don't collide
+    // X-axis labels: thin out so they don't collide
     var maxLabels = 7;
     var step = Math.max(1, Math.ceil(data.length / maxLabels));
     data.forEach(function (d, i) {
@@ -497,7 +514,7 @@ document.getElementById('toggle-table-btn')?.addEventListener('click', function 
     svg.appendChild(el('path', { class: 'chart-line', d: 'M ' + linePoints }));
 
     // Annotation: the June 2026 mass import from the SOTA Mapping Project, which
-    // explains the large one-time jump in the line — a one-off historical event,
+    // explains the large one-time jump in the line, a one-off historical event,
     // not a recurring feature, so it's fine to key off the literal month.
     var importIdx = -1;
     data.forEach(function (d, i) { if (d.month === '2026-06-01') importIdx = i; });
@@ -621,7 +638,7 @@ async function loadData() {
         document.getElementById('map-loading').style.display = 'none';
         document.getElementById('map-hint').textContent = `${allSummits.length.toLocaleString()} summits, zoom or pan to explore`;
 
-        // Build every marker once — SuperCluster handles aggregation at any zoom,
+        // Build every marker once, SuperCluster handles aggregation at any zoom,
         // so there's no need to rebuild/filter per viewport like a smaller dataset would.
         const markers = allSummits.map(m => {
             const marker = new google.maps.Marker({

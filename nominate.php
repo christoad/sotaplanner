@@ -875,6 +875,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
     .btn-primary { background: var(--ink); color: #fff; width: 100%; height: 40px; font-size: 0.9rem; }
     .btn-primary:hover:not(:disabled) { background: var(--ink-2); }
     .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+    .nom-btn-row { display: flex; gap: 0.5rem; align-items: center; }
+    .nom-btn-row .nom-btn-main { flex: 1; width: auto; height: 40px; }
+    .nom-btn-row .nom-btn-more { width: auto; height: 40px; padding: 0 1.75rem; }
+    @media (max-width: 640px) {
+      .nom-btn-row { flex-direction: column; align-items: stretch; }
+      .nom-btn-row .nom-btn-main, .nom-btn-row .nom-btn-more { flex: none; width: 100%; padding: 0 1rem; }
+    }
 
     /* Group badge */
     .group-badge {
@@ -1163,7 +1170,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
             </div>
           </div>
 
-          <button type="submit" id="nominate-btn" class="btn btn-primary" disabled>Nominate Summit</button>
+          <div class="nom-btn-row">
+            <button type="submit" id="nominate-btn" class="btn btn-primary nom-btn-main" disabled>Nominate Summit</button>
+            <button type="button" id="nominate-more-btn" class="btn btn-primary nom-btn-more" disabled>Nominate + Add more</button>
+          </div>
         </div>
       </div>
 
@@ -1223,6 +1233,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
 
 </div>
 
+<div id="nom-toast" role="status" style="display:none; position:fixed; left:50%; bottom:1.5rem; transform:translateX(-50%); z-index:9200; background:var(--ink); color:#fff; padding:0.65rem 1.1rem; border-radius:var(--r-md); font-size:0.875rem; font-weight:500; box-shadow:var(--shadow-lg); max-width:90vw;"></div>
+
 <!-- Bulk nomination progress overlay (hidden until bulk submit) -->
 <div id="nom-progress-overlay" style="display:none;">
   <div class="nom-progress-card">
@@ -1268,7 +1280,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
   SOTA Planner &nbsp;·&nbsp;
   <a href="changelog.php" style="color:var(--ink-4); text-decoration:none;">v<?= APP_VERSION ?></a>
   &nbsp;·&nbsp;
-  <a href="https://sotaplanner.com" style="color:var(--ink-4); text-decoration:none;">sotaplanner.com</a>
+  <a href="about.php#credits" style="color:var(--ink-4); text-decoration:none;">Credits</a> &nbsp;·&nbsp; <a href="https://sotaplanner.com" style="color:var(--ink-4); text-decoration:none;">sotaplanner.com</a>
 </footer>
 
 <script>
@@ -1726,7 +1738,58 @@ function setSingleMode(on) {
 }
 
 function hideResults() { resultsBox.style.display = 'none'; resultsBox.innerHTML = ''; }
-function setNominateEnabled(on) { nominateBtn.disabled = !on; nominateBtn.style.opacity = on ? '1' : '0.45'; }
+const nominateMoreBtn = document.getElementById('nominate-more-btn');
+function setNominateEnabled(on) {
+    nominateBtn.disabled = !on; nominateBtn.style.opacity = on ? '1' : '0.45';
+    nominateMoreBtn.disabled = !on; nominateMoreBtn.style.opacity = on ? '1' : '0.45';
+}
+
+let toastTimer = null;
+function showToast(msg) {
+    const t = document.getElementById('nom-toast');
+    t.textContent = msg;
+    t.style.display = 'block';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function() { t.style.display = 'none'; }, 4000);
+}
+
+// Reset the Name / Reference tab so another summit can be searched right away.
+function resetSearchTab() {
+    clearTimeout(debounceTimer);
+    refInput.value = '';
+    refsInput.value = '';
+    formMode.value = 'single';
+    nominateBtn.textContent = 'Nominate Summit';
+    selectedBox.style.display = 'none';
+    hideResults();
+    setNominateEnabled(false);
+    searchInput.value = '';
+    searchHint.textContent = 'Type a summit name to search, or enter a SOTA reference directly (e.g., W6/CT-225).';
+    searchInput.focus();
+}
+
+// Reset the area tab results so another location can be searched.
+function resetAreaTab() {
+    const loc = document.getElementById('area_location');
+    loc.value = '';
+    document.getElementById('area_results').innerHTML = '<div id="area_results_placeholder" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.75rem; padding:3rem 1.5rem; color:var(--ink-4); text-align:center; border:1px solid var(--border); border-radius:var(--r-md); background:var(--bg);"><img src="sota-planner-logo.svg" width="48" height="48" alt="" style="opacity:0.25;"><div style="font-size:0.9rem; font-weight:600; color:var(--ink-3);">Summit List</div><div style="font-size:0.8rem; color:var(--ink-4);">Search a location to see summits in the area</div></div>';
+    if (areaCircle) { areaCircle.setMap(null); areaCircle = null; }
+    areaMarkers.forEach(function(m) { m.setMap(null); });
+    areaMarkers = []; summitMarkerMap = {};
+    loc.focus();
+}
+
+nominateMoreBtn.addEventListener('click', function() {
+    if (formMode.value === 'bulk') {
+        const refs = refsInput.value.split(',').map(r => r.trim()).filter(r => r);
+        if (refs.length === 0) return;
+        runBulkNominateFlow(refs, true);
+    } else {
+        const ref = refInput.value.trim();
+        if (!ref) return;
+        runBulkNominateFlow([ref], true);
+    }
+});
 
 function escHtml(s)  { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function escAttr(s)  { return String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
@@ -1748,7 +1811,7 @@ function winterBonusSeasonText(bonus, lat) {
         ? 'June 1 \u2013 September 15 (Southern Hemisphere winter)'
         : 'December 1 \u2013 March 15 (Northern Hemisphere winter)';
     const label = bonus === 1 ? 'point' : 'points';
-    return '+' + bonus + ' winter bonus ' + label + ' \u2014 typically awarded ' + season + '. Exact dates are set by this summit\'s SOTA association.';
+    return '+' + bonus + ' winter bonus ' + label + ': typically awarded ' + season + '. Exact dates are set by this summit\'s SOTA association.';
 }
 
 // ── Form submit validation ────────────────────────────────────────────────────
@@ -1767,7 +1830,7 @@ document.getElementById('nominate-form').addEventListener('submit', function(e) 
 });
 
 // ── Bulk AJAX nomination flow ─────────────────────────────────────────────────
-async function runBulkNominateFlow(refs) {
+async function runBulkNominateFlow(refs, stay) {
     const overlay   = document.getElementById('nom-progress-overlay');
     const barEl     = document.getElementById('nom-bar');
     const counterEl = document.getElementById('nom-counter');
@@ -1845,6 +1908,20 @@ async function runBulkNominateFlow(refs) {
                 driveMsg = ' • travel time added for ' + dt.updated + ' summit' + (dt.updated !== 1 ? 's' : '');
             }
         } catch (_) { /* non-fatal, continue to dashboard either way */ }
+    }
+
+    if (stay) {
+        const okCount = newIds.length;
+        currentEl.textContent = '✓ Done!';
+        barEl.style.width = '100%';
+        await new Promise(function(r) { setTimeout(r, 500); });
+        overlay.style.display = 'none';
+        barEl.style.width = '0%';
+        logEl.innerHTML = '';
+        const tab = document.getElementById('panel-area').classList.contains('active') ? 'area' : 'search';
+        if (tab === 'area') resetAreaTab(); else resetSearchTab();
+        showToast(okCount + ' summit' + (okCount !== 1 ? 's' : '') + ' added' + driveMsg + '. Search for another.');
+        return;
     }
 
     let doneMsg = done + ' summit' + (done !== 1 ? 's' : '') + ' added';
@@ -2017,7 +2094,10 @@ function renderAreaResults(data) {
     html += '<button type="button" onclick="areaSelectAll(false)" style="background:none; border:none; font-size:0.75rem; color:var(--ink-3); cursor:pointer; font-family:var(--font-sans); padding:0;">None</button>';
     html += '</div></div>';
 
-    html += '<button type="button" class="btn btn-primary" id="area_nominate_btn" onclick="submitAreaSelection()" style="height:40px; width:100%; margin-bottom:0.75rem;" disabled>Nominate 0 Summits</button>';
+    html += '<div class="nom-btn-row" style="margin-bottom:0.75rem;">';
+    html += '<button type="button" class="btn btn-primary nom-btn-main" id="area_nominate_btn" onclick="submitAreaSelection(false)" style="height:40px;" disabled>Nominate 0 Summits</button>';
+    html += '<button type="button" class="btn btn-primary nom-btn-more" id="area_nominate_more_btn" onclick="submitAreaSelection(true)" disabled>Nominate + Add more</button>';
+    html += '</div>';
 
     html += '<div id="area_list" style="max-height:400px; overflow-y:auto; border:1px solid var(--border); border-radius:var(--r-md); margin-bottom:0.875rem;">';
 
@@ -2058,15 +2138,17 @@ function updateAreaBtn() {
     const btn = document.getElementById('area_nominate_btn');
     if (!btn) return;
     btn.disabled = checked.length === 0;
+    const more = document.getElementById('area_nominate_more_btn');
+    if (more) more.disabled = checked.length === 0;
     btn.textContent = checked.length === 0
         ? 'Nominate 0 Summits'
         : 'Nominate ' + checked.length + ' Summit' + (checked.length !== 1 ? 's' : '');
 }
 
-function submitAreaSelection() {
+function submitAreaSelection(stay) {
     const checked = Array.from(document.querySelectorAll('.area-chk:checked')).map(function(cb) { return cb.dataset.ref; });
     if (checked.length === 0) return;
-    runBulkNominateFlow(checked);
+    runBulkNominateFlow(checked, !!stay);
 }
 </script>
 </body>

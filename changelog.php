@@ -278,11 +278,23 @@ session_start();
         </ul>
     </div>
 
-    <!-- October 2026 -->
+    <!-- November 2026 -->
     <div class="version-block current">
         <div class="version-header">
-            <span class="version-number">October 2026 update</span>
+            <span class="version-number">November 2026 update</span>
             <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Adding summits to your dashboard is faster when you have a list to work through.</p>
+        <ul>
+            <li>The About page now has a Data Sources and Credits section thanking the projects and communities behind the summit data, routes, maps and weather in SOTA Planner, with a Credits link in the footer of every page</li>
+            <li>The Nominate page has a new "Nominate + Add more" button, on both the Name / Reference and Search by Area tabs. It adds the summit and leaves you on the same page with the search cleared, so you can look up the next summit by name and add it, over and over, without going back to the dashboard each time</li>
+        </ul>
+    </div>
+
+    <!-- October 2026 -->
+    <div class="version-block">
+        <div class="version-header">
+            <span class="version-number">October 2026 update</span>
         </div>
         <p class="version-desc">Driving routes now appear on the summit map, and the offline PDF for Multi-Activate routes shows the same maps you see on the site.</p>
         <ul>
@@ -524,7 +536,7 @@ session_start();
 </div>
 
 <footer>
-    SOTA Planner &nbsp;·&nbsp; <a href="changelog.php">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com">sotaplanner.com</a>
+    SOTA Planner &nbsp;·&nbsp; <a href="changelog.php">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="about.php#credits">Credits</a> &nbsp;·&nbsp; <a href="https://sotaplanner.com">sotaplanner.com</a>
 </footer>
 
 </body>
