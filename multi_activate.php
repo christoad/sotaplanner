@@ -300,6 +300,7 @@ if (!empty($gmaps_coords)) {
 $drive_cache = &$_SESSION['multi_drive_cache'];
 $get_leg = function ($fromKey, $fromCoord, $toKey, $toCoord) use (&$drive_cache) {
     if ($fromCoord === null || $toCoord === null) return ['min' => null, 'mi' => null];
+    if ($fromCoord === $toCoord) return ['min' => 0, 'mi' => 0];   // same starting point: nothing to drive
     $k = $fromKey . '>' . $toKey;
     if (array_key_exists($k, $drive_cache) && is_array($drive_cache[$k])) return $drive_cache[$k];
     $distance_mi = null;
@@ -356,6 +357,10 @@ $return_leg_coords = ['from' => $prev_coord, 'to' => $end_coord];
 // and so hovering a leg on the map or the gantt can highlight its counterpart.
 $LEG_COLORS = ['#2B5CA0', '#7B4FA0', '#1B8A8A', '#C08A20', '#B03A6B', '#4A56C4', '#8A5A2E', '#5C7080', '#7A7A2E', '#D46A35', '#2E9FBF', '#A83E5C'];
 $leg_color_i = 0;
+// Each hike leg gets its own color (distinct from the drive colors) on the timeline, the map and the legend
+$HIKE_COLORS = ['#2B8A3E', '#C2255C', '#0C8599', '#7048E8', '#5C940D', '#A61E4D', '#1098AD', '#9C36B5', '#2F9E44', '#D6336C', '#3B5BDB', '#74B816'];
+$hike_color_i = 0;
+$map_hikes = [];
 $map_legs = [];
 $segments = [];
 $milestones = [['short' => 'Depart', 'full' => 'Depart', 'min' => 0]];
@@ -374,11 +379,15 @@ foreach ($stops as $i => $stop) {
         $milestones[] = ['short' => 'Arrive', 'full' => 'Arrive at ' . $stop['name'], 'min' => $elapsed];
     }
     if ($stop['up_min'] > 0) {
-        $segments[] = ['type' => 'hike', 'label' => ($stop['chained'] ? "Hike to #$n" : "Hike Up #$n"), 'minutes' => $stop['up_min'], 'stop' => $i];
+        $hk = ($stop['chained'] ? 'hike-direct-' : 'hike-up-') . $i;
+        $hcol = $HIKE_COLORS[$hike_color_i % count($HIKE_COLORS)]; $hike_color_i++;
+        $up_label = $stop['chained'] ? "Hike to #$n" : "Hike Up #$n";
+        $segments[] = ['type' => 'hike', 'label' => $up_label, 'minutes' => $stop['up_min'], 'stop' => $i, 'leg_key' => $hk, 'color' => $hcol];
+        $map_hikes[] = ['key' => $hk, 'color' => $hcol, 'label' => $up_label . ' ' . $stop['name'], 'kind' => $stop['chained'] ? 'direct' : 'up', 'stop' => $i];
         $elapsed += $stop['up_min'];
         $milestones[] = ['short' => 'On Summit', 'full' => 'On summit: ' . $stop['name'], 'min' => $elapsed];
     }
-    $segments[] = ['type' => 'radio', 'label' => "Radio #$n", 'minutes' => $stop['act_min'], 'stop' => $i];
+    $segments[] = ['type' => 'radio', 'label' => "Radio #$n", 'minutes' => $stop['act_min'], 'stop' => $i, 'color' => '#CC2200'];
     $elapsed += $stop['act_min'];
     if ($stop['down_min'] > 0) {
         if (!empty($stop['back_routed'])) {
@@ -388,7 +397,10 @@ foreach ($stops as $i => $stop) {
         } else {
             $down_label = "Hike Down #$n";
         }
-        $segments[] = ['type' => 'hike', 'label' => $down_label, 'minutes' => $stop['down_min'], 'stop' => $i];
+        $hk = 'hike-down-' . $i;
+        $hcol = $HIKE_COLORS[$hike_color_i % count($HIKE_COLORS)]; $hike_color_i++;
+        $segments[] = ['type' => 'hike', 'label' => $down_label, 'minutes' => $stop['down_min'], 'stop' => $i, 'leg_key' => $hk, 'color' => $hcol];
+        $map_hikes[] = ['key' => $hk, 'color' => $hcol, 'label' => $down_label . ' (' . $stop['name'] . ')', 'kind' => 'down', 'stop' => $i];
         $elapsed += $stop['down_min'];
     }
 }
@@ -445,7 +457,7 @@ function multi_clock_label($minutes_from_midnight) {
     return $label;
 }
 
-$SEG_COLORS = ['drive' => '#7A6858', 'hike' => '#6E8155', 'radio' => '#C07840'];
+$SEG_COLORS = ['drive' => '#7A6858', 'hike' => '#6E8155', 'radio' => '#CC2200'];
 
 // Aggregate stats snapshot, persisted on save so the dashboard can show a
 // summary row for the whole route without recomputing hike/drive times live.
@@ -522,9 +534,11 @@ foreach ($stops as $i => $stop) {
         'summit_lat' => $stop['summit_lat'], 'summit_lng' => $stop['summit_lng'],
         // A summit reached by a BRouter walk is not hiked on its own recorded track (unless the walk
         // down uses it), so drawing that track would show a route that is not part of the plan
-        'gpx_path' => (!empty($stop['chained']) && (($stop['alt']['method'] ?? '') === 'brouter') && empty($stop['exit_new'])) ? null : $stop['gpx_path'],
+        'gpx_path' => $stop['gpx_path'],
+        'chain_head' => $stop['chain_head'] ?? null, 'chain_end' => !empty($stop['chain_end']), 'exit_new' => !empty($stop['exit_new']), 'back_routed' => !empty($stop['back_routed']),
         'chained' => $stop['chained'],
         'route' => $stop['route'] ?? null,
+        'up_route' => (empty($stop['is_drive_up']) && empty($stop['gpx_path']) && !empty($stop['has_trailhead']) && (empty($stop['chained']) || !empty($stop['exit_new']))) ? multi_leg_up_route($stop) : null,
         'alt' => $stop['alt'] ? ['lat' => $stop['alt']['lat'], 'lng' => $stop['alt']['lng'], 'ret' => (($stop['alt']['mode'] ?? '') === 'return')] : null,
         'can_alt' => !$public_view && $i > 0 && !$stop['is_drive_up'] && $stops[$i - 1]['ref'] !== $stop['ref'],
         'prev_id' => $i > 0 ? $stops[$i - 1]['id'] : null,
@@ -690,8 +704,8 @@ a:hover { text-decoration: underline; }
 .tiles-row { display: flex; gap: 0; align-items: stretch; overflow-x: auto; padding: 4px 4px 0.4rem; }
 .stop-col { flex: 0 0 220px; display: flex; flex-direction: column; }
 .stop-col .tile { flex: none; width: 100%; }
-.flow-down { flex: 1; min-height: 28px; display: flex; align-items: center; justify-content: center; color: var(--ink-4); font-size: 1.1rem; }
-.after-box { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 0.7rem 0.75rem; }
+.flow-down { flex: none; height: 28px; display: flex; align-items: center; justify-content: center; color: var(--ink-4); font-size: 1.1rem; }
+.after-box { flex: 1; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 0.7rem 0.75rem; }
 .after-box.tile-next-err { border-color: var(--red); }
 .after-pick { font-size: 0.8rem; font-weight: 600; color: var(--ink); }
 .after-drive { font-size: 0.74rem; color: var(--ink-2); margin-top: 0.4rem; }
@@ -1290,7 +1304,8 @@ a:hover { text-decoration: underline; }
             <?php if (!empty($nx['leg_error'])): ?>
               <div class="tile-next-msg"><strong>No path.</strong> <?= htmlspecialchars($nx['leg_error']) ?> Planned as a return to the hike start point instead.</div>
             <?php endif; ?>
-            <?php if (!empty($leg_times[$i + 1])): ?><div class="after-drive">Then drive to #<?= $i + 2 ?>: <?= formatTime($leg_times[$i + 1]) ?></div>
+            <?php if (($leg_times[$i + 1] ?? null) === 0): ?><div class="after-drive">#<?= $i + 2 ?> starts at the same trailhead, no drive needed.</div>
+            <?php elseif (!empty($leg_times[$i + 1])): ?><div class="after-drive">Then drive to #<?= $i + 2 ?>: <?= formatTime($leg_times[$i + 1]) ?></div>
             <?php elseif (empty($nx['leg_error']) && $origin_geo): ?><div class="tile-next-msg">Drive time to #<?= $i + 2 ?> could not be calculated, so the totals leave it out. Check the starting points in Trail Research.</div><?php endif; ?>
           <?php elseif ($return_leg_time && $public_view): ?>
             <div class="after-drive">Then drive to the finish: <?= formatTime($return_leg_time) ?></div>
@@ -1375,10 +1390,11 @@ a:hover { text-decoration: underline; }
     </div>
     <div class="time-bar">
       <?php foreach ($segments as $seg):
-          $bg = ($seg['type'] === 'drive' && !empty($seg['color'])) ? $seg['color'] : $SEG_COLORS[$seg['type']];
+          $bg = !empty($seg['color']) ? $seg['color'] : $SEG_COLORS[$seg['type']];
           $data_attrs = '';
           if (!empty($seg['leg_key'])) $data_attrs .= ' data-leg-key="' . htmlspecialchars($seg['leg_key']) . '"';
           if ($seg['stop'] !== null) $data_attrs .= ' data-stop="' . (int)$seg['stop'] . '"';
+          if ($seg['type'] === 'radio') $data_attrs .= ' data-radio="1"';
       ?>
         <div class="time-bar-seg"<?= $data_attrs ?> style="flex:<?= max(1, $seg['minutes']) ?>; background:<?= $bg ?>;" title="<?= htmlspecialchars($seg['label']) ?>: <?= formatTime($seg['minutes']) ?>">
           <span class="time-bar-label"><?= htmlspecialchars($seg['label']) ?></span>
@@ -1441,7 +1457,9 @@ a:hover { text-decoration: underline; }
       <?php foreach ($MAP_LEGS as $leg): ?>
         <span class="legend-chip" data-leg-key="<?= htmlspecialchars($leg['key']) ?>" title="<?= htmlspecialchars($leg['label']) ?>"><span class="legend-swatch" style="background:<?= htmlspecialchars($leg['color']) ?>;"></span><?= htmlspecialchars($leg['label']) ?></span>
       <?php endforeach; ?>
-      <span><span class="legend-swatch" style="background:#2d7a4f;"></span>Trail (GPX)</span>
+      <?php foreach ($map_hikes as $h): ?>
+        <span class="legend-chip" data-leg-key="<?= htmlspecialchars($h['key']) ?>" title="<?= htmlspecialchars($h['label']) ?>"><span class="legend-swatch" style="background:<?= htmlspecialchars($h['color']) ?>;"></span><?= htmlspecialchars($h['label']) ?></span>
+      <?php endforeach; ?>
       <span><span class="legend-swatch legend-dashed" style="border-color:#CC2200;"></span>Activation zone</span>
       <?php if (!empty($other_summits)): ?>
         <span><span class="legend-swatch" style="background:none; border:2px solid var(--ink-4); border-radius:50%; width:10px; height:10px;"></span>Other dashboard summits</span>
@@ -1466,6 +1484,7 @@ a:hover { text-decoration: underline; }
 const MAP_STOPS = <?= json_encode($map_stops, JSON_UNESCAPED_UNICODE) ?>;
 const MAP_ORIGIN = <?= json_encode($map_origin, JSON_UNESCAPED_UNICODE) ?>;
 const MAP_LEGS = <?= json_encode($MAP_LEGS, JSON_UNESCAPED_UNICODE) ?>;
+const MAP_HIKES = <?= json_encode($map_hikes, JSON_UNESCAPED_UNICODE) ?>;
 const OTHER_SUMMITS = <?= json_encode($other_summits, JSON_UNESCAPED_UNICODE) ?>;
 const CURRENT_IDS = <?= json_encode($CURRENT_IDS) ?>;
 const URL_BASE = <?= json_encode($url_base) ?>;
@@ -1479,13 +1498,25 @@ let activeBase = 'street';
 // Cross-highlight state, populated as the map builds its layers
 let legLayers = {};      // legKey -> { layer: L.Polyline, color }
 let stopMarkerEls = {};  // 0-based stop index -> the marker's DOM element
+let azLayers = {};       // 0-based stop index -> L.Polygon (activation zone)
 let stopTrails = {};     // 0-based stop index -> L.Polyline (GPX trail), if any
 let hoverActive = false;
 
-function applyHighlight(legKeys, stopIndexes) {
+function applyHighlight(legKeys, stopIndexes, azStop) {
     hoverActive = true;
+    const az = (azStop === undefined || azStop === null) ? null : azStop;
+    if (az !== null) stopIndexes = [az];
+    Object.entries(azLayers).forEach(([idx, layer]) => {
+        if (az !== null && parseInt(idx, 10) === az) {
+            layer.setStyle({ weight: 5, opacity: 1, fillOpacity: 0.5, dashArray: null });
+            layer.bringToFront();
+        }
+    });
+    const hikeKeyMode = legKeys.some(k => k.indexOf('hike-') === 0);
     Object.entries(legLayers).forEach(([k, l]) => {
-        if (legKeys.includes(k)) {
+        // Hovering a stop lights up all of that stop's hike legs; hovering one hike leg lights up just that leg
+        const match = legKeys.includes(k) || (az === null && !hikeKeyMode && l.kind === 'hike' && l.stop != null && stopIndexes.includes(l.stop));
+        if (match) {
             l.layer.setStyle({ weight: 7, opacity: 1 });
             l.layer.bringToFront();
         } else {
@@ -1496,7 +1527,7 @@ function applyHighlight(legKeys, stopIndexes) {
         if (el) el.classList.toggle('marker-hl', stopIndexes.includes(parseInt(idx, 10)));
     });
     Object.entries(stopTrails).forEach(([idx, layer]) => {
-        if (stopIndexes.includes(parseInt(idx, 10))) {
+        if (az === null && stopIndexes.includes(parseInt(idx, 10))) {
             layer.setStyle({ weight: 6, opacity: 1 });
             layer.bringToFront();
         } else {
@@ -1506,7 +1537,10 @@ function applyHighlight(legKeys, stopIndexes) {
     document.querySelectorAll('.time-bar-seg').forEach(el => {
         const lk = el.getAttribute('data-leg-key');
         const st = el.getAttribute('data-stop');
-        const match = (lk && legKeys.includes(lk)) || (st !== null && stopIndexes.includes(parseInt(st, 10)));
+        const isRadio = el.hasAttribute('data-radio');
+        const match = az !== null
+            ? (isRadio && st !== null && parseInt(st, 10) === az)
+            : ((lk && legKeys.includes(lk)) || (st !== null && stopIndexes.includes(parseInt(st, 10))));
         el.classList.toggle('hl-active', match);
         el.classList.toggle('hl-dim', !match);
     });
@@ -1534,16 +1568,22 @@ function clearHighlight() {
     Object.values(legLayers).forEach(l => l.layer.setStyle({ color: l.color, weight: 4, opacity: 0.85 }));
     Object.values(stopMarkerEls).forEach(el => { if (el) el.classList.remove('marker-hl'); });
     Object.values(stopTrails).forEach(l => l.setStyle({ weight: 3, opacity: 0.85 }));
+    Object.values(azLayers).forEach(l => l.setStyle({ weight: 2, opacity: 1, fillOpacity: 0.15, dashArray: '5,4' }));
     document.querySelectorAll('.hl-active, .hl-dim').forEach(el => el.classList.remove('hl-active', 'hl-dim'));
 }
 
 function highlightLeg(legKey) {
+    // Hike legs highlight just themselves, on the map and in the timeline
+    if (legKey.indexOf('hike-') === 0) { applyHighlight([legKey], []); return; }
     // Drive-to-a-stop legs are keyed "stop-<i>", highlighting one of these
     // (from the map, the gantt drive block, or the legend) should also light up
     // that summit's whole trip block (drive there, hike up, radio, hike down),
     // not just the drive segment itself.
     const m = /^stop-(\d+)$/.exec(legKey);
     applyHighlight([legKey], m ? [parseInt(m[1], 10)] : []);
+}
+function highlightAz(stopIndex) {
+    applyHighlight([], [stopIndex], stopIndex);
 }
 function highlightStop(stopIndex) {
     const legKey = 'stop-' + stopIndex;
@@ -1729,8 +1769,157 @@ async function loadLegRoutes(map) {
         }).addTo(map).bindTooltip(leg.label);
         poly.on('mouseover', () => highlightLeg(leg.key));
         poly.on('mouseout', clearHighlight);
-        legLayers[leg.key] = { layer: poly, color: leg.color };
+        legLayers[leg.key] = { layer: poly, color: leg.color, base: thinPath(coords, 600), kind: 'drive', stop: null };
     });
+}
+
+// ── Hike legs: one color per leg, drawn from the same paths the timeline times, with lines that follow
+// the same ground drawn side by side so none of them hides another ──
+function hikeOwnPath(st) {
+    if (st.gpx_path && st.gpx_path.length > 1) return st.gpx_path;
+    if (st.up_route && st.up_route.length > 1) return st.up_route;
+    return null;
+}
+function hikePathFor(h) {
+    const s = MAP_STOPS[h.stop];
+    if (!s) return null;
+    if (h.kind === 'direct') {
+        const prev = MAP_STOPS[h.stop - 1];
+        if (s.route && s.route.length > 1 && prev) return [[prev.summit_lat, prev.summit_lng]].concat(s.route);
+        if (s.alt && !s.alt.ret) return [[s.alt.lat, s.alt.lng], [s.summit_lat, s.summit_lng]];
+        return null;
+    }
+    if (h.kind === 'up') return hikeOwnPath(s);
+    // Walking down after the radio
+    if (s.exit_new) return hikeOwnPath(s);
+    if (s.back_routed && s.chain_head !== null) {
+        // Back the way we came: each leg in reverse, then the first summit's own way down
+        let path = [];
+        for (let m = h.stop; m > s.chain_head; m--) {
+            const st = MAP_STOPS[m], pv = MAP_STOPS[m - 1];
+            if (st.route && st.route.length > 1 && pv) path = path.concat([[pv.summit_lat, pv.summit_lng]].concat(st.route).reverse());
+        }
+        const head = hikeOwnPath(MAP_STOPS[s.chain_head]);
+        if (head) path = path.concat(head.slice().reverse());
+        return path.length > 1 ? path : null;
+    }
+    return hikeOwnPath(s);
+}
+function thinPath(path, max) {
+    if (path.length <= max) return path;
+    const step = path.length / max, out = [];
+    for (let i = 0; i < max; i++) out.push(path[Math.floor(i * step)]);
+    out.push(path[path.length - 1]);
+    return out;
+}
+function drawHikes(map, bounds) {
+    MAP_HIKES.forEach(function(h) {
+        const raw = hikePathFor(h);
+        if (!raw) return;
+        const base = thinPath(raw, 500);
+        const dotted = (h.kind === 'direct');
+        const poly = L.polyline(base, { color: h.color, weight: 4, opacity: 0.9, lineCap: 'round', lineJoin: 'round', dashArray: dotted ? '1 8' : null })
+            .addTo(map).bindTooltip(h.label);
+        poly.on('mouseover', () => highlightLeg(h.key));
+        poly.on('mouseout', clearHighlight);
+        legLayers[h.key] = { layer: poly, color: h.color, base: base, kind: 'hike', stop: h.stop };
+        base.forEach(function(p) { bounds.push(p); });
+    });
+}
+
+// Which paths run along the same ground? Wherever two or more run together (even for only part of
+// their length, and even in opposite directions), each gets its own lane, lines touching side by side.
+const LANE_PX = 4.5, LANE_NEAR_M = 30, LANE_CELL_M = 40;
+function toMeters(p) { return [p[1] * Math.cos(p[0] * Math.PI / 180) * 111320, p[0] * 110540]; }
+function nearestDense(grid, x, y) {
+    const cx = Math.floor(x / LANE_CELL_M), cy = Math.floor(y / LANE_CELL_M);
+    let best = null, bd = LANE_NEAR_M * LANE_NEAR_M;
+    for (let gx = cx - 1; gx <= cx + 1; gx++) {
+        for (let gy = cy - 1; gy <= cy + 1; gy++) {
+            const arr = grid.get(gx + ',' + gy);
+            if (!arr) continue;
+            for (const d of arr) {
+                const dd = (d[0] - x) * (d[0] - x) + (d[1] - y) * (d[1] - y);
+                if (dd < bd) { bd = dd; best = d; }
+            }
+        }
+    }
+    return best;
+}
+function localDir(m, i) {
+    const a = m[Math.max(0, i - 1)], b = m[Math.min(m.length - 1, i + 1)];
+    const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy) || 1;
+    return [dx / len, dy / len];
+}
+function offsetLatLngs(base, lanes, sign) {
+    const z = mapInstance.getZoom();
+    const P = base.map(ll => mapInstance.project(L.latLng(ll[0], ll[1]), z));
+    return P.map(function(p, i) {
+        const a = P[Math.max(0, i - 1)], b = P[Math.min(P.length - 1, i + 1)];
+        let dx = b.x - a.x, dy = b.y - a.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const px = lanes[i] * LANE_PX * sign;
+        return mapInstance.unproject(L.point(p.x - dy / len * px, p.y + dx / len * px), z);
+    });
+}
+function applyOffsets() {
+    Object.values(legLayers).forEach(function(l) {
+        if (l.lanes && l.base) l.layer.setLatLngs(offsetLatLngs(l.base, l.lanes, l.sign));
+    });
+}
+function arrangeOffsets() {
+    const keys = Array.from(document.querySelectorAll('.time-bar-seg[data-leg-key]')).map(el => el.getAttribute('data-leg-key'))
+        .filter(k => legLayers[k] && legLayers[k].base && legLayers[k].base.length > 1);
+    const info = keys.map(function(k) {
+        const m = legLayers[k].base.map(toMeters);
+        const dense = [];
+        for (let i = 0; i < m.length - 1; i++) {
+            const a = m[i], b = m[i + 1];
+            const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy);
+            if (!len) continue;
+            const n = Math.max(1, Math.ceil(len / 20));
+            for (let s = 0; s < n; s++) dense.push([a[0] + dx * s / n, a[1] + dy * s / n, dx / len, dy / len]);
+        }
+        const grid = new Map();
+        dense.forEach(function(d) {
+            const id = Math.floor(d[0] / LANE_CELL_M) + ',' + Math.floor(d[1] / LANE_CELL_M);
+            if (!grid.has(id)) grid.set(id, []);
+            grid.get(id).push(d);
+        });
+        return { key: k, m: m, grid: grid, sign: 1 };
+    });
+    // A path running the opposite way along the same road needs its side flipped, or it lands on its partner
+    info.forEach(function(me, j) {
+        let vote = 0;
+        me.m.forEach(function(p, i) {
+            const d = localDir(me.m, i);
+            for (let k = 0; k < j; k++) {
+                const nb = nearestDense(info[k].grid, p[0], p[1]);
+                if (nb) vote += (d[0] * nb[2] + d[1] * nb[3]) * info[k].sign;
+            }
+        });
+        me.sign = vote < 0 ? -1 : 1;
+    });
+    info.forEach(function(me, j) {
+        const lanes = me.m.map(function(p) {
+            let n = 1, rank = 0;
+            for (let k = 0; k < info.length; k++) {
+                if (k === j) continue;
+                if (nearestDense(info[k].grid, p[0], p[1])) { n++; if (k < j) rank++; }
+            }
+            return rank - (n - 1) / 2;
+        });
+        // Ease the lane changes so a line slides over rather than jumping
+        const sm = lanes.map(function(_, i) {
+            let sum = 0, c = 0;
+            for (let t = Math.max(0, i - 4); t <= Math.min(lanes.length - 1, i + 4); t++) { sum += lanes[t]; c++; }
+            return sum / c;
+        });
+        if (sm.some(v => Math.abs(v) > 0.01)) { legLayers[me.key].lanes = sm; legLayers[me.key].sign = me.sign; }
+    });
+    applyOffsets();
+    mapInstance.off('zoomend', applyOffsets);
+    mapInstance.on('zoomend', applyOffsets);
 }
 
 async function initMap() {
@@ -1776,8 +1965,7 @@ async function initMap() {
             iconAnchor: multi ? [17, 13] : [13, 13]
         });
         const tooltip = (multi ? 'Visited as #' + orders.join(' and #') : '#' + first.order) + ' ' + first.name + ' (' + first.ref + ')';
-        // A stop reached on foot from the previous summit has no trailhead visit, so mark the summit itself
-        const markerPos = first.chained ? [first.summit_lat, first.summit_lng] : [first.lat, first.lng];
+        const markerPos = [first.summit_lat, first.summit_lng];
         const marker = L.marker(markerPos, { icon: icon }).addTo(map).bindTooltip(tooltip);
         const el = marker.getElement();
         const iconEl = el ? el.querySelector('div') : null;
@@ -1787,29 +1975,13 @@ async function initMap() {
     });
 
     MAP_STOPS.forEach(function(s) {
-        bounds.push(s.chained ? [s.summit_lat, s.summit_lng] : [s.lat, s.lng]);
+        bounds.push([s.summit_lat, s.summit_lng]);
 
-        // Custom hike start: a green flag, with a dashed line to the summit it leads to
-        if (s.route && s.route.length > 1) {
-            // Hike direct: the walkable route BRouter found from the previous summit
-            L.polyline(s.route, { color: '#2D8653', weight: 4, dashArray: '8 6', opacity: 0.95, lineJoin: 'round' }).addTo(map)
-                .bindTooltip('Hike direct from #' + (s.order - 1) + ' to #' + s.order + ' ' + s.name);
-            s.route.forEach(function(p) { bounds.push(p); });
-        } else if (s.alt && !s.alt.ret) {
-            const flag = L.divIcon({ className: '', html: '<div class="lmap-flag">' + s.order + '</div>', iconSize: [22, 22], iconAnchor: [11, 11] });
-            L.marker([s.alt.lat, s.alt.lng], { icon: flag }).addTo(map)
-                .bindTooltip('Hike to #' + s.order + ' ' + s.name + ' starts here');
-            L.polyline([[s.alt.lat, s.alt.lng], [s.summit_lat, s.summit_lng]], { color: '#2D8653', weight: 3, dashArray: '2 7', opacity: 0.9 }).addTo(map);
-            bounds.push([s.alt.lat, s.alt.lng]);
-        }
-
-        // GPX track for this stop, if one exists
-        if (s.gpx_path && s.gpx_path.length > 1) {
-            const trail = L.polyline(s.gpx_path, { color: '#2d7a4f', weight: 3, opacity: 0.85, lineJoin: 'round', lineCap: 'round' })
-                .addTo(map).bindTooltip('Trail: ' + s.name);
-            stopTrails[s.order - 1] = trail;
-            trail.on('mouseover', () => highlightStop(s.order - 1));
-            trail.on('mouseout', clearHighlight);
+        // Small dot where the hike starts (or, after a walk-through, where the ride waits): the numbered
+        // markers are always the summits themselves
+        if (s.lat && s.lng && (!s.chained || s.exit_new) && map.distance([s.lat, s.lng], [s.summit_lat, s.summit_lng]) > 60) {
+            L.circleMarker([s.lat, s.lng], { radius: 5, color: '#1C1B19', weight: 2, fillColor: '#fff', fillOpacity: 1 }).addTo(map)
+                .bindTooltip((s.chained ? 'Ride or car pickup, after #' : 'Hike start for #') + s.order + ' ' + s.name);
         }
 
         // Activation zone for this stop
@@ -1817,12 +1989,17 @@ async function initMap() {
             .then(r => r.json())
             .then(data => {
                 if (data.polygon) {
-                    L.polygon(normalizeAzCoords(data.polygon), { color: '#CC2200', fillColor: '#CC2200', fillOpacity: 0.15, weight: 2, dashArray: '5,4' })
+                    const azPoly = L.polygon(normalizeAzCoords(data.polygon), { color: '#CC2200', fillColor: '#CC2200', fillOpacity: 0.15, weight: 2, dashArray: '5,4' })
                         .addTo(map).bindTooltip('Activation Zone: ' + s.name);
+                    azLayers[s.order - 1] = azPoly;
+                    azPoly.on('mouseover', () => highlightAz(s.order - 1));
+                    azPoly.on('mouseout', clearHighlight);
                 }
             })
             .catch(() => {});
     });
+
+    drawHikes(map, bounds);
 
     // Click anywhere on the map to get that spot's GPS coordinates with a Copy button
     map.on('click', function(e) {
@@ -1848,6 +2025,7 @@ async function initMap() {
     // Real driving routes, one color-coded polyline per leg, falls back to a
     // dashed straight line per leg if OSRM is unavailable for that leg.
     await loadLegRoutes(map);
+    try { arrangeOffsets(); } catch (e) { /* the lines just stay where they are */ }
 
     const overlay = document.getElementById('map-loading-overlay');
     if (overlay) {
@@ -1860,7 +2038,8 @@ async function initMap() {
         const legKey = el.getAttribute('data-leg-key');
         const stop = el.getAttribute('data-stop');
         el.addEventListener('mouseenter', () => {
-            if (legKey) highlightLeg(legKey);
+            if (el.hasAttribute('data-radio') && stop !== null) highlightAz(parseInt(stop, 10));
+            else if (legKey) highlightLeg(legKey);
             else if (stop !== null) highlightStop(parseInt(stop, 10));
         });
         el.addEventListener('mouseleave', clearHighlight);

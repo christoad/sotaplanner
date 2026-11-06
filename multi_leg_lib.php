@@ -243,6 +243,22 @@ function multi_leg_apply_brouter(array &$stops, array $want_hike, $pace, array $
     unset($s);
 }
 
+/**
+ * Estimated trail from a stop's starting point up to its summit, for the map, used only when the stop has no
+ * recorded GPX track. Cached like every other BRouter route. Returns [[lat, lon], ...] or null.
+ */
+function multi_leg_up_route(array $stop) {
+    if (($stop['lat'] ?? null) === null || ($stop['lng'] ?? null) === null) return null;
+    $r = brouter_route_cached((float)$stop['lat'], (float)$stop['lng'], $stop['summit_lat'], $stop['summit_lng']);
+    if (!$r['ok'] || empty($r['coords'])) return null;
+    $co = $r['coords'];
+    $last = $co[count($co) - 1];
+    if (bp_dist($last[0], $last[1], $stop['summit_lat'], $stop['summit_lng']) > 600) return null;   // never reaches the summit
+    $straight = bp_dist((float)$stop['lat'], (float)$stop['lng'], $stop['summit_lat'], $stop['summit_lng']);
+    if ($straight > 0 && $r['distance_m'] > $straight * 2.5 && $r['distance_m'] - $straight > 1200) return null;
+    return array_map(fn($c) => [round($c[0], 5), round($c[1], 5)], bp_thin($co, 250));
+}
+
 /** BRouter error text turned into something a hiker can read. */
 function multi_leg_friendly_error($msg) {
     $m = strtolower((string)$msg);
