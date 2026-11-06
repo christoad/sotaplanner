@@ -286,6 +286,11 @@ session_start();
         </div>
         <p class="version-desc">Adding summits to your dashboard is faster when you have a list to work through.</p>
         <ul>
+            <li>Multi-Activate shows an elevation profile under the route map, and in the PDF, for every hike in the day, with each leg in its own color and estimated stretches dashed</li>
+            <li>Multi-Activate hikes between summits now follow recorded GPX tracks wherever the walk meets one, using estimated map trails only for the gaps, and the map draws the recorded stretches as solid lines</li>
+            <li>"Back the way we came" is now called "Track back" in Multi-Activate</li>
+            <li>Multi-Activate "Show All Summits" now shows every SOTA summit in the part of the map you are looking at, not only your dashboard, and "+ Add to Route" adds a new summit to your dashboard and the route in one click</li>
+            <li>The Multi-Activate "Zoom to Summits" button now toggles: press again to zoom back out to the whole route</li>
             <li>The About page now has a Data Sources and Credits section thanking the projects and communities behind the summit data, routes, maps and weather in SOTA Planner, with a Credits link in the footer of every page</li>
             <li>The Nominate page has a new "Nominate + Add more" button, on both the Name / Reference and Search by Area tabs. It adds the summit and leaves you on the same page with the search cleared, so you can look up the next summit by name and add it, over and over, without going back to the dashboard each time</li>
         </ul>
