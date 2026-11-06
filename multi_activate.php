@@ -301,6 +301,13 @@ $drive_cache = &$_SESSION['multi_drive_cache'];
 $get_leg = function ($fromKey, $fromCoord, $toKey, $toCoord) use (&$drive_cache) {
     if ($fromCoord === null || $toCoord === null) return ['min' => null, 'mi' => null];
     if ($fromCoord === $toCoord) return ['min' => 0, 'mi' => 0];   // same starting point: nothing to drive
+    // Starting points within ~0.25 mi of each other (e.g. one parking lot with a trail on each side
+    // of a highway) count as the same parking spot: the car stays put, so no drive is needed.
+    $fp = explode(',', $fromCoord); $tp = explode(',', $toCoord);
+    if (count($fp) === 2 && count($tp) === 2
+        && haversine_distance((float)$fp[0], (float)$fp[1], (float)$tp[0], (float)$tp[1]) <= 402) {
+        return ['min' => 0, 'mi' => 0];
+    }
     $k = $fromKey . '>' . $toKey;
     if (array_key_exists($k, $drive_cache) && is_array($drive_cache[$k])) return $drive_cache[$k];
     $distance_mi = null;
@@ -355,10 +362,10 @@ $return_leg_coords = ['from' => $prev_coord, 'to' => $end_coord];
 // Each drive leg gets its own color (cycled from this palette) so the map can
 // draw outbound and return trips over the same road in visibly different colors,
 // and so hovering a leg on the map or the gantt can highlight its counterpart.
-$LEG_COLORS = ['#2B5CA0', '#7B4FA0', '#1B8A8A', '#C08A20', '#B03A6B', '#4A56C4', '#8A5A2E', '#5C7080', '#7A7A2E', '#D46A35', '#2E9FBF', '#A83E5C'];
+$LEG_COLORS = ['#56677A', '#6F7F91', '#3F4D5C', '#7A8A9B', '#4B5A6B', '#65768A', '#38465A', '#71828F', '#5A6B7E', '#7C8B99', '#46576A', '#667683'];
 $leg_color_i = 0;
 // Each hike leg gets its own color (distinct from the drive colors) on the timeline, the map and the legend
-$HIKE_COLORS = ['#2B8A3E', '#C2255C', '#0C8599', '#7048E8', '#5C940D', '#A61E4D', '#1098AD', '#9C36B5', '#2F9E44', '#D6336C', '#3B5BDB', '#74B816'];
+$HIKE_COLORS = ['#6E8155', '#4F8085', '#9A7B3F', '#7A5E8A', '#8F5B50', '#3F6B52', '#7C7A3A', '#8A5F72', '#5C7F96', '#A0805A', '#4F7A66', '#85704F'];
 $hike_color_i = 0;
 $map_hikes = [];
 $map_legs = [];
@@ -370,7 +377,7 @@ foreach ($stops as $i => $stop) {
     if ($leg_times[$i]) {
         $leg_key = 'stop-' . $i;
         $color = $LEG_COLORS[$leg_color_i % count($LEG_COLORS)]; $leg_color_i++;
-        $segments[] = ['type' => 'drive', 'label' => "Drive to #$n", 'minutes' => $leg_times[$i], 'stop' => $i, 'leg_key' => $leg_key, 'color' => $color];
+        $segments[] = ['type' => 'drive', 'label' => "Travel to #$n", 'minutes' => $leg_times[$i], 'stop' => $i, 'leg_key' => $leg_key, 'color' => $color];
         $elapsed += $leg_times[$i];
         $from_label = $leg_from_name[$i];
         $map_legs[] = ['key' => $leg_key, 'color' => $color, 'from' => $leg_coords[$i]['from'], 'to' => $leg_coords[$i]['to'], 'label' => $from_label . ' → ' . $stop['name']];
@@ -383,11 +390,18 @@ foreach ($stops as $i => $stop) {
         $hcol = $HIKE_COLORS[$hike_color_i % count($HIKE_COLORS)]; $hike_color_i++;
         $up_label = $stop['chained'] ? "Hike to #$n" : "Hike Up #$n";
         $segments[] = ['type' => 'hike', 'label' => $up_label, 'minutes' => $stop['up_min'], 'stop' => $i, 'leg_key' => $hk, 'color' => $hcol];
-        $map_hikes[] = ['key' => $hk, 'color' => $hcol, 'label' => $up_label . ' ' . $stop['name'], 'kind' => $stop['chained'] ? 'direct' : 'up', 'stop' => $i];
+        $up_note = '';
+        if ($stop['chained']) {
+            $up_note = (($stop['alt']['method'] ?? '') === 'tracks')
+                ? 'dotted: joined from recorded GPX tracks'
+                : 'dotted: estimated from OpenStreetMap trails (BRouter)';
+        }
+        $map_hikes[] = ['key' => $hk, 'color' => $hcol, 'label' => $up_label . ' ' . $stop['name'], 'kind' => $stop['chained'] ? 'direct' : 'up', 'stop' => $i,
+                        'dotted' => (bool)$stop['chained'], 'note' => $up_note];
         $elapsed += $stop['up_min'];
         $milestones[] = ['short' => 'On Summit', 'full' => 'On summit: ' . $stop['name'], 'min' => $elapsed];
     }
-    $segments[] = ['type' => 'radio', 'label' => "Radio #$n", 'minutes' => $stop['act_min'], 'stop' => $i, 'color' => '#CC2200'];
+    $segments[] = ['type' => 'radio', 'label' => "Radio #$n", 'minutes' => $stop['act_min'], 'stop' => $i, 'color' => '#DE6E5A'];
     $elapsed += $stop['act_min'];
     if ($stop['down_min'] > 0) {
         if (!empty($stop['back_routed'])) {
@@ -400,14 +414,17 @@ foreach ($stops as $i => $stop) {
         $hk = 'hike-down-' . $i;
         $hcol = $HIKE_COLORS[$hike_color_i % count($HIKE_COLORS)]; $hike_color_i++;
         $segments[] = ['type' => 'hike', 'label' => $down_label, 'minutes' => $stop['down_min'], 'stop' => $i, 'leg_key' => $hk, 'color' => $hcol];
-        $map_hikes[] = ['key' => $hk, 'color' => $hcol, 'label' => $down_label . ' (' . $stop['name'] . ')', 'kind' => 'down', 'stop' => $i];
+        $down_dotted = !empty($stop['back_routed']);
+        $down_note = $down_dotted ? 'dotted: retraces the estimated path here, then the recorded track of #' . ($stop['chain_head'] + 1) . ' down to the start' : '';
+        $map_hikes[] = ['key' => $hk, 'color' => $hcol, 'label' => $down_label . ' (' . $stop['name'] . ')', 'kind' => 'down', 'stop' => $i,
+                        'dotted' => $down_dotted, 'note' => $down_note];
         $elapsed += $stop['down_min'];
     }
 }
 if ($return_leg_time) {
     $leg_key = 'return';
     $color = $LEG_COLORS[$leg_color_i % count($LEG_COLORS)]; $leg_color_i++;
-    $segments[] = ['type' => 'drive', 'label' => $end_other ? 'Drive to finish' : 'Drive home', 'minutes' => $return_leg_time, 'stop' => null, 'leg_key' => $leg_key, 'color' => $color];
+    $segments[] = ['type' => 'drive', 'label' => $end_other ? 'Travel to finish' : 'Travel home', 'minutes' => $return_leg_time, 'stop' => null, 'leg_key' => $leg_key, 'color' => $color];
     $elapsed += $return_leg_time;
     $map_legs[] = ['key' => $leg_key, 'color' => $color, 'from' => $return_leg_coords['from'], 'to' => $return_leg_coords['to'], 'label' => $prev_name . ' → ' . $end_label];
 }
@@ -457,7 +474,7 @@ function multi_clock_label($minutes_from_midnight) {
     return $label;
 }
 
-$SEG_COLORS = ['drive' => '#7A6858', 'hike' => '#6E8155', 'radio' => '#CC2200'];
+$SEG_COLORS = ['drive' => '#7A6858', 'hike' => '#6E8155', 'radio' => '#DE6E5A'];
 
 // Aggregate stats snapshot, persisted on save so the dashboard can show a
 // summary row for the whole route without recomputing hike/drive times live.
@@ -889,6 +906,7 @@ a:hover { text-decoration: underline; }
 .map-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .legend-swatch { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
 .legend-swatch.legend-dashed { height: 0; border-top: 2px dashed; width: 14px; background: none; }
+.legend-swatch.legend-dotted { height: 0; border-top: 3px dotted var(--ink-3); width: 14px; background: none; }
 .legend-chip { cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: background 0.12s, color 0.12s; }
 .legend-chip:hover, .legend-chip.hl-active { background: var(--bg-2); color: var(--ink); font-weight: 600; }
 
@@ -1077,22 +1095,22 @@ a:hover { text-decoration: underline; }
         <?= count($stops) ?> summits · <?= $total_min ? formatTime($total_min) : '—' ?> total<?= $public_view ? "" : ", door-to-door" ?>
         <?php if ($public_view): ?>
           <?php if (!empty($multi_row['created_by'])): ?> · Shared by <?= htmlspecialchars($multi_row['created_by']) ?><?php endif; ?>
-          · <span style="color:var(--ink-3)">Drive times shown between summits only. Save it to your own dashboard for times from your starting point.</span>
+          · <span style="color:var(--ink-3)">Travel times shown between summits only. Save it to your own dashboard for times from your starting point.</span>
         <?php elseif (!$selected_address): ?> · <span style="color:var(--orange)">No starting address selected. Add one for travel times</span><?php endif; ?>
       </div>
     </div>
     <div class="page-header-right">
       <?php if ($public_view): ?>
       <?php if ($gmaps_url): ?>
-        <a href="<?= htmlspecialchars($gmaps_url) ?>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" title="Open a driving route through every stop in Google Maps">Directions ↗</a>
+        <a href="<?= htmlspecialchars($gmaps_url) ?>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" title="Open a route through every stop in Google Maps">Directions ↗</a>
       <?php endif; ?>
       <?php else: ?>
       <button type="button" class="btn btn-secondary btn-sm share-tip-host" onclick="copyShareLink(this)" title="Copy the public page link for this route, anyone can open it without logging in"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg><span>Share</span><span class="copied-tip">Link copied!</span></button>
       <a href="<?= htmlspecialchars('multi_activate.php?' . http_build_query(array_merge($url_base, ['ids' => implode(',', $summit_ids), 'ordered' => 1, 'recalc' => 1]))) ?>" class="btn btn-ghost btn-sm">Recalculate Travel Times</a>
       <?php if ($gmaps_url): ?>
-        <a href="<?= htmlspecialchars($gmaps_url) ?>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" title="Open a round-trip driving route through every stop in Google Maps">Directions ↗</a>
+        <a href="<?= htmlspecialchars($gmaps_url) ?>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" title="Open a round-trip route through every stop in Google Maps">Directions ↗</a>
       <?php endif; ?>
-      <a href="#" id="download-pdf-link" class="btn btn-ghost btn-sm" onclick="return downloadMultiPdf(this)" title="Download a printable PDF with the summit list, driving directions, and offline reference maps">Download PDF</a>
+      <a href="#" id="download-pdf-link" class="btn btn-ghost btn-sm" onclick="return downloadMultiPdf(this)" title="Download a printable PDF with the summit list, directions, and offline reference maps">Download PDF</a>
       <form method="GET" action="multi_activate.php" class="save-inline">
         <input type="hidden" name="id" value="<?= $multi_id ?>">
         <input type="hidden" name="ids" value="<?= htmlspecialchars(implode(',', $summit_ids)) ?>">
@@ -1141,7 +1159,7 @@ a:hover { text-decoration: underline; }
       <?php endif; ?>
     </div>
     <div class="stat-cell">
-      <div class="stat-cell-label">Drive Distance</div>
+      <div class="stat-cell-label">Travel Distance</div>
       <?php if ($total_drive_dist_mi_sum): ?>
         <div class="stat-cell-val"><?= number_format(convertDistance($total_drive_dist_mi_sum, $user_units), 2) ?> <span style="font-size:0.7rem; font-weight:500; color:var(--ink-3);"><?= getDistanceUnit($user_units) ?></span></div>
         <div class="stat-cell-sub"><?= $public_view ? 'between summits' : ($end_other ? 'start to finish' : 'round trip') ?></div>
@@ -1209,12 +1227,12 @@ a:hover { text-decoration: underline; }
           $sel = $nx_hike ? 'hike' : ($is_new ? 'new' : 'back');
           // Wording follows the flow: a drive-up summit has no hike to come back from, so the choice is
           // simply what happens next
-          if (!empty($stop['is_drive_up'])) $back_label = $has_next ? 'Drive on to #' . ($i + 2) : ($end_other ? 'Drive to finish' : 'Drive home');
+          if (!empty($stop['is_drive_up'])) $back_label = $has_next ? 'Travel on to #' . ($i + 2) : ($end_other ? 'Travel to finish' : 'Travel home');
           else $back_label = $on_foot ? 'Back the way we came' : 'Return to hike start point';
           $can_alt = !$public_view && $has_next && !$nx['is_drive_up'] && $nx['ref'] !== $stop['ref'];
           $me_cs = getCurrentCallsign();
       ?>
-      <?php if ($i > 0): ?><div class="conn<?= $on_foot ? ' conn-foot' : '' ?>" title="<?= $on_foot ? 'Hiked on foot from the previous summit' : 'Drive to the next starting point' ?>"><i class="c-h1"></i><i class="c-v"></i><i class="c-h2"></i><i class="c-head"></i></div><?php endif; ?>
+      <?php if ($i > 0): ?><div class="conn<?= $on_foot ? ' conn-foot' : '' ?>" title="<?= $on_foot ? 'Hiked on foot from the previous summit' : 'Travel to the next starting point' ?>"><i class="c-h1"></i><i class="c-v"></i><i class="c-h2"></i><i class="c-head"></i></div><?php endif; ?>
       <div class="stop-col">
       <?php if ($public_view): ?>
       <div class="tile" data-pos="<?= $i ?>">
@@ -1231,7 +1249,7 @@ a:hover { text-decoration: underline; }
           <div class="tile-order"<?= $public_view ? '' : ' title="Drag to reorder" style="cursor:grab"' ?>><?= $i + 1 ?></div>
           <div style="display:flex; align-items:center; gap:6px;">
             <?php if (!$public_view && !$stop['is_drive_up'] && !$stop['has_trailhead']): ?>
-              <a href="trail_research.php?id=<?= $stop['id'] ?>&group=<?= $current_group['id'] ?>" class="tile-warn" title="No starting point saved for <?= htmlspecialchars(addslashes($stop['name'])) ?>. Driving directions fall back to the summit's peak location. Add a starting point in Trail Research.">!</a>
+              <a href="trail_research.php?id=<?= $stop['id'] ?>&group=<?= $current_group['id'] ?>" class="tile-warn" title="No starting point saved for <?= htmlspecialchars(addslashes($stop['name'])) ?>. Directions fall back to the summit's peak location. Add a starting point in Trail Research.">!</a>
             <?php endif; ?>
             <?php if (!$public_view): ?><div class="tile-drag-handle" title="Drag to reorder" onmousedown="this.closest('.tile').draggable = true">⠿</div><?php endif; ?>
           </div>
@@ -1240,8 +1258,8 @@ a:hover { text-decoration: underline; }
         <div class="tile-ref"><?= htmlspecialchars($stop['ref']) ?></div>
         <div class="tile-stats">
           <div><span class="lbl">Points:</span> <?= $stop['points'] ?><?php if ($stop['difficulty']): ?> · <span class="badge badge-<?= htmlspecialchars($stop['difficulty']) ?>"><?= ucwords(str_replace('-', ' ', $stop['difficulty'])) ?></span><?php endif; ?></div>
-          <div><span class="lbl">Drive here:</span> <?= $on_foot ? '-' : ($leg_times[$i] ? formatTime($leg_times[$i]) : '—') ?></div>
-          <div><span class="lbl">Hike:</span> <?= $alt_ret ? 'On the way down' : ($stop['up_min'] ? formatTime($stop['up_min']) : ($stop['is_drive_up'] ? 'Drive up' : '—')) ?><?= (($stop['alt']['method'] ?? '') === 'estimate') ? ' <span title="No trail track passes through this start point, so this is a straight-line estimate." style="color:var(--orange); font-weight:600;">(est.)</span>' : '' ?><?= (($stop['alt']['method'] ?? '') === 'brouter') ? ' <span title="Timed from a walkable route found on OpenStreetMap trails by BRouter. Climb figures from map data can run low, so treat it as an estimate." style="color:var(--orange); font-weight:600;">(est.)</span>' : '' ?></div>
+          <div><span class="lbl">Travel here:</span> <?= $on_foot ? '-' : ($leg_times[$i] ? formatTime($leg_times[$i]) : '—') ?></div>
+          <div><span class="lbl">Hike:</span> <?= $alt_ret ? 'On the way down' : ($stop['up_min'] ? formatTime($stop['up_min']) : ($stop['is_drive_up'] ? 'Drive up' : '—')) ?><?= (($stop['alt']['method'] ?? '') === 'estimate') ? ' <span title="No trail track passes through this start point, so this is a straight-line estimate." style="color:var(--orange); font-weight:600;">(est.)</span>' : '' ?><?= (($stop['alt']['method'] ?? '') === 'brouter') ? ' <span title="Timed from a walkable route found on OpenStreetMap trails by BRouter. Climb figures from map data can run low, so treat it as an estimate." style="color:var(--orange); font-weight:600;">(est.)</span>' : '' ?><?= (($stop['alt']['method'] ?? '') === 'tracks') ? ' <span title="No complete trail was found on the map, so this follows recorded GPX tracks from this route that join up. Timed from that path, so treat it as an estimate." style="color:var(--orange); font-weight:600;">(from tracks)</span>' : '' ?></div>
           <div class="act-stat" id="act-<?= $i ?>"><span class="lbl">On the air:</span> <span class="act-val"><?= (int)$stop['act_min'] ?> min<?= $stop['act_custom'] ? ' <span class="act-custom" title="Set for this summit; the rest use the route default">custom</span>' : '' ?></span><?php if (!$public_view): ?> <button type="button" class="act-edit" title="Change the time on the air at this summit" aria-label="Edit time on the air" onclick="editActTime(<?= $i ?>)"><?= $EDIT_SVG ?></button><?php endif; ?></div>
           <div><span class="lbl">Status:</span> <span class="badge badge-<?= htmlspecialchars($stop['status']) ?>"><?= ucfirst($stop['status']) ?></span></div>
         </div>
@@ -1287,6 +1305,8 @@ a:hover { text-decoration: underline; }
         <?php if ($sel === 'hike'): ?>
           <?php if ($nx_method === 'brouter'): ?>
             <div class="tile-next-msg ok">Hike <?= formatTime($nx['up_min']) ?> to #<?= $i + 2 ?>: <?= number_format($nx['leg_dist_mi'], 1) ?> mi, <?= number_format($nx['leg_gain_ft']) ?> ft climb, from the edge of this summit's activation zone.</div>
+          <?php elseif ($nx_method === 'tracks'): ?>
+            <div class="tile-next-msg ok">Hike <?= formatTime($nx['up_min']) ?> to #<?= $i + 2 ?>: <?= number_format($nx['leg_dist_mi'], 1) ?> mi, <?= number_format($nx['leg_gain_ft']) ?> ft climb, following recorded GPX tracks from this summit.</div>
           <?php else: ?>
             <div class="tile-next-msg ok">Hike to #<?= $i + 2 ?> using the shared alternate start point.
               <?php if ($can_alt): ?><button type="button" class="tile-alt-link" onclick="startAltPin(<?= $i + 1 ?>)">Move</button> <button type="button" class="tile-alt-link" onclick="altAction('reset', <?= $i + 1 ?>)">Reset</button><?php endif; ?></div>
@@ -1299,16 +1319,32 @@ a:hover { text-decoration: underline; }
               <?php else: ?>Hike down <?= formatTime($stop['down_min']) ?>.<?php endif; ?>
             </div>
           <?php endif; ?>
-          <?php if ($sel === 'new'): ?><div class="tile-next-msg warn">A ride or car needs to be waiting at this starting point.</div><?php endif; ?>
+          <?php if ($sel === 'new'):
+              // Where the car is parked = the starting point of the first summit in this walking chain. If this summit's
+              // own starting point is the same place (within 200 m), nobody needs to be waiting for us.
+              $exit_gap_m = null;
+              $car_stop = $stops[$stop['chain_head'] ?? -1] ?? null;
+              if ($car_stop && $stop['lat'] !== null && $stop['lng'] !== null && $car_stop['lat'] !== null && $car_stop['lng'] !== null) {
+                  $exit_gap_m = bp_dist((float)$stop['lat'], (float)$stop['lng'], (float)$car_stop['lat'], (float)$car_stop['lng']);
+              }
+          ?>
+            <?php if ($exit_gap_m !== null && $exit_gap_m <= 200): ?>
+              <?php /* same place as the car: nothing to say */ ?>
+            <?php elseif ($exit_gap_m !== null): ?>
+              <div class="tile-next-msg warn">This starting point is about <?= number_format($exit_gap_m / 1609.344, 1) ?> mi from where the car is parked, so a ride or car needs to be waiting here.</div>
+            <?php else: ?>
+              <div class="tile-next-msg warn">A ride or car needs to be waiting at this starting point.</div>
+            <?php endif; ?>
+          <?php endif; ?>
           <?php if ($has_next): ?>
             <?php if (!empty($nx['leg_error'])): ?>
               <div class="tile-next-msg"><strong>No path.</strong> <?= htmlspecialchars($nx['leg_error']) ?> Planned as a return to the hike start point instead.</div>
             <?php endif; ?>
-            <?php if (($leg_times[$i + 1] ?? null) === 0): ?><div class="after-drive">#<?= $i + 2 ?> starts at the same trailhead, no drive needed.</div>
-            <?php elseif (!empty($leg_times[$i + 1])): ?><div class="after-drive">Then drive to #<?= $i + 2 ?>: <?= formatTime($leg_times[$i + 1]) ?></div>
-            <?php elseif (empty($nx['leg_error']) && $origin_geo): ?><div class="tile-next-msg">Drive time to #<?= $i + 2 ?> could not be calculated, so the totals leave it out. Check the starting points in Trail Research.</div><?php endif; ?>
+            <?php if (($leg_times[$i + 1] ?? null) === 0): ?><div class="after-drive">#<?= $i + 2 ?> starts at or near the same parking spot, no travel needed.</div>
+            <?php elseif (!empty($leg_times[$i + 1])): ?><div class="after-drive">Then travel to #<?= $i + 2 ?>: <?= formatTime($leg_times[$i + 1]) ?></div>
+            <?php elseif (empty($nx['leg_error']) && $origin_geo): ?><div class="tile-next-msg">Travel time to #<?= $i + 2 ?> could not be calculated, so the totals leave it out. Check the starting points in Trail Research.</div><?php endif; ?>
           <?php elseif ($return_leg_time && $public_view): ?>
-            <div class="after-drive">Then drive to the finish: <?= formatTime($return_leg_time) ?></div>
+            <div class="after-drive">Then travel to the finish: <?= formatTime($return_leg_time) ?></div>
           <?php endif; ?>
           <?php if ($has_next && !$public_view && isset($alt_lookup['hidden'][$i + 1])): ?>
             <button type="button" class="tile-alt-btn" onclick="altAction('restore', <?= $i + 1 ?>)" title="A shared alternate start exists for this pair of summits. Click to use it.">Use shared start</button>
@@ -1337,8 +1373,8 @@ a:hover { text-decoration: underline; }
             </select>
             <button type="button" class="act-link" onclick="cancelFinish()">Cancel</button>
           </div>
-          <?php if ($return_leg_time): ?><div class="after-drive"><?= $end_other ? 'Drive to finish' : 'Drive home' ?>: <?= formatTime($return_leg_time) ?></div>
-          <?php elseif ($origin_geo || $end_other): ?><div class="tile-next-msg">The drive <?= $end_other ? 'to the finish' : 'home' ?> could not be calculated from where this route ends (Google found no road route from that starting point), so the totals leave it out. Check the last summit's starting point in Trail Research.</div><?php endif; ?>
+          <?php if ($return_leg_time): ?><div class="after-drive"><?= $end_other ? 'Travel to finish' : 'Travel home' ?>: <?= formatTime($return_leg_time) ?></div>
+          <?php elseif ($origin_geo || $end_other): ?><div class="tile-next-msg">The travel <?= $end_other ? 'to the finish' : 'home' ?> could not be calculated from where this route ends (Google found no road route from that starting point), so the totals leave it out. Check the last summit's starting point in Trail Research.</div><?php endif; ?>
           <?php if ($finish_warn): ?><div class="tile-next-msg"><?= htmlspecialchars($finish_warn) ?></div><?php endif; ?>
         </div>
         <?php if (count($summit_ids) < $MULTI_MAX): ?>
@@ -1422,7 +1458,7 @@ a:hover { text-decoration: underline; }
     <div class="card-title" style="display:flex; align-items:center; justify-content:space-between;">
       <span>Route Map</span>
       <div style="display:flex; gap:0.4rem;">
-        <button type="button" id="btn-zoom-summits" class="btn btn-ghost btn-sm" onclick="zoomToSummits()" title="Fit the map to the summits and hikes only, leaving out the drive">Zoom to Summits</button>
+        <button type="button" id="btn-zoom-summits" class="btn btn-ghost btn-sm" onclick="zoomToSummits()" title="Fit the map to the summits and hikes only, leaving out the travel">Zoom to Summits</button>
       <?php if (!empty($other_summits)): ?>
         <button type="button" id="btn-show-all-summits" class="btn btn-ghost btn-sm" onclick="toggleOtherSummits()">Show All Summits</button>
       <?php endif; ?>
@@ -1458,9 +1494,12 @@ a:hover { text-decoration: underline; }
         <span class="legend-chip" data-leg-key="<?= htmlspecialchars($leg['key']) ?>" title="<?= htmlspecialchars($leg['label']) ?>"><span class="legend-swatch" style="background:<?= htmlspecialchars($leg['color']) ?>;"></span><?= htmlspecialchars($leg['label']) ?></span>
       <?php endforeach; ?>
       <?php foreach ($map_hikes as $h): ?>
-        <span class="legend-chip" data-leg-key="<?= htmlspecialchars($h['key']) ?>" title="<?= htmlspecialchars($h['label']) ?>"><span class="legend-swatch" style="background:<?= htmlspecialchars($h['color']) ?>;"></span><?= htmlspecialchars($h['label']) ?></span>
+        <span class="legend-chip" data-leg-key="<?= htmlspecialchars($h['key']) ?>" title="<?= htmlspecialchars($h['label'] . ($h['note'] !== '' ? ' (' . $h['note'] . ')' : '')) ?>"><span class="legend-swatch" style="background:<?= htmlspecialchars($h['color']) ?>;"></span><?= htmlspecialchars($h['label']) ?></span>
       <?php endforeach; ?>
       <span><span class="legend-swatch legend-dashed" style="border-color:#CC2200;"></span>Activation zone</span>
+      <?php if (array_filter($map_hikes, fn($h) => !empty($h['dotted']))): ?>
+        <span title="Dotted hike lines are estimated paths (found on OpenStreetMap trails, or joined from recorded GPX tracks), not a single recorded track."><span class="legend-swatch legend-dotted"></span>Dotted: estimated path</span>
+      <?php endif; ?>
       <?php if (!empty($other_summits)): ?>
         <span><span class="legend-swatch" style="background:none; border:2px solid var(--ink-4); border-radius:50%; width:10px; height:10px;"></span>Other dashboard summits</span>
       <?php endif; ?>
@@ -1510,6 +1549,8 @@ function applyHighlight(legKeys, stopIndexes, azStop) {
         if (az !== null && parseInt(idx, 10) === az) {
             layer.setStyle({ weight: 5, opacity: 1, fillOpacity: 0.5, dashArray: null });
             layer.bringToFront();
+        } else if (az === null && stopIndexes.includes(parseInt(idx, 10))) {
+            layer.setStyle({ weight: 3, opacity: 1, fillOpacity: 0.3, dashArray: null });
         }
     });
     const hikeKeyMode = legKeys.some(k => k.indexOf('hike-') === 0);
@@ -1554,7 +1595,7 @@ function applyHighlight(legKeys, stopIndexes, azStop) {
         const pos = el.getAttribute('data-pos');
         const match = pos !== null && stopIndexes.includes(parseInt(pos, 10));
         el.classList.toggle('hl-active', match);
-        el.classList.toggle('hl-dim', !match);
+        el.classList.toggle('hl-dim', stopIndexes.length > 0 && !match);
     });
     document.querySelectorAll('.legend-chip[data-leg-key]').forEach(el => {
         const lk = el.getAttribute('data-leg-key');
@@ -1573,14 +1614,8 @@ function clearHighlight() {
 }
 
 function highlightLeg(legKey) {
-    // Hike legs highlight just themselves, on the map and in the timeline
-    if (legKey.indexOf('hike-') === 0) { applyHighlight([legKey], []); return; }
-    // Drive-to-a-stop legs are keyed "stop-<i>", highlighting one of these
-    // (from the map, the gantt drive block, or the legend) should also light up
-    // that summit's whole trip block (drive there, hike up, radio, hike down),
-    // not just the drive segment itself.
-    const m = /^stop-(\d+)$/.exec(legKey);
-    applyHighlight([legKey], m ? [parseInt(m[1], 10)] : []);
+    // One drive or hike block (on the timeline, the map or the legend) lights up only that portion
+    applyHighlight([legKey], []);
 }
 function highlightAz(stopIndex) {
     applyHighlight([], [stopIndex], stopIndex);
@@ -1780,6 +1815,16 @@ function hikeOwnPath(st) {
     if (st.up_route && st.up_route.length > 1) return st.up_route;
     return null;
 }
+// A recorded track is not always one way: many go up and come back down, so the whole track reversed would start at
+// the trailhead and leave a straight line from the summit. Keep only the part from the summit back to the start.
+function summitToStart(track, sLat, sLng) {
+    let bi = 0, bd = Infinity;
+    track.forEach(function(p, i) {
+        const d = Math.pow(p[0] - sLat, 2) + Math.pow((p[1] - sLng) * Math.cos(sLat * Math.PI / 180), 2);
+        if (d < bd) { bd = d; bi = i; }
+    });
+    return track.slice(0, bi + 1).reverse();
+}
 function hikePathFor(h) {
     const s = MAP_STOPS[h.stop];
     if (!s) return null;
@@ -1799,8 +1844,9 @@ function hikePathFor(h) {
             const st = MAP_STOPS[m], pv = MAP_STOPS[m - 1];
             if (st.route && st.route.length > 1 && pv) path = path.concat([[pv.summit_lat, pv.summit_lng]].concat(st.route).reverse());
         }
-        const head = hikeOwnPath(MAP_STOPS[s.chain_head]);
-        if (head) path = path.concat(head.slice().reverse());
+        const headStop = MAP_STOPS[s.chain_head];
+        const head = hikeOwnPath(headStop);
+        if (head) path = path.concat(summitToStart(head, headStop.summit_lat, headStop.summit_lng));
         return path.length > 1 ? path : null;
     }
     return hikeOwnPath(s);
@@ -1817,9 +1863,9 @@ function drawHikes(map, bounds) {
         const raw = hikePathFor(h);
         if (!raw) return;
         const base = thinPath(raw, 500);
-        const dotted = (h.kind === 'direct');
+        const dotted = !!h.dotted;
         const poly = L.polyline(base, { color: h.color, weight: 4, opacity: 0.9, lineCap: 'round', lineJoin: 'round', dashArray: dotted ? '1 8' : null })
-            .addTo(map).bindTooltip(h.label);
+            .addTo(map).bindTooltip(h.label + (h.note ? ' (' + h.note + ')' : ''));
         poly.on('mouseover', () => highlightLeg(h.key));
         poly.on('mouseout', clearHighlight);
         legLayers[h.key] = { layer: poly, color: h.color, base: base, kind: 'hike', stop: h.stop };

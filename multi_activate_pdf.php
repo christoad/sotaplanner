@@ -134,6 +134,13 @@ $end_label = $end_other ? multi_leg_address_label($finish_addr) : 'Home';
 $drive_cache = &$_SESSION['multi_drive_cache'];
 $get_leg = function ($fromKey, $fromCoord, $toKey, $toCoord) use (&$drive_cache) {
     if ($fromCoord === null || $toCoord === null) return ['min' => null, 'mi' => null];
+    if ($fromCoord === $toCoord) return ['min' => 0, 'mi' => 0];
+    // Starting points within ~0.25 mi count as the same parking spot (same rule as multi_activate.php)
+    $fp = explode(',', $fromCoord); $tp = explode(',', $toCoord);
+    if (count($fp) === 2 && count($tp) === 2
+        && haversine_distance((float)$fp[0], (float)$fp[1], (float)$tp[0], (float)$tp[1]) <= 402) {
+        return ['min' => 0, 'mi' => 0];
+    }
     $k = $fromKey . '>' . $toKey;
     if (array_key_exists($k, $drive_cache) && is_array($drive_cache[$k])) return $drive_cache[$k];
     $distance_mi = null;
@@ -524,7 +531,7 @@ if ($selected_address) {
 $pdf->Ln(0.1);
 
 // Stat tiles
-$stat_labels = ['Points', 'Hike Distance', 'Drive Distance', 'Total Time'];
+$stat_labels = ['Points', 'Hike Distance', 'Travel Distance', 'Total Time'];
 $stat_vals = [
     (string)($total_points_sum ?: '-'),
     $total_dist_mi_sum ? number_format(convertDistance($total_dist_mi_sum, $user_units), 1) . ' ' . getDistanceUnit($user_units) : '-',
@@ -634,7 +641,7 @@ if ($overview_img) {
     $pdf->SetY($pdf->GetY() + $overview_draw_h + 0.05);
     $pdf->SetFont('Helvetica', 'I', 7.5);
     $pdf->SetTextColor(140, 138, 134);
-    $pdf->Cell(0, 0.16, pdftext('Colored lines are the driving legs, green lines are hiking trails, red areas are activation zones.'), 0, 1);
+    $pdf->Cell(0, 0.16, pdftext('Colored lines are the travel legs, green lines are hiking trails, red areas are activation zones.'), 0, 1);
     $pdf->SetTextColor(28, 27, 25);
     $pdf->Ln(0.05);
 } else {
@@ -712,7 +719,7 @@ foreach ($stops as $i => $stop) {
 $pdf->Ln(0.15);
 $pdf->SetFont('Helvetica', 'B', 8);
 $pdf->SetFillColor(239, 237, 232);
-foreach ([['#', 0.35], ['Summit', $page_w - 0.35 - 1.1 - 1.1 - 1.4], ['Hike (RT)', 1.1], ['Difficulty', 1.1], ['Drive here', 1.4]] as $c) {
+foreach ([['#', 0.35], ['Summit', $page_w - 0.35 - 1.1 - 1.1 - 1.4], ['Hike (RT)', 1.1], ['Difficulty', 1.1], ['Travel here', 1.4]] as $c) {
     $pdf->Cell($c[1], 0.22, $c[0], 0, 0, 'L', true);
 }
 $pdf->Ln();

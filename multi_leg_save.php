@@ -63,7 +63,13 @@ if ($action === 'mode') {
         $rows->execute([$group['id'], $from_id, $to_id]);
         $sm = [];
         foreach ($rows->fetchAll() as $r) $sm[(int)$r['id']] = ['ref' => $r['sota_ref'], 'summit_lat' => (float)$r['latitude'], 'summit_lng' => (float)$r['longitude'], 'elev_m' => (float)$r['elevation_m']];
-        $pair = multi_leg_route_pair($sm[$from_id], $sm[$to_id]);
+        // Recorded tracks of every summit in this route, in case BRouter has no complete path but the tracks join up
+        $tf = $db->prepare("SELECT g.file_path FROM multi_activation_summits mas
+                            JOIN gpx_tracks g ON g.summit_id = mas.summit_id AND g.planning_group_id = ?
+                            WHERE mas.multi_activation_id = ?");
+        $tf->execute([$group['id'], $multi_id]);
+        $track_files = multi_leg_track_files(array_map(fn($f) => ['gpx_file' => $f], $tf->fetchAll(PDO::FETCH_COLUMN)));
+        $pair = multi_leg_route_pair($sm[$from_id], $sm[$to_id], $track_files);
         if (!$pair['ok']) leg_fail('Hike direct is not possible here. ' . $pair['error']);
         multi_leg_set($db, $multi_id, $from_id, $to_id, 'hike');
     } else {
