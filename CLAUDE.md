@@ -137,12 +137,17 @@ Always save Playwright screenshots to the `playwright/` folder in the project ro
 ### Playwright Login
 Use **staging** (christopherreddick.com/sotaplanner). Its login page has a small **"Developer access"** link in the bottom-left corner; click it, enter `KI6CR`, click **Go**. This passwordless sign-in exists on dev/staging only: `isProductionSite()` in `config.php` (host ends in `sotaplanner.com`) removes it from the production login page and rejects the POST server-side (removed 2026-10-13 after the podcast launch, because on production it let anyone log in as any callsign). Production login is SOTA SSO only.
 
-### Branches and release flow (changed 2026-10-13, after the podcast launch brought real users)
-**Day-to-day work happens on the `dev` branch. `main` is exactly what is live on production.** Chris never does git work himself; Claude handles all branching, merging and deploying (see memory `feedback_avoid_branch_merge_complexity`).
-1. Work and commit on `dev`. Deploy to **staging** (command below) so Chris can test. Do not touch production at this stage.
-2. When Chris says to ship it: fast-forward merge `dev` into `main` (`git checkout main && git merge --ff-only dev`), rsync only the files that changed to production, verify the live site, then `git checkout dev` again.
-3. Urgent security or outage fixes may go through the same flow quickly, but still tell Chris what went live.
-4. Chris pushes to GitHub via GitHub Desktop; remind him after commits.
+### Branches and release flow (changed 2026-10-28: `main` plus short-lived feature branches; the old long-lived `dev` branch is gone)
+**`main` is exactly what is live on production. Every piece of work gets its own short-lived branch, always created from the latest `main`.** Chris never does git work himself; Claude handles all branching, merging and deploying (see memory `feedback_avoid_branch_merge_complexity`).
+1. Create a branch off `main` named for the change (`git switch -c mobile-service-wording main`). Never start from another feature branch.
+2. Work on it and deploy to **staging** from that branch (command below) so Chris can test. Tell Chris which branch is currently on staging. Only one branch is on staging at a time; things tested together go on the same branch. Do not touch production at this stage.
+3. If Chris thinks of a tweak **before** saying it is tested, it goes on the same branch.
+4. When Chris says to ship it: merge the branch into `main` (fast-forward when possible), rsync only the files that changed to production, verify the live site, then delete the branch.
+5. A tweak found **after** shipping gets a new branch off the latest `main` (for example `mobile-service-wording-2`). Never reuse a merged branch.
+6. Urgent security or outage fixes use the same flow, quickly, and Chris is told what went live.
+7. Chris pushes to GitHub via GitHub Desktop; remind him after commits. Do not leave work on `main` that is not live: if something is committed but not yet approved to ship, keep it on its own branch.
+8. Sessions run in worktrees under `.claude/worktrees/`, and git operations can only target the session's own worktree. Tidy other worktrees from a session that lives in them, or ask Chris.
+9. **`main` must stay free to check out.** Git lets only one worktree hold a branch, so the main project folder (`/Users/chris/Dropbox/ham - amateur radio/sotaplanner`) is kept on a detached HEAD (`git switch --detach`), never parked on `main`. A session checks out `main` only while shipping (`git switch main`, merge, deploy, verify) and switches back to its own branch right after. If a session ever gets "main is already checked out", run `git worktree list` to see which folder holds it; that folder needs `git switch --detach` run from inside it (a session cannot do it from another worktree).
 
 **Staging and production share one database and `config.php`.** So schema changes are live for production the moment they run: keep migrations additive and backward compatible (new tables or nullable columns, never renames or drops), and run them before the code that needs them ships. Staging cannot test SOTA SSO, and the cron jobs run on production only.
 
