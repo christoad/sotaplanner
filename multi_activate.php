@@ -6,6 +6,7 @@ require_once 'config.php';
 require_once 'sota_cache_helper.php'; // haversine_miles()
 require_once 'multi_alt_lib.php';     // alternate hike starts (see file header)
 require_once 'multi_leg_lib.php';     // car/hike between summits + finish address (BRouter)
+require_once 'multi_elev_lib.php';    // elevation profiles of the hikes (page and PDF)
 session_start();
 
 $db = getDbConnection();
@@ -365,6 +366,7 @@ $return_leg_coords = ['from' => $prev_coord, 'to' => $end_coord];
 $LEG_COLORS = ['#56677A', '#6F7F91', '#3F4D5C', '#7A8A9B', '#4B5A6B', '#65768A', '#38465A', '#71828F', '#5A6B7E', '#7C8B99', '#46576A', '#667683'];
 $leg_color_i = 0;
 // Each hike leg gets its own color (distinct from the drive colors) on the timeline, the map and the legend
+$elev_trips = multi_elev_trips($stops);   // elevation profile data, drawn below the map
 $HIKE_COLORS = ['#6E8155', '#4F8085', '#9A7B3F', '#7A5E8A', '#8F5B50', '#3F6B52', '#7C7A3A', '#8A5F72', '#5C7F96', '#A0805A', '#4F7A66', '#85704F'];
 $hike_color_i = 0;
 $map_hikes = [];
@@ -591,8 +593,9 @@ $stmt = $db->prepare("
 $stmt->execute(array_merge([$current_group['id']], $summit_ids));
 $other_summits = [];
 foreach ($stmt->fetchAll() as $s) {
-    $lat = $s['trailhead_lat'] ?? $s['latitude'];
-    $lng = $s['trailhead_lng'] ?? $s['longitude'];
+    // Drawn on the actual summit, like the numbered route markers (not at the starting point, which is usually on a road)
+    $lat = $s['latitude'];
+    $lng = $s['longitude'];
     if (!$lat || !$lng) continue;
     $other_summits[] = [
         'id' => (int)$s['id'], 'name' => $s['name'], 'ref' => $s['sota_ref'], 'points' => (int)$s['points'],
@@ -901,6 +904,8 @@ a:hover { text-decoration: underline; }
 .lmap-home { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; box-shadow: 0 1px 4px rgba(0,0,0,0.35); }
 .lmap-other { width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 2px solid var(--ink-4); color: var(--ink-2); display: flex; align-items: center; justify-content: center; font-size: 0.6rem; font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
 #btn-show-all-summits.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+.lmap-other.lmap-global { background: var(--bg-2); border-color: var(--ink-4); color: var(--ink-3); }
+.all-summits-note { align-self: center; font-size: 0.72rem; color: var(--ink-3); }
 .lmap-add-btn { cursor: pointer; padding: 4px 10px; border-radius: 6px; border: none; background: var(--ink); color: #fff; font-size: 0.78rem; font-family: var(--font-sans); }
 .lmap-add-btn:hover { background: var(--ink-2); }
 .lmap-coords { font-family: monospace; font-size: 0.82rem; margin-bottom: 8px; user-select: all; }
@@ -909,6 +914,14 @@ a:hover { text-decoration: underline; }
 .legend-swatch { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
 .legend-swatch.legend-dashed { height: 0; border-top: 2px dashed; width: 14px; background: none; }
 .legend-swatch.legend-dotted { height: 0; border-top: 3px dotted var(--ink-3); width: 14px; background: none; }
+.elev-trip { margin-top: var(--sp-3); }
+.elev-trip-title { font-size: 0.78rem; font-weight: 600; color: var(--ink-2); margin-bottom: 0.25rem; }
+.elev-canvas-wrap { position: relative; }
+.elev-canvas { width: 100%; height: 190px; display: block; }
+.elev-tip { position: absolute; top: 4px; pointer-events: none; background: var(--ink); color: #fff; font-size: 0.72rem; padding: 0.25rem 0.5rem; border-radius: var(--r-sm); white-space: nowrap; z-index: 2; }
+.elev-legend { display: flex; flex-wrap: wrap; gap: 0.35rem 0.9rem; margin-top: 0.35rem; font-size: 0.72rem; color: var(--ink-2); }
+.elev-legend .legend-swatch { margin-right: 0.3rem; }
+.elev-note-line { margin-top: var(--sp-3); font-size: 0.72rem; color: var(--ink-3); }
 .legend-chip { cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: background 0.12s, color 0.12s; }
 .legend-chip:hover, .legend-chip.hl-active { background: var(--bg-2); color: var(--ink); font-weight: 600; }
 
@@ -1462,9 +1475,10 @@ a:hover { text-decoration: underline; }
     <div class="card-title" style="display:flex; align-items:center; justify-content:space-between;">
       <span>Route Map</span>
       <div style="display:flex; gap:0.4rem;">
-        <button type="button" id="btn-zoom-summits" class="btn btn-ghost btn-sm" onclick="zoomToSummits()" title="Fit the map to the summits and hikes only, leaving out the travel">Zoom to Summits</button>
-      <?php if (!empty($other_summits)): ?>
-        <button type="button" id="btn-show-all-summits" class="btn btn-ghost btn-sm" onclick="toggleOtherSummits()">Show All Summits</button>
+        <button type="button" id="btn-zoom-summits" class="btn btn-ghost btn-sm" onclick="zoomToSummits()" title="Zoom in on the summits and hikes only, leaving out the travel. Press again to see the whole route.">Zoom to Summits</button>
+      <?php if (!$public_view): ?>
+        <span id="all-summits-note" class="all-summits-note" hidden></span>
+        <button type="button" id="btn-show-all-summits" class="btn btn-ghost btn-sm" onclick="toggleOtherSummits()" title="Show your other dashboard summits, and every SOTA summit in the part of the map you are looking at">Show All Summits</button>
       <?php endif; ?>
       </div>
     </div>
@@ -1510,6 +1524,25 @@ a:hover { text-decoration: underline; }
     </div>
   </div>
 
+  <?php if ($elev_trips): ?>
+  <!-- Elevation profile of the hikes -->
+  <div class="card" id="elev-card">
+    <div class="card-title"><span>Elevation Profile</span></div>
+    <?php foreach ($elev_trips as $ti => $trip): ?>
+      <div class="elev-trip">
+        <div class="elev-trip-title"><?= htmlspecialchars($trip['title']) ?></div>
+        <div class="elev-canvas-wrap"><canvas class="elev-canvas" data-trip="<?= (int)$ti ?>"></canvas><div class="elev-tip" hidden></div></div>
+        <div class="elev-legend">
+          <?php foreach ($trip['segments'] as $sg): ?>
+            <span><span class="legend-swatch" style="background:<?= htmlspecialchars($sg['color']) ?>;"></span><?= htmlspecialchars($sg['label']) ?></span>
+          <?php endforeach; ?>
+        </div>
+      </div>
+    <?php endforeach; ?>
+    <div class="elev-note-line">Dashed lines are estimated from map elevation data; solid lines come from recorded GPX tracks.</div>
+  </div>
+  <?php endif; ?>
+
   <?php if ($public_view): ?>
   <div style="text-align:center; margin-top:1.5rem;">
     <a class="btn btn-primary" href="multi_add_to_dashboard.php?id=<?= (int)$multi_id ?>">Save this route</a>
@@ -1528,13 +1561,17 @@ const MAP_STOPS = <?= json_encode($map_stops, JSON_UNESCAPED_UNICODE) ?>;
 const MAP_ORIGIN = <?= json_encode($map_origin, JSON_UNESCAPED_UNICODE) ?>;
 const MAP_LEGS = <?= json_encode($MAP_LEGS, JSON_UNESCAPED_UNICODE) ?>;
 const MAP_HIKES = <?= json_encode($map_hikes, JSON_UNESCAPED_UNICODE) ?>;
+const ELEV_TRIPS = <?= json_encode($elev_trips, JSON_UNESCAPED_UNICODE) ?>;
+const ELEV_IMPERIAL = <?= json_encode($user_units !== 'metric') ?>;
 const OTHER_SUMMITS = <?= json_encode($other_summits, JSON_UNESCAPED_UNICODE) ?>;
 const CURRENT_IDS = <?= json_encode($CURRENT_IDS) ?>;
 const URL_BASE = <?= json_encode($url_base) ?>;
 const MULTI_MAX = <?= (int)$MULTI_MAX ?>;
 let mapInstance = null;
+let summitsZoomed = false, wholeRouteBounds = null;   // "Zoom to Summits" toggle
 let otherSummitsLayer = null;
 let otherSummitsVisible = false;
+let allSummitsLayer = null, allSummitsTimer = null, allSummitsAbort = null;   // every SOTA summit in view (summits_in_view.php)
 let baseLayers = null;
 let activeBase = 'street';
 
@@ -2104,6 +2141,7 @@ async function initMap() {
 
     if (bounds.length > 0) {
         map.fitBounds(bounds, { padding: [40, 40] });
+        wholeRouteBounds = L.latLngBounds(bounds);
     } else {
         map.setView([45, -110], 5);
     }
@@ -2144,12 +2182,102 @@ async function initMap() {
         el.addEventListener('mouseleave', clearHighlight);
     });
 }
+// ── Elevation profiles: one canvas per hiking trip, one colored segment per hike leg ──
+function drawElevCharts() {
+    const dK = ELEV_IMPERIAL ? 0.000621371 : 0.001, eK = ELEV_IMPERIAL ? 3.28084 : 1;
+    const dU = ELEV_IMPERIAL ? 'mi' : 'km', eU = ELEV_IMPERIAL ? 'ft' : 'm';
+    document.querySelectorAll('canvas.elev-canvas').forEach(function(cv) {
+        const trip = ELEV_TRIPS[+cv.dataset.trip];
+        if (!trip) return;
+        const W = cv.clientWidth, H = cv.clientHeight, dpr = window.devicePixelRatio || 1;
+        cv.width = W * dpr; cv.height = H * dpr;
+        const c = cv.getContext('2d');
+        c.setTransform(dpr, 0, 0, dpr, 0, 0);
+        c.clearRect(0, 0, W, H);
+        const L_ = 46, R_ = 12, T_ = 24, B_ = 24, pw = W - L_ - R_, ph = H - T_ - B_;
+        let lo = Infinity, hi = -Infinity;
+        trip.segments.forEach(sg => sg.pts.forEach(p => { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); }));
+        const pad = Math.max(10, (hi - lo) * 0.08); lo -= pad; hi += pad;
+        const total = trip.total_m || 1;
+        const X = d => L_ + d / total * pw, Y = e => T_ + (1 - (e - lo) / (hi - lo)) * ph;
+        c.font = '11px "DM Sans", system-ui, sans-serif';
+        c.fillStyle = '#8C8A86'; c.strokeStyle = '#E5E2DA'; c.lineWidth = 1;
+        // Horizontal grid with elevation labels
+        const steps = 4;
+        c.textAlign = 'right'; c.textBaseline = 'middle';
+        for (let i = 0; i <= steps; i++) {
+            const e = lo + (hi - lo) * i / steps, y = Y(e);
+            c.beginPath(); c.moveTo(L_, y); c.lineTo(W - R_, y); c.stroke();
+            c.fillText(Math.round(e * eK).toLocaleString(), L_ - 6, y);
+        }
+        // Distance labels
+        c.textAlign = 'center'; c.textBaseline = 'top';
+        const tickN = Math.max(2, Math.floor(pw / 90));
+        for (let i = 0; i <= tickN; i++) {
+            const d = total * i / tickN;
+            c.fillText((d * dK).toFixed(d * dK < 10 ? 1 : 0) + ' ' + dU, X(d), H - B_ + 6);
+        }
+        c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+        c.fillText(eU, 4, 9);
+        // Segments: soft fill under the line, then the line (dashed when estimated from map data)
+        trip.segments.forEach(function(sg) {
+            c.beginPath();
+            sg.pts.forEach((p, i) => { i ? c.lineTo(X(p[0]), Y(p[1])) : c.moveTo(X(p[0]), Y(p[1])); });
+            const fillPath = new Path2D();
+            fillPath.moveTo(X(sg.pts[0][0]), Y(lo));
+            sg.pts.forEach(p => fillPath.lineTo(X(p[0]), Y(p[1])));
+            fillPath.lineTo(X(sg.pts[sg.pts.length - 1][0]), Y(lo)); fillPath.closePath();
+            c.globalAlpha = 0.16; c.fillStyle = sg.color; c.fill(fillPath); c.globalAlpha = 1;
+            c.strokeStyle = sg.color; c.lineWidth = 2.5; c.lineJoin = 'round';
+            c.setLineDash(sg.est ? [6, 4] : []);
+            c.stroke(); c.setLineDash([]);
+        });
+        // Summit markers
+        c.textAlign = 'center'; c.textBaseline = 'bottom';
+        trip.segments.forEach(function(sg) {
+            if (sg.summit === null || sg.summit === undefined) return;
+            const last = sg.pts[sg.pts.length - 1], x = X(last[0]), y = Y(last[1]);
+            c.fillStyle = '#1C1B19'; c.beginPath(); c.arc(x, y, 4, 0, Math.PI * 2); c.fill();
+            c.fillStyle = '#1C1B19'; c.font = '600 11px "DM Sans", system-ui, sans-serif';
+            c.fillText('#' + (sg.summit + 1), x, y - 7);
+        });
+        // Hover read-out
+        const tip = cv.parentNode.querySelector('.elev-tip');
+        cv.onmousemove = function(ev) {
+            const r = cv.getBoundingClientRect(), mx = ev.clientX - r.left;
+            const d = Math.min(total, Math.max(0, (mx - L_) / pw * total));
+            let best = null;
+            trip.segments.forEach(sg => { if (d >= sg.start_m - 1 && d <= sg.end_m + 1) best = sg; });
+            if (!best) { tip.hidden = true; return; }
+            let q = best.pts[0];
+            best.pts.forEach(p => { if (Math.abs(p[0] - d) < Math.abs(q[0] - d)) q = p; });
+            tip.textContent = best.label + ': ' + (q[0] * dK).toFixed(2) + ' ' + dU + ', ' + Math.round(q[1] * eK).toLocaleString() + ' ' + eU;
+            tip.hidden = false;
+            tip.style.left = Math.min(Math.max(0, mx + 10), W - tip.offsetWidth) + 'px';
+        };
+        cv.onmouseleave = () => { tip.hidden = true; };
+    });
+}
+if (typeof ELEV_TRIPS !== 'undefined' && ELEV_TRIPS.length) {
+    drawElevCharts();
+    let _elevT = null;
+    window.addEventListener('resize', function() { clearTimeout(_elevT); _elevT = setTimeout(drawElevCharts, 150); });
+}
+
 initMap();
 
 // ── "Zoom to Summits": fit the view to the summits, their starting points and the hikes,
 // leaving out the home marker and the drive legs (which can span hundreds of miles) ──
 function zoomToSummits() {
     if (!mapInstance) return;
+    const btn = document.getElementById('btn-zoom-summits');
+    if (summitsZoomed) {
+        // Second press: back out to the whole route (home, travel and all)
+        if (wholeRouteBounds) mapInstance.fitBounds(wholeRouteBounds, { padding: [40, 40] });
+        summitsZoomed = false;
+        if (btn) { btn.classList.remove('active'); btn.textContent = 'Zoom to Summits'; }
+        return;
+    }
     const pts = [];
     MAP_STOPS.forEach(function(s) {
         pts.push([s.summit_lat, s.summit_lng]);
@@ -2157,7 +2285,11 @@ function zoomToSummits() {
         if (s.route) s.route.forEach(function(p) { pts.push(p); });
         if (s.gpx_path) s.gpx_path.forEach(function(p) { pts.push(p); });
     });
-    if (pts.length) mapInstance.fitBounds(pts, { padding: [40, 40], maxZoom: 15 });
+    if (pts.length) {
+        mapInstance.fitBounds(pts, { padding: [40, 40], maxZoom: 15 });
+        summitsZoomed = true;
+        if (btn) { btn.classList.add('active'); btn.textContent = 'Whole Route'; }
+    }
 }
 
 // ── "Show All Summits" map toggle, click a marker to add it to the route ──
@@ -2183,10 +2315,81 @@ function toggleOtherSummits() {
         if (!otherSummitsLayer) otherSummitsLayer = buildOtherSummitsLayer();
         otherSummitsLayer.addTo(mapInstance);
         if (btn) { btn.classList.add('active'); btn.textContent = 'Hide All Summits'; }
+        mapInstance.on('moveend', scheduleAllSummits);
+        loadAllSummits();
     } else {
         if (otherSummitsLayer) mapInstance.removeLayer(otherSummitsLayer);
+        if (allSummitsLayer) { mapInstance.removeLayer(allSummitsLayer); allSummitsLayer = null; }
+        mapInstance.off('moveend', scheduleAllSummits);
+        if (allSummitsAbort) allSummitsAbort.abort();
+        const note = document.getElementById('all-summits-note');
+        if (note) note.hidden = true;
         if (btn) { btn.classList.remove('active'); btn.textContent = 'Show All Summits'; }
     }
+}
+
+// ── Every SOTA summit in the current view (not only this dashboard's) ──
+// Asks summits_in_view.php for just what is on screen; clicking "+ Add to Route" on one nominates it to this
+// dashboard (the same step as the Nominate page) and then adds it to this route.
+function scheduleAllSummits() {
+    clearTimeout(allSummitsTimer);
+    allSummitsTimer = setTimeout(loadAllSummits, 400);
+}
+function loadAllSummits() {
+    if (!otherSummitsVisible || !mapInstance) return;
+    const note = document.getElementById('all-summits-note');
+    const b = mapInstance.getBounds();
+    if (allSummitsAbort) allSummitsAbort.abort();
+    allSummitsAbort = new AbortController();
+    const q = new URLSearchParams({ south: b.getSouth(), north: b.getNorth(), west: b.getWest(), east: b.getEast() });
+    fetch('summits_in_view.php?' + q.toString(), { credentials: 'same-origin', signal: allSummitsAbort.signal })
+        .then(r => r.json())
+        .then(function(d) {
+            if (!otherSummitsVisible) return;
+            if (allSummitsLayer) { mapInstance.removeLayer(allSummitsLayer); allSummitsLayer = null; }
+            if (!d.ok) { if (note) { note.textContent = 'Could not load more summits.'; note.hidden = false; } return; }
+            if (d.too_wide) { if (note) { note.textContent = 'Zoom in to see every SOTA summit'; note.hidden = false; } return; }
+            // Skip summits already drawn: the route's own summits and this dashboard's
+            const have = new Set(MAP_STOPS.map(s => s.ref).concat(OTHER_SUMMITS.map(s => s.ref)));
+            const layer = L.layerGroup();
+            let shown = 0;
+            d.summits.forEach(function(s) {
+                if (have.has(s.ref)) return;
+                const icon = L.divIcon({ className: '', html: '<div class="lmap-other lmap-global">' + s.points + '</div>', iconSize: [18, 18], iconAnchor: [9, 9] });
+                const marker = L.marker([s.lat, s.lng], { icon: icon });
+                marker.bindPopup('<div style="font-weight:600; font-size:0.85rem;">' + escapeHtmlMap(s.name) + '</div>'
+                    + '<div style="font-family:monospace; font-size:0.72rem; color:#8C8A86; margin-bottom:2px;">' + escapeHtmlMap(s.ref) + '</div>'
+                    + '<div style="font-size:0.72rem; color:#4A4844; margin-bottom:8px;">' + s.points + ' pt' + (s.points === 1 ? '' : 's') + ', ' + s.alt_ft.toLocaleString() + ' ft</div>'
+                    + '<button class="lmap-add-btn" onclick="addNewSummitToRoute(\'' + escapeHtmlMap(s.ref) + '\', this)">+ Add to Route</button>');
+                marker.addTo(layer);
+                shown++;
+            });
+            allSummitsLayer = layer.addTo(mapInstance);
+            if (note) {
+                note.textContent = d.more ? 'Showing the ' + d.summits.length + ' highest-point summits here. Zoom in for more.' : '';
+                note.hidden = !d.more;
+            }
+        })
+        .catch(function(e) { /* aborted by a newer request, or offline: leave the map as it is */ });
+}
+function escapeHtmlMap(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+function addNewSummitToRoute(ref, btn) {
+    if (CURRENT_IDS.length >= MULTI_MAX) { alert('Multi-activations are capped at ' + MULTI_MAX + ' summits.'); return; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Adding...'; }
+    document.body.style.cursor = 'progress';
+    fetch('nominate.php?action=nominate_one&ref=' + encodeURIComponent(ref), { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(function(d) {
+            document.body.style.cursor = '';
+            if (d && d.id) { addSummitToRoute(d.id); return; }
+            if (btn) { btn.disabled = false; btn.textContent = '+ Add to Route'; }
+            alert((d && d.error) ? 'Could not add that summit: ' + d.error : 'Could not add that summit.');
+        })
+        .catch(function() {
+            document.body.style.cursor = '';
+            if (btn) { btn.disabled = false; btn.textContent = '+ Add to Route'; }
+            alert('Could not add that summit. Check your connection and try again.');
+        });
 }
 
 const SHARE_URL = <?= json_encode($share_url) ?>;

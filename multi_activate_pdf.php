@@ -7,6 +7,8 @@ require_once 'config.php';
 require_once __DIR__ . '/lib/fpdf.php';
 require_once __DIR__ . '/multi_alt_lib.php';
 require_once __DIR__ . '/multi_leg_lib.php';
+require_once __DIR__ . '/multi_elev_lib.php';
+require_once __DIR__ . '/multi_elev_pdf_lib.php';
 require_once __DIR__ . '/pdf_map_lib.php';
 require_once __DIR__ . '/weather_lib.php';
 session_start();
@@ -679,8 +681,14 @@ function static_map_marker_hex($hex) {
     return '0x' . ltrim($hex, '#');
 }
 
+// ── Elevation profile of the hikes (same data as the page) ──────────────────
+$pdf->Ln(0.12);
+$pg_before_elev = $pdf->PageNo();
+multi_elev_pdf_block($pdf, multi_elev_trips($stops), $page_w, $user_units !== 'metric', 'pdftext');
+$elev_opened_page = $pdf->PageNo() > $pg_before_elev;   // the profile had to start a new page, so the schedule can follow it there
+
 // ── Schedule table ─────────────────────────────────────────────────────────
-$pdf->AddPage();
+if ($elev_opened_page) $pdf->Ln(0.25); else $pdf->AddPage();
 $pdf->SetFont('Helvetica', 'B', 14);
 $pdf->Cell(0, 0.3, 'Schedule', 0, 1);
 $pdf->SetFont('Helvetica', 'I', 8.5);

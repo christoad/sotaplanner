@@ -252,13 +252,13 @@ function multi_leg_track_route(array $cur, array $files, array $from, array $ext
     $coords = []; $eles = [];
     // Third value: 1 where the point is on a recorded (proven) track, 0 where it comes from BRouter or a short connecting step
     foreach ($path as $i) {
-        $coords[] = [$nodes[$i]['lat'], $nodes[$i]['lon'], $nodes[$i]['trk'] === 'brouter' ? 0 : 1];
+        $coords[] = [$nodes[$i]['lat'], $nodes[$i]['lon'], $nodes[$i]['trk'] === 'brouter' ? 0 : 1, $nodes[$i]['ele']];
         $eles[] = $nodes[$i]['ele'];
     }
     // A short step from the start point / to the summit when the tracks stop just short of them
-    if (bp_dist($from[0], $from[1], $coords[0][0], $coords[0][1]) > 30) array_unshift($coords, [(float)$from[0], (float)$from[1], 0]);
+    if (bp_dist($from[0], $from[1], $coords[0][0], $coords[0][1]) > 30) array_unshift($coords, [(float)$from[0], (float)$from[1], 0, null]);
     $lastc = end($coords);
-    if (bp_dist($cur['summit_lat'], $cur['summit_lng'], $lastc[0], $lastc[1]) > 30) $coords[] = [(float)$cur['summit_lat'], (float)$cur['summit_lng'], 0];
+    if (bp_dist($cur['summit_lat'], $cur['summit_lng'], $lastc[0], $lastc[1]) > 30) $coords[] = [(float)$cur['summit_lat'], (float)$cur['summit_lng'], 0, !empty($cur['elev_m']) ? (float)$cur['elev_m'] : null];
 
     $dist_m = 0.0;
     for ($k = 1; $k < count($coords); $k++) $dist_m += bp_dist($coords[$k - 1][0], $coords[$k - 1][1], $coords[$k][0], $coords[$k][1]);
@@ -378,6 +378,9 @@ function multi_leg_apply_brouter(array &$stops, array $want_hike, $pace, array $
         // Which points sit on a recorded track (drawn solid on the map); only merged / tracks-only walks carry this
         $stops[$i]['route_proven'] = in_array($pair['method'] ?? '', ['tracks', 'merged'], true)
             ? array_map(fn($c) => (int)($c[2] ?? 0), $thin) : null;
+        // Elevation along the route (metres) for the elevation profile; merged / tracks-only coords carry it as the 4th value
+        $has_tr = in_array($pair['method'] ?? '', ['tracks', 'merged'], true);
+        $stops[$i]['route_ele'] = array_map(fn($c) => $has_tr ? ($c[3] ?? null) : ($c[2] ?? null), $thin);
         $stops[$i]['leg_dist_mi'] = $mi;
         $stops[$i]['leg_gain_ft'] = $gain_ft;
         $stops[$i]['leg_descend_ft'] = $r['descend_m'] * 3.28084;   // the climb when this leg is walked in reverse
