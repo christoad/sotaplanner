@@ -166,20 +166,26 @@ function multi_leg_read_gpx($file) {
  * @param array $files  GPX file paths (see multi_leg_track_files)
  * @param array $from   [lat, lon] where the walk starts
  */
-function multi_leg_track_route(array $cur, array $files, array $from) {
+function multi_leg_track_route(array $cur, array $files, array $from, array $extra_line = []) {
     $JOIN_M = 40; $SNAP_M = 300;
     $nodes = []; $adj = [];
     $add_edge = function ($a, $b, $w) use (&$adj) { $adj[$a][$b] = $w; $adj[$b][$a] = $w; };
+    // Lines to put in the graph: every recorded track, plus (optionally) a BRouter route. The BRouter line costs a
+    // little more per metre, so wherever it runs along a recorded track the proven track wins, and BRouter is
+    // used only for the stretches no recorded track covers.
+    $lines = [];
     foreach ($files as $fi => $f) {
         $pts = multi_leg_read_gpx($f);
-        if (count($pts) < 2) continue;
-        $pts = bp_thin($pts, 2500);
+        if (count($pts) >= 2) $lines[] = ['trk' => $fi, 'pts' => bp_thin($pts, 2500), 'k' => 1.0];
+    }
+    if (count($extra_line) >= 2) $lines[] = ['trk' => 'brouter', 'pts' => $extra_line, 'k' => 1.15];
+    foreach ($lines as $ln) {
         $prev_i = null;
-        foreach ($pts as $p) {
+        foreach ($ln['pts'] as $p) {
             $i = count($nodes);
-            $nodes[] = ['lat' => $p[0], 'lon' => $p[1], 'ele' => $p[2], 'trk' => $fi];
+            $nodes[] = ['lat' => $p[0], 'lon' => $p[1], 'ele' => $p[2] ?? null, 'trk' => $ln['trk']];
             $adj[$i] = $adj[$i] ?? [];
-            if ($prev_i !== null) $add_edge($prev_i, $i, bp_dist($nodes[$prev_i]['lat'], $nodes[$prev_i]['lon'], $p[0], $p[1]));
+            if ($prev_i !== null) $add_edge($prev_i, $i, $ln['k'] * bp_dist($nodes[$prev_i]['lat'], $nodes[$prev_i]['lon'], $p[0], $p[1]));
             $prev_i = $i;
         }
     }
@@ -244,14 +250,15 @@ function multi_leg_track_route(array $cur, array $files, array $from) {
     $path = array_reverse($path);
 
     $coords = []; $eles = [];
+    // Third value: 1 where the point is on a recorded (proven) track, 0 where it comes from BRouter or a short connecting step
     foreach ($path as $i) {
-        $coords[] = [$nodes[$i]['lat'], $nodes[$i]['lon']];
+        $coords[] = [$nodes[$i]['lat'], $nodes[$i]['lon'], $nodes[$i]['trk'] === 'brouter' ? 0 : 1];
         $eles[] = $nodes[$i]['ele'];
     }
     // A short step from the start point / to the summit when the tracks stop just short of them
-    if (bp_dist($from[0], $from[1], $coords[0][0], $coords[0][1]) > 30) array_unshift($coords, [(float)$from[0], (float)$from[1]]);
+    if (bp_dist($from[0], $from[1], $coords[0][0], $coords[0][1]) > 30) array_unshift($coords, [(float)$from[0], (float)$from[1], 0]);
     $lastc = end($coords);
-    if (bp_dist($cur['summit_lat'], $cur['summit_lng'], $lastc[0], $lastc[1]) > 30) $coords[] = [(float)$cur['summit_lat'], (float)$cur['summit_lng']];
+    if (bp_dist($cur['summit_lat'], $cur['summit_lng'], $lastc[0], $lastc[1]) > 30) $coords[] = [(float)$cur['summit_lat'], (float)$cur['summit_lng'], 0];
 
     $dist_m = 0.0;
     for ($k = 1; $k < count($coords); $k++) $dist_m += bp_dist($coords[$k - 1][0], $coords[$k - 1][1], $coords[$k][0], $coords[$k][1]);
@@ -265,8 +272,10 @@ function multi_leg_track_route(array $cur, array $files, array $from) {
         elseif ($ref_e - $e >= 3) { $down += $ref_e - $e; $ref_e = $e; }
     }
     if ($with_ele < count($eles) / 2) { $up = 0.0; $down = 0.0; }   // too little elevation data to trust
+    $uses_tracks = false; $uses_bro = false;
+    foreach ($path as $i) { if ($nodes[$i]['trk'] === 'brouter') $uses_bro = true; else $uses_tracks = true; }
     return ['ok' => true, 'coords' => $coords, 'distance_m' => $dist_m, 'ascend_m' => $up, 'descend_m' => $down,
-            'cached' => false, 'method' => 'tracks'];
+            'cached' => false, 'method' => $uses_bro ? 'merged' : 'tracks', 'uses_tracks' => $uses_tracks];
 }
 
 /**
@@ -308,9 +317,17 @@ function multi_leg_route_pair(array $prev, array $cur, array $track_files = []) 
         // straight line. When that hop is long and recorded tracks give a connected walk from the summit itself
         // that is no longer overall, the recorded tracks are the better answer: real trail the whole way.
         $hop = bp_dist($prev['summit_lat'], $prev['summit_lng'], $r['coords'][0][0], $r['coords'][0][1]);
-        if ($hop > 150 && $track_files) {
-            $t = multi_leg_track_route($cur, $track_files, [(float)$prev['summit_lat'], (float)$prev['summit_lng']]);
-            if ($t && $t['distance_m'] <= ($r['distance_m'] + $hop) * 1.15) return ['ok' => true, 'route' => $t, 'from' => $from, 'method' => 'tracks'];
+        if ($track_files) {
+            // Merge BRouter's route with the recorded tracks: wherever it meets or runs along a proven track, the
+            // walk switches to that track (e.g. Summit A's own trail for a while, then a stretch BRouter found that
+            // links up with Summit B's trail). Tried from the previous summit itself, then from the zone edge.
+            foreach ([[(float)$prev['summit_lat'], (float)$prev['summit_lng']], $from] as $start) {
+                $t = multi_leg_track_route($cur, $track_files, $start, $r['coords']);
+                if ($t && $t['distance_m'] <= ($r['distance_m'] + $hop) * 1.15) {
+                    $t['method'] = $t['uses_tracks'] ? 'merged' : 'brouter';
+                    return ['ok' => true, 'route' => $t, 'from' => $from, 'method' => $t['method']];
+                }
+            }
         }
         return ['ok' => true, 'route' => $r, 'from' => $from, 'method' => 'brouter'];
     }
@@ -355,8 +372,12 @@ function multi_leg_apply_brouter(array &$stops, array $want_hike, $pace, array $
         $stops[$i]['chained'] = true;
         $stops[$i]['alt'] = ['lat' => (float)$prev['summit_lat'], 'lng' => (float)$prev['summit_lng'], 'method' => 'brouter',
                              'off_m' => null, 'set_by' => null, 'mode' => 'brouter'];
-        if (($pair['method'] ?? '') === 'tracks') $stops[$i]['alt']['method'] = 'tracks';
-        $stops[$i]['route'] = array_map(fn($c) => [round($c[0], 5), round($c[1], 5)], bp_thin($r['coords'], 250));
+        if (in_array($pair['method'] ?? '', ['tracks', 'merged'], true)) $stops[$i]['alt']['method'] = $pair['method'];
+        $thin = bp_thin($r['coords'], 250);
+        $stops[$i]['route'] = array_map(fn($c) => [round($c[0], 5), round($c[1], 5)], $thin);
+        // Which points sit on a recorded track (drawn solid on the map); only merged / tracks-only walks carry this
+        $stops[$i]['route_proven'] = in_array($pair['method'] ?? '', ['tracks', 'merged'], true)
+            ? array_map(fn($c) => (int)($c[2] ?? 0), $thin) : null;
         $stops[$i]['leg_dist_mi'] = $mi;
         $stops[$i]['leg_gain_ft'] = $gain_ft;
         $stops[$i]['leg_descend_ft'] = $r['descend_m'] * 3.28084;   // the climb when this leg is walked in reverse
