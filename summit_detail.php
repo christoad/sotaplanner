@@ -1102,6 +1102,9 @@ if ($tl_show) {
       font-size: 0.75rem; color: var(--ink-3);
     }
     #summit-map { height: 280px; border-radius: var(--r-lg); border: 1px solid var(--border); overflow: hidden; margin-bottom: 0.75rem; }
+    .track-key { display: flex; gap: 1.1rem; flex-wrap: wrap; margin: 0; font-size: 0.76rem; color: var(--ink-3); }
+    .track-key > span { display: inline-flex; align-items: center; gap: 6px; }
+    .track-key-swatch { display: inline-block; width: 16px; height: 4px; border-radius: 2px; }
     .map-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; align-items: center; }
     .carrier-btn { height: 28px; padding: 0 0.625rem; font-size: 0.75rem; font-weight: 600; border-radius: var(--r-sm); border: 1.5px solid; cursor: pointer; transition: all 0.12s; font-family: var(--font-sans); }
     .map-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
@@ -1647,6 +1650,11 @@ if ($tl_show) {
           <?php if ($selected_address && $directions_lat && $directions_lng): ?>
             <a href="https://www.google.com/maps/dir/?api=1&origin=<?= urlencode(addressOrigin($db, $selected_address)) ?>&destination=<?= $directions_lat ?>,<?= $directions_lng ?>" target="_blank" class="btn btn-sm btn-ghost">Directions ↗</a>
           <?php endif; ?>
+          <span class="map-divider"></span>
+          <span class="track-key" id="track-key">
+            <span id="track-key-drive" style="display:none;"><span class="track-key-swatch" style="background:#2563EB;"></span>Driving path</span>
+            <span id="track-key-hike" style="display:none;"><span class="track-key-swatch" style="background:#9B6328;"></span>Hike</span>
+          </span>
         </div>
       </div>
       <div id="map-backdrop" class="map-backdrop" onclick="toggleMapExpand()"></div>
@@ -2674,6 +2682,7 @@ if ($drive_origin_geo): ?>
       L.polyline(coords, { color: '#2563EB', weight: 4, opacity: 0.8, lineJoin: 'round', lineCap: 'round' })
         .bindPopup('<strong>Driving route</strong><br>from <?= htmlspecialchars(addslashes($selected_address['label'] ?: $selected_address['address']), ENT_QUOTES) ?>')
         .addTo(map);
+      document.getElementById('track-key-drive').style.display = '';
     })
     .catch(() => {});
 })();
@@ -2735,6 +2744,7 @@ fetch('load_gpx.php?id=<?= $gpx_data['id'] ?>')
       if (ele) elevPts.push([lat, lon, parseFloat(ele.textContent)]);
     });
     gpxPolyline = L.polyline(coords, { color: '#9B6328', weight: 3, opacity: 0.85 }).addTo(map);
+    document.getElementById('track-key-hike').style.display = '';
     const elevState = drawElevationProfile(elevPts);
     if (elevState) setupElevMapHover(elevState, map);
     map.fitBounds(L.polyline(coords).getBounds(), { padding: [50, 50] });
