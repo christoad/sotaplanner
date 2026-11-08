@@ -40,7 +40,7 @@ $gpx = $stmt2->fetch();
 
 $track_type = $gpx ? ($gpx['track_type'] ?? 'round-trip') : 'round-trip';
 $one_way    = ($track_type === 'ascent' || $track_type === 'descent');
-$has_ts     = $gpx && $gpx['hiking_time'] > 0;
+$has_ts     = false; // recorded GPX time is never used; Naismith from distance and climb
 
 if ($gpx && $gpx['use_for_elevation'] && ($gpx['elevation_gain'] ?? 0) > 0) {
     $elev_ft = ($track_type === 'descent' ? $gpx['elevation_loss'] : $gpx['elevation_gain']) * 3.28084;

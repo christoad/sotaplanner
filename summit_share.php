@@ -97,7 +97,7 @@ $trail_link_ok = !empty($summit['trail_link']) && preg_match('~^https?://~i', $s
 // Same distance / gain / hike time rules as summit_detail.php, minus anything user-specific
 $track_type = $gpx_data['track_type'] ?? 'round-trip';
 $one_way = ($track_type === 'ascent' || $track_type === 'descent');
-$has_timestamps = $gpx_data && $gpx_data['hiking_time'] > 0;
+$has_timestamps = false; // recorded GPX time is never used; Naismith from distance and climb
 
 // Track type label for the GPX card. Library routes have no stored type, so work it out once and remember it.
 $track_type_label = null;

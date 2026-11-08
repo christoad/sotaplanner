@@ -287,9 +287,7 @@ $naismith_sql = "(($eff_dist) / 2.5 * 60 + ($eff_gain) / 1500 * 60) * 1.10";
 $gps_time_sql = "ROUND(g.hiking_time * CASE WHEN g.track_type IN ('ascent','descent') THEN 2 ELSE 1 END / 60)";
 
 // Full hike time: GPS recorded if timestamps exist, else Naismith from active source
-$hike_time_sql = "CASE WHEN g.use_for_hike_time = 1 AND COALESCE(g.hiking_time, 0) > 0
-    THEN $gps_time_sql
-    ELSE $naismith_sql END";
+$hike_time_sql = $naismith_sql; // recorded GPX times are never used (pace differs per hiker)
 
 // Time columns treat "no data" (0) as NULL so those summits always sort last,
 // in either direction, instead of clumping at the short end.
@@ -528,7 +526,7 @@ if (!empty($missing_member_ids)) {
 function dashboard_hike_stats($summit, $current_group) {
     $track_type    = $summit['track_type'] ?? 'round-trip';
     $one_way       = ($track_type === 'ascent' || $track_type === 'descent');
-    $has_timestamps = ($summit['gpx_hiking_time'] ?? 0) > 0;
+    $has_timestamps = false; // recorded GPX time is never used; Naismith from distance and climb
 
     if ($summit['use_for_elevation'] && $summit['gpx_elevation_gain']) {
         $elevation_for_display = ($track_type === 'descent')
@@ -724,7 +722,7 @@ foreach ($summits as $sm) {
     if (!$sm['latitude'] || !$sm['longitude']) continue;
     $tt = $sm['track_type'] ?? 'round-trip';
     $ow = ($tt === 'ascent' || $tt === 'descent');
-    $has_ts = ($sm['gpx_hiking_time'] ?? 0) > 0;
+    $has_ts = false; // recorded GPX time is never used; Naismith from distance and climb
     if ($sm['use_for_elevation'] && $sm['gpx_elevation_gain']) {
         $elev = ($tt === 'descent') ? ($sm['gpx_elevation_loss'] ?? 0) * 3.28084 : $sm['gpx_elevation_gain'] * 3.28084;
     } else {

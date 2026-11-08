@@ -142,7 +142,7 @@ $pace_multiplier = (float)($pa['pace_multiplier'] ?? 1.0);
 // Mirror summit_detail hike time logic exactly
 $track_type     = $gpx ? ($gpx['track_type'] ?? 'round-trip') : 'round-trip';
 $one_way        = ($track_type === 'ascent' || $track_type === 'descent');
-$has_timestamps = $gpx && $gpx['hiking_time'] > 0;
+$has_timestamps = false; // recorded GPX time is never used; Naismith from distance and climb
 
 $hike_time_total = 0;
 if ($gpx && $gpx['use_for_hike_time']) {

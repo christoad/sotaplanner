@@ -286,6 +286,7 @@ session_start();
         </div>
         <p class="version-desc">Adding summits to your dashboard is faster when you have a list to work through.</p>
         <ul>
+            <li>Every summit page now has a hidden Change log at the bottom. Open it to see which callsign changed what on that summit and what the old and new values were</li>
             <li>Multi-Activate shows an elevation profile under the route map, and in the PDF, for every hike in the day, with each leg in its own color and estimated stretches dashed</li>
             <li>Multi-Activate hikes between summits now follow recorded GPX tracks wherever the walk meets one, using estimated map trails only for the gaps, and the map draws the recorded stretches as solid lines</li>
             <li>"Back the way we came" is now called "Track back" in Multi-Activate</li>

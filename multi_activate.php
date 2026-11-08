@@ -187,7 +187,7 @@ foreach ($summit_ids as $sid) {
     $s = $summits_by_id[$sid];
     $track_type = $s['track_type'] ?? 'round-trip';
     $one_way = ($track_type === 'ascent' || $track_type === 'descent');
-    $has_ts = ($s['gpx_hiking_time'] ?? 0) > 0;
+    $has_ts = false; // recorded GPX time is never used; Naismith from distance and climb
 
     if ($s['use_for_elevation'] && $s['gpx_elevation_gain']) {
         $elev = ($track_type === 'descent') ? ($s['gpx_elevation_loss'] ?? 0) * 3.28084 : $s['gpx_elevation_gain'] * 3.28084;

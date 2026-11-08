@@ -5,6 +5,7 @@ ini_set('display_errors', 1);
 require_once 'config.php';
 require_once 'weather_lib.php';
 require_once 'share_lib.php';
+require_once 'summit_changelog_lib.php';
 session_start();
 requireLogin();
 
@@ -70,6 +71,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' || !empty($_FILES['gpx_file'])) {
     $log_sota_ref    = $_li['sota_ref'] ?? '';
     $log_group_name  = $_li['grp']      ?? ($current_group['name'] ?? '');
     unset($_ls, $_li);
+    // Change log: remember how the summit looks now; differences are recorded when the request ends
+    summit_log_watch($db, $summit_id);
 }
 
 // ========== GPX UPLOAD HANDLER ==========
@@ -166,14 +169,14 @@ if (isset($_FILES['gpx_file']) && $_FILES['gpx_file']['error'] === UPLOAD_ERR_OK
                             }
 
                             if ($use_for_hike) {
-                                $message = "✓ GPX uploaded with timestamps, hike time enabled. Hiking: " . format_time_duration($gpx_stats['hiking_time']) .
-                                           ", Activation: " . format_time_duration($gpx_stats['activation_time']);
+                                $message = "✓ GPX uploaded, hike time enabled (calculated from the track's distance and climb).";
                             } else {
                                 $message = "✓ GPX uploaded (route/track only, no timestamps). Map and elevation data saved; hike time not enabled.";
                             }
                             
                             $db->prepare("UPDATE summits SET gpx_opted_out = 0 WHERE id = ?")->execute([$summit_id]);
                             logActivity($db, 'GPX uploaded', $log_summit_name, $log_sota_ref, $log_group_name);
+                            summit_log_event($db, $summit_id, 'GPX track', '', 'Uploaded ' . basename($_FILES['gpx_file']['name']));
                             header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&gpx=1");
                             exit;
                         } catch (Exception $e) {
@@ -201,6 +204,7 @@ if (isset($_POST['update_gpx_preferences'])) {
             WHERE summit_id = ? AND planning_group_id = ?
         ");
         $stmt->execute([$use_gps, $use_gps, $summit_id, $current_group['id']]);
+        summit_log_event($db, $summit_id, 'Use GPX data for hike time and elevation', $use_gps ? 'Off' : 'On', $use_gps ? 'On' : 'Off');
 
         header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
         exit;
@@ -219,6 +223,7 @@ if (isset($_POST['remove_gpx_track'])) {
             }
             $db->prepare("DELETE FROM gpx_tracks WHERE summit_id = ? AND planning_group_id = ?")->execute([$summit_id, $current_group['id']]);
             $db->prepare("UPDATE summits SET gpx_opted_out = 1 WHERE id = ?")->execute([$summit_id]);
+            summit_log_event($db, $summit_id, 'GPX track', 'Track present', 'Removed');
         }
         header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
         exit;
@@ -421,14 +426,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $db->prepare("INSERT INTO summit_notes (summit_id, user_callsign, note, planning_group_id, is_public) VALUES (?, ?, ?, ?, ?)");
         $stmt->execute([$summit_id, $_SESSION['sota_callsign'], $_POST['note'], $current_group['id'], $is_public]);
         logActivity($db, 'Note added', $log_summit_name, $log_sota_ref, $log_group_name);
+        summit_log_event($db, $summit_id, 'Note added', '', trim($_POST['note'] ?? ''));
         header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
         exit;
     }
 
     // Delete note
     if (isset($_POST['delete_note'])) {
+        $_on = $db->prepare("SELECT note FROM summit_notes WHERE id = ? AND summit_id = ?");
+        $_on->execute([$_POST['note_id'], $summit_id]);
+        $_old_note = $_on->fetchColumn();
         $stmt = $db->prepare("DELETE FROM summit_notes WHERE id = ? AND (planning_group_id = ? OR user_callsign = ? OR planning_group_id IS NULL)");
         $stmt->execute([$_POST['note_id'], $current_group['id'], $_SESSION['sota_callsign']]);
+        if ($stmt->rowCount() && $_old_note !== false) summit_log_event($db, $summit_id, 'Note deleted', trim($_old_note), '');
         header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
         exit;
     }
@@ -454,6 +464,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 getCurrentCallsign()
             ]);
             logActivity($db, 'Activation scheduled', $log_summit_name, $log_sota_ref, $log_group_name);
+            summit_log_event($db, $summit_id, 'Planned activation', '', 'Scheduled for ' . ($_POST['planned_date'] ?? '') . ' ' . ($_POST['hike_start_time'] ?? ''));
             header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
             exit;
         }
@@ -464,7 +475,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($current_group) {
             $pa_id = (int)$_POST['planned_activation_id'];
             $stmt = $db->prepare("DELETE FROM planned_activations WHERE id = ? AND planning_group_id = ?");
+            $_pd = $db->prepare("SELECT planned_date, hike_start_time FROM planned_activations WHERE id = ? AND planning_group_id = ?");
+            $_pd->execute([$pa_id, $current_group['id']]);
+            $_pdr = $_pd->fetch(PDO::FETCH_ASSOC);
             $stmt->execute([$pa_id, $current_group['id']]);
+            if ($_pdr && $stmt->rowCount()) summit_log_event($db, $summit_id, 'Planned activation', 'Scheduled for ' . $_pdr['planned_date'] . ' ' . $_pdr['hike_start_time'], 'Deleted');
             header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
             exit;
         }
@@ -724,9 +739,9 @@ $gpx_download_name = $gpx_data ? preg_replace('/[^a-zA-Z0-9]+/', '-', $summit['n
     . ($summit['sota_ref'] ? '-' . preg_replace('/[^a-zA-Z0-9]+/', '-', $summit['sota_ref']) : '')
     . '.gpx' : '';
 $one_way = ($track_type === 'ascent' || $track_type === 'descent');
-// has_timestamps is not stored in the DB, derive it from hiking_time:
-// if the track had no timestamps, hiking_time stays 0 since speed can't be computed.
-$has_timestamps = $gpx_data && $gpx_data['hiking_time'] > 0;
+// // Recorded GPX times are never used: pace differs per hiker, so hike time is always
+// Naismith's rule applied to the track's distance and climb.
+$has_timestamps = false;
 
 // Elevation gain, resolve first so hike time can use it
 // A track with no <ele> data (some SOTAmaps uploads) records 0 gain/loss; treat that as
@@ -1234,6 +1249,13 @@ if ($tl_show) {
     .section-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 1.5rem; box-shadow: var(--shadow-sm); margin-bottom: 1rem; }
     .section-title { font-size: 1rem; font-weight: 600; color: var(--ink); margin-bottom: 1rem; }
 
+    /* Change log */
+    .cl-table { width:100%; border-collapse:collapse; font-size:0.8rem; }
+    .cl-table th { text-align:left; font-size:0.68rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-3); padding:0.6rem 0.9rem; border-bottom:1px solid var(--border); background:var(--bg); }
+    .cl-table td { padding:0.55rem 0.9rem; border-bottom:1px solid var(--border); vertical-align:top; color:var(--ink-2); }
+    .cl-table tr:last-child td { border-bottom:none; }
+    .cl-val { max-width:22rem; overflow-wrap:anywhere; white-space:pre-wrap; }
+    .cl-empty { color:var(--ink-4); font-style:italic; }
     /* Community Notes */
     .cn-summary { display:flex; align-items:center; justify-content:space-between; gap:1rem; cursor:pointer; list-style:none; }
     .cn-summary::-webkit-details-marker { display:none; }
@@ -1896,20 +1918,7 @@ if ($tl_show) {
           </div>
           <div id="sotamaps-result" style="margin-top:0.5rem; display:none;"></div>
           <?php endif; ?>
-          <?php if ($has_timestamps): ?>
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-bottom:0.75rem;">
-            <div style="background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-md); padding:0.625rem; text-align:center;">
-              <div style="font-size:0.65rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-3); margin-bottom:3px;">Hiking</div>
-              <div style="font-size:0.95rem; font-weight:600; color:var(--ink);"><?= format_time_duration($gpx_data['hiking_time']) ?></div>
-            </div>
-            <div style="background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-md); padding:0.625rem; text-align:center;">
-              <div style="font-size:0.65rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-3); margin-bottom:3px;">Summit</div>
-              <div style="font-size:0.95rem; font-weight:600; color:var(--ink);"><?= format_time_duration($gpx_data['activation_time']) ?></div>
-            </div>
-          </div>
-          <?php else: ?>
-            <div style="font-size:0.78rem; color:var(--ink-3); margin-bottom:0.75rem;">Route-only GPX (no timestamps), map loaded<?= $gpx_data['elevation_gain'] > 0 ? ', elevation data loaded' : ' (no elevation data in track)' ?>.</div>
-          <?php endif; ?>
+          <div style="font-size:0.78rem; color:var(--ink-3); margin-bottom:0.75rem;">Route loaded<?= $gpx_data['elevation_gain'] > 0 ? ', elevation data loaded' : ' (no elevation data in track)' ?>. Hike time is calculated from the track's distance and climb.</div>
           <?php
             $track_type_label = ['ascent' => 'Ascent only', 'descent' => 'Descent only', 'round-trip' => 'Round-trip'][$track_type] ?? 'Round-trip';
           ?>
@@ -2356,6 +2365,40 @@ if ($tl_show) {
         <p style="color:var(--ink-3); font-size:0.875rem;">Could not reach the SOTA API.</p>
       <?php endif; ?>
     </div>
+  </div>
+  <?php endif; ?>
+
+  <!-- CHANGE LOG -->
+  <?php $change_log = summit_log_fetch($db, $summit_id, 100); ?>
+  <?php if ($change_log !== null): ?>
+  <div style="margin-top:1rem;">
+    <details class="cl-box">
+      <summary style="cursor:pointer; font-size:0.78rem; color:var(--ink-4); display:inline-flex; align-items:center; gap:0.35rem;">
+        Change log<?= $change_log ? ' (' . count($change_log) . (count($change_log) >= 100 ? '+' : '') . ')' : '' ?>
+      </summary>
+      <div class="card" style="margin-top:0.75rem; padding:0;">
+        <?php if (!$change_log): ?>
+          <p style="padding:1rem 1.25rem; color:var(--ink-3); font-size:0.85rem;">No changes recorded yet. Edits made from now on will appear here.</p>
+        <?php else: ?>
+        <div style="overflow-x:auto;">
+        <table class="cl-table">
+          <thead><tr><th>When</th><th>Callsign</th><th>What</th><th>Was</th><th>Now</th></tr></thead>
+          <tbody>
+          <?php foreach ($change_log as $cl): ?>
+            <tr>
+              <td style="white-space:nowrap;"><?= htmlspecialchars(date('M j, Y g:i A', strtotime($cl['created_at']))) ?></td>
+              <td style="font-family:var(--font-mono); font-weight:600;"><?= htmlspecialchars($cl['callsign']) ?></td>
+              <td><?= htmlspecialchars($cl['field_label']) ?></td>
+              <td class="cl-val"><?= ($cl['old_value'] === null || $cl['old_value'] === '') ? '<span class="cl-empty">empty</span>' : htmlspecialchars($cl['old_value']) ?></td>
+              <td class="cl-val"><?= ($cl['new_value'] === null || $cl['new_value'] === '') ? '<span class="cl-empty">empty</span>' : htmlspecialchars($cl['new_value']) ?></td>
+            </tr>
+          <?php endforeach; ?>
+          </tbody>
+        </table>
+        </div>
+        <?php endif; ?>
+      </div>
+    </details>
   </div>
   <?php endif; ?>
 
