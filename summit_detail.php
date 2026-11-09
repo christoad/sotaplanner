@@ -149,8 +149,13 @@ if (isset($_FILES['gpx_file']) && $_FILES['gpx_file']['error'] === UPLOAD_ERR_OK
 
                             // Auto-set trailhead from GPX detection if none is saved yet
                             if (!empty($gpx_stats['trailhead_lat'])) {
-                                $db->prepare("UPDATE summits SET trailhead_lat = ?, trailhead_lng = ?, trailhead_manual = 0 WHERE id = ? AND (trailhead_lat IS NULL OR trailhead_lat = '')")
-                                   ->execute([$gpx_stats['trailhead_lat'], $gpx_stats['trailhead_lon'], $summit_id]);
+                                $thSet = $db->prepare("UPDATE summits SET trailhead_lat = ?, trailhead_lng = ?, trailhead_manual = 0 WHERE id = ? AND (trailhead_lat IS NULL OR trailhead_lat = '')");
+                                $thSet->execute([$gpx_stats['trailhead_lat'], $gpx_stats['trailhead_lon'], $summit_id]);
+                                // Then snap it to a nearby OpenStreetMap trailhead or parking spot in the background as soon as the
+                                // page reloads (same queue, retry and log as the SOTA Maps import; see osm_trailhead_lib.php)
+                                if ($thSet->rowCount() > 0) {
+                                    trailhead_snap_queue($db, $summit_id, $log_sota_ref, (float)$gpx_stats['trailhead_lat'], (float)$gpx_stats['trailhead_lon']);
+                                }
                             }
 
                             // Only overwrite distance/elevation from GPX when it has timestamps
