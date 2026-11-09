@@ -9,6 +9,7 @@
 
 require_once 'config.php';
 require_once 'osm_trailhead_lib.php';
+require_once 'drive_leg_lib.php';
 session_start();
 if (!isset($_SESSION['sota_callsign'])) {
     http_response_code(401);
@@ -245,10 +246,10 @@ if ($action === 'import') {
 
         $db->prepare("UPDATE summits SET gpx_opted_out = 0 WHERE id = ?")->execute([$summit_id]);
 
-        // Starting point in one shot: take the low end of the new track, snap it to an OpenStreetMap trailhead or
-        // parking area within 400 m (same rules as the nightly cron and gpx_fetch.php), and set it on the summit
-        // if it has none yet. A starting point already on the summit is never replaced. Then recalculate the
-        // travel time to it so the summit page is complete right away.
+        // Starting point: set it right away from the low end of the new track (no network call, so the import is
+        // never held up), only if the summit has none yet. A starting point already on the summit is never replaced.
+        // The nicer OpenStreetMap trailhead or parking spot within 400 m is looked up afterwards by trailhead_snap.php
+        // (retried on later page views and by the nightly cron, logged in the Cron Activity Log).
         $trailhead = null; $drive_rt = null;
         try {
             $thLat = $gpx_stats['trailhead_lat'] ?? null;
@@ -259,24 +260,24 @@ if ($action === 'import') {
                 $thLon = floatval($points[0]['longitude'] ?? 0);
             }
             if (!empty($thLat) && !empty($thLon)) {
-                $osm = osm_find_trailhead((float)$thLat, (float)$thLon, 400);
-                if ($osm) { $thLat = $osm['lat']; $thLon = $osm['lon']; }
                 $cur = $db->prepare("SELECT trailhead_lat, trailhead_lng FROM summits WHERE id = ?");
                 $cur->execute([$summit_id]);
                 $curRow = $cur->fetch(PDO::FETCH_ASSOC);
                 if ($curRow && (empty($curRow['trailhead_lat']) || empty($curRow['trailhead_lng']))) {
                     $db->prepare("UPDATE summits SET trailhead_lat = ?, trailhead_lng = ? WHERE id = ?")
                        ->execute([round($thLat, 8), round($thLon, 8), $summit_id]);
-                    $trailhead = ['lat' => (float)$thLat, 'lon' => (float)$thLon, 'osm' => (bool)$osm];
+                    $trailhead = ['lat' => (float)$thLat, 'lon' => (float)$thLon, 'osm' => false];
+                    trailhead_snap_queue($db, $summit_id, $sota_ref, (float)$thLat, (float)$thLon);
                     $addr = getSelectedAddress($db);
                     if ($addr) {
-                        $one_way = calculateDriveTime(addressOrigin($db, $addr), $thLat, $thLon);
-                        if ($one_way !== null) {
-                            $drive_rt = $one_way * 2;
+                        $sRow = $db->prepare("SELECT * FROM summits WHERE id = ?");
+                        $sRow->execute([$summit_id]);
+                        $summitRow = $sRow->fetch(PDO::FETCH_ASSOC);
+                        $dl = drive_leg_summit_rt($db, $summitRow, $addr);
+                        if ($dl['rt'] !== null) {
+                            $drive_rt = $dl['rt'];
                             $db->prepare("UPDATE summits SET drive_time_min = ? WHERE id = ?")->execute([$drive_rt, $summit_id]);
-                            $sRow = $db->prepare("SELECT * FROM summits WHERE id = ?");
-                            $sRow->execute([$summit_id]);
-                            saveDriveTimeCache($db, $sRow->fetch(PDO::FETCH_ASSOC), $addr, $drive_rt);
+                            saveDriveTimeCache($db, $summitRow, $addr, $drive_rt);
                         }
                     }
                 }

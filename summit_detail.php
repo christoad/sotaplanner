@@ -5,6 +5,7 @@ ini_set('display_errors', 1);
 require_once 'config.php';
 require_once 'weather_lib.php';
 require_once 'drive_leg_lib.php';
+require_once 'osm_trailhead_lib.php';
 require_once 'share_lib.php';
 require_once 'summit_changelog_lib.php';
 session_start();
@@ -2938,6 +2939,17 @@ function importSotaMapsTrack(hdrId, btn) {
       alert('Network error during import.');
     });
 }
+
+<?php if (trailhead_snap_due($db, $summit_id)): ?>
+// A start point set from an imported track is still waiting for its OpenStreetMap trailhead or parking spot.
+// Look it up now, in the background after the page has loaded; reload once only if the starting point moved.
+window.addEventListener('load', function() {
+  fetch('trailhead_snap.php', { method: 'POST', body: new URLSearchParams({ summit_id: <?= (int)$summit_id ?> }) })
+    .then(r => r.json())
+    .then(d => { if (d && d.result === 'moved') window.location.reload(); })
+    .catch(() => {});
+});
+<?php endif; ?>
 
 function escHtml(str) {
   return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');

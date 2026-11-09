@@ -30,6 +30,12 @@ $db = getDbConnection();
 
 _th_clog("Trailhead cron starting: limit={$limit} delay={$delay_ms}ms");
 
+// First retry any start points set by a SOTA Maps import that are still waiting for their OpenStreetMap snap
+// (these log to the same file themselves as "Start point lookup: ...").
+require_once __DIR__ . '/osm_trailhead_lib.php';
+$snap_n = trailhead_snap_retry_pending($db, 20, $delay_ms);
+if ($snap_n > 0) _th_clog("{$snap_n} pending import start point lookup(s) retried");
+
 // Find global GPX tracks that are missing a trailhead
 $rows = $db->prepare("
     SELECT id AS track_id, sota_ref, file_path

@@ -60,6 +60,7 @@ All 181,126 summits have been checked against SOTAmaps. Steady-state cron jobs a
 
 **OSM Trailhead Lookup:**
 - **Browser tool** (`admin_trailhead_osm.php`): interactive start/pause/stop UI. Queries Overpass within 400m of the GPX low-elevation endpoint. Falls back to the GPX endpoint itself. Default 1.5s delay.
+- **SOTA Maps import start point (2026-11-08):** the import no longer waits on OpenStreetMap. It sets the summit's starting point to the track's low end at once (only if the summit has none) and queues a row in `trailhead_snap_queue`. `trailhead_snap.php` then tries the Overpass snap in the background after the summit page loads (`trailhead_snap_run()` in `osm_trailhead_lib.php`; reloads the page once if the point moved). Failures retry on later page views (60 s apart) and in the nightly `trailhead_osm_cron.php` (up to 6 attempts, then `gave_up`, track start kept). A start point edited by hand is never overwritten (`skipped`). Every attempt is logged as "Start point lookup: ..." in `sota_logs/gpx_cron.log`, visible in God Mode's Cron Activity Log. `osm_find_trailhead()` returns false when the lookup failed, null when nothing is mapped. Silent change, deliberately not in the changelog.
 - **Cron script** (`trailhead_osm_cron.php`): CLI-only, processes `global_gpx_tracks` rows missing a trailhead (newest-first so recently cron-imported tracks get filled promptly). 100/run at 2s delay.
 
 **Remaining data pre-population idea:**

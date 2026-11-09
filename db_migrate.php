@@ -29,6 +29,22 @@ function step($label, $fn) {
     }
 }
 
+step('Create trailhead_snap_queue', function () use ($db) {
+    $db->exec("CREATE TABLE IF NOT EXISTS trailhead_snap_queue (
+        summit_id INT NOT NULL PRIMARY KEY,
+        sota_ref VARCHAR(20) NOT NULL,
+        origin_lat DECIMAL(10,7) NOT NULL,
+        origin_lon DECIMAL(10,7) NOT NULL,
+        status VARCHAR(12) NOT NULL DEFAULT 'pending',
+        attempts INT NOT NULL DEFAULT 0,
+        last_attempt DATETIME NULL,
+        note VARCHAR(160) NULL,
+        created_at DATETIME NOT NULL,
+        KEY idx_status (status, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    return 'ready';
+});
+
 step('Create drive_leg_cache', function () use ($db) {
     $db->exec("CREATE TABLE IF NOT EXISTS drive_leg_cache (
         id INT AUTO_INCREMENT PRIMARY KEY,
