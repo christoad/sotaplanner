@@ -1,5 +1,6 @@
 <?php
 // One-off migration for the BRouter path tools and Multi-Activate leg settings (additive, safe to run twice).
+//   drive_leg_cache          Google Routes drive legs (time, distance, road line), refreshed after 30 days
 //   brouter_route_cache      permanent cache of every routed pair of points
 //   brouter_path_candidates  hiking paths discovered for a summit, kept for manual review
 //   multi_leg_modes          per route: car or hike between neighbouring summits
@@ -27,6 +28,21 @@ function step($label, $fn) {
         echo "[ERROR] $label: " . $e->getMessage() . "\n";
     }
 }
+
+step('Create drive_leg_cache', function () use ($db) {
+    $db->exec("CREATE TABLE IF NOT EXISTS drive_leg_cache (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        from_key VARCHAR(24) NOT NULL,
+        to_key VARCHAR(24) NOT NULL,
+        duration_min INT NOT NULL DEFAULT 0,
+        distance_m INT NOT NULL DEFAULT 0,
+        polyline MEDIUMTEXT NULL,
+        source VARCHAR(16) NOT NULL DEFAULT 'routes',
+        fetched_at DATETIME NOT NULL,
+        UNIQUE KEY uq_leg (from_key, to_key)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    return 'ready';
+});
 
 step('Create brouter_route_cache', function () use ($db) {
     $db->exec("CREATE TABLE IF NOT EXISTS brouter_route_cache (

@@ -286,6 +286,7 @@ session_start();
         </div>
         <p class="version-desc">Adding summits to your dashboard is faster when you have a list to work through.</p>
         <ul>
+            <li>Travel times on summit pages and in Multi-Activate now come from Google's road routing, which knows about road closures, and are refreshed automatically. Multi-Activate draws the actual road route, and summit pages remind you to check for closures before you go</li>
             <li>Clearer wording when you add summits: the buttons now say "Save to Dashboard" and "Save + Add more", and a summit that still needs trail information is labeled "Needs Research" on the dashboard and the summit page. It becomes "Researched" on its own once it has a recorded route and a starting point</li>
             <li>When you import a new route from SOTA Maps on a summit page, the starting point is now found for you in the same step. SOTA Planner picks the trailhead or parking area from OpenStreetMap closest to where the route begins, fills in the starting point if the summit does not have one yet, and works out the travel time to it</li>
             <li>Every summit page now has a hidden Change log at the bottom. Open it to see which callsign changed what on that summit and what the old and new values were</li>

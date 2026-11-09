@@ -5,6 +5,7 @@ ini_set('display_errors', 1);
 require_once 'config.php';
 require_once 'sota_cache_helper.php'; // haversine_miles()
 require_once 'multi_alt_lib.php';     // alternate hike starts (see file header)
+require_once 'drive_leg_lib.php';     // drive time, distance and road line from one Google Routes call
 require_once 'multi_leg_lib.php';     // car/hike between summits + finish address (BRouter)
 require_once 'multi_elev_lib.php';    // elevation profiles of the hikes (page and PDF)
 session_start();
@@ -311,9 +312,8 @@ $get_leg = function ($fromKey, $fromCoord, $toKey, $toCoord) use (&$drive_cache)
     }
     $k = $fromKey . '>' . $toKey;
     if (array_key_exists($k, $drive_cache) && is_array($drive_cache[$k])) return $drive_cache[$k];
-    $distance_mi = null;
-    $t = calculateDriveTimeBetween($fromCoord, $toCoord, $distance_mi);
-    $result = ['min' => $t, 'mi' => $distance_mi];
+    $leg = drive_leg_get($fromCoord, $toCoord);
+    $result = ['min' => $leg['min'], 'mi' => $leg['mi']];
     $drive_cache[$k] = $result;
     return $result;
 };
@@ -572,10 +572,14 @@ $CURRENT_IDS = array_values($summit_ids);
 $MAP_LEGS = [];
 foreach ($map_legs as $leg) {
     if (!$leg['from'] || !$leg['to']) continue;
+    // The road line comes from the same Google call that gave the drive time (cached), so the two always agree.
+    // No line (Routes unavailable) means the map draws a dashed straight line, never a guessed route.
+    $leg_geo = drive_leg_get($leg['from'], $leg['to']);
     $MAP_LEGS[] = [
         'key' => $leg['key'], 'color' => $leg['color'], 'label' => $leg['label'],
         'from' => array_map('floatval', explode(',', $leg['from'])),
         'to' => array_map('floatval', explode(',', $leg['to'])),
+        'geom' => $leg_geo['line'],
     ];
 }
 
@@ -1811,23 +1815,11 @@ function onTileDragEnd(e) {
     dragFromPos = null;
 }
 
-// ── Map: driving route (OSRM), GPX tracks, activation zones ──
+// ── Map: driving route (Google, via the server), GPX tracks, activation zones ──
 function normalizeAzCoords(poly) {
     if (Array.isArray(poly[0]) && Array.isArray(poly[0][0]) && Array.isArray(poly[0][0][0])) return poly[0][0].map(c => [c[1], c[0]]);
     if (Array.isArray(poly[0]) && Array.isArray(poly[0][0])) return poly[0].map(c => [c[1], c[0]]);
     return poly.map(c => [c[1], c[0]]);
-}
-
-async function fetchLegGeometry(from, to) {
-    const url = 'https://router.project-osrm.org/route/v1/driving/' + from[1] + ',' + from[0] + ';' + to[1] + ',' + to[0] + '?overview=full&geometries=geojson';
-    try {
-        const resp = await fetch(url);
-        const data = await resp.json();
-        if (data.code === 'Ok' && data.routes && data.routes[0]) {
-            return data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
-        }
-    } catch (e) { /* fall through to straight-line fallback */ }
-    return null;
 }
 
 // One color-coded polyline per leg, fetched in parallel, lets outbound and
@@ -1835,9 +1827,8 @@ async function fetchLegGeometry(from, to) {
 // hovering a leg (here or in the gantt) highlight just that leg.
 async function loadLegRoutes(map) {
     if (!MAP_LEGS.length) return;
-    const results = await Promise.all(MAP_LEGS.map(leg => fetchLegGeometry(leg.from, leg.to)));
-    MAP_LEGS.forEach((leg, i) => {
-        const driven = results[i];
+    MAP_LEGS.forEach((leg) => {
+        const driven = leg.geom;
         const coords = driven && driven.length > 1 ? driven : [leg.from, leg.to];
         const poly = L.polyline(coords, {
             color: leg.color, weight: 4, opacity: 0.85,
@@ -2147,7 +2138,7 @@ async function initMap() {
     }
 
     // Real driving routes, one color-coded polyline per leg, falls back to a
-    // dashed straight line per leg if OSRM is unavailable for that leg.
+    // dashed straight line per leg if Google has no road line for that leg.
     await loadLegRoutes(map);
     try { arrangeOffsets(); } catch (e) { /* the lines just stay where they are */ }
 

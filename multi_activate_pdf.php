@@ -6,6 +6,7 @@ set_time_limit(180);
 require_once 'config.php';
 require_once __DIR__ . '/lib/fpdf.php';
 require_once __DIR__ . '/multi_alt_lib.php';
+require_once __DIR__ . '/drive_leg_lib.php';
 require_once __DIR__ . '/multi_leg_lib.php';
 require_once __DIR__ . '/multi_elev_lib.php';
 require_once __DIR__ . '/multi_elev_pdf_lib.php';
@@ -145,9 +146,8 @@ $get_leg = function ($fromKey, $fromCoord, $toKey, $toCoord) use (&$drive_cache)
     }
     $k = $fromKey . '>' . $toKey;
     if (array_key_exists($k, $drive_cache) && is_array($drive_cache[$k])) return $drive_cache[$k];
-    $distance_mi = null;
-    $t = calculateDriveTimeBetween($fromCoord, $toCoord, $distance_mi);
-    $result = ['min' => $t, 'mi' => $distance_mi];
+    $leg = drive_leg_get($fromCoord, $toCoord);
+    $result = ['min' => $leg['min'], 'mi' => $leg['mi']];
     $drive_cache[$k] = $result;
     return $result;
 };
@@ -233,7 +233,7 @@ $total_elev_ft_sum = array_sum(array_map(fn($s) => $s['elev_ft'] ?? 0, $stops));
 $total_drive_dist_mi_sum = array_sum(array_filter($leg_distances_mi)) + ($return_leg_distance_mi ?: 0);
 
 // ── Map data shared by the overview and per-summit maps (same sources as the
-// on-screen pages: GPX trail, activation zone, OSRM road geometry) ──
+// on-screen pages: GPX trail, activation zone, Google road geometry) ──
 foreach ($stops as $i => $stop) {
     // A summit only gets its community GPX linked once its detail page is opened,
     // so fall back to the shared library track (read-only) for the map.
@@ -249,7 +249,7 @@ foreach ($stops as $i => $stop) {
     $stops[$i]['az_ring'] = ($az_row && !empty($az_row['polygon'])) ? pdfmap_az_ring($az_row['polygon']) : [];
 }
 foreach ($legs as $li => $leg) {
-    $legs[$li]['geom'] = pdfmap_osrm_route($leg['from'], $leg['to']);
+    $legs[$li]['geom'] = ($leg['from'] && $leg['to']) ? drive_leg_get($leg['from'], $leg['to'])['line'] : null;
 }
 
 function multi_clock_label($minutes_from_midnight) {

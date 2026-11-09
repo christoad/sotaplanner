@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/drive_leg_lib.php';
 // Copies a shared multi-activation route (and the summits in it) from another
 // dashboard into $target_group_id. Used by the "Add this Multi-Summit to your own dashboard"
 // flow on the public multi_activate.php view: the visitor finishes onboarding
@@ -108,12 +109,12 @@ function importMultiActivationIntoGroup(PDO $db, int $source_multi_id, int $targ
     $prev = $origin;
     foreach ($new_order as $i => $sid) {
         $to = $coord($new_rows[$sid]);
-        $t = ($prev && $to) ? calculateDriveTimeBetween($prev, $to) : null;
+        $t = ($prev && $to) ? drive_leg_get($prev, $to)['min'] : null;
         $leg_times[$i] = $t;
         $total_drive += (int)$t;
         $prev = $to;
     }
-    if ($origin && $prev) $total_drive += (int)calculateDriveTimeBetween($prev, $origin);
+    if ($origin && $prev) $total_drive += (int)drive_leg_get($prev, $origin)['min'];
 
     $activation_min = (int)$src['activation_time_min'];
     $hike_min = (int)$src['total_hike_min'];

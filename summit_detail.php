@@ -4,6 +4,7 @@ ini_set('display_errors', 1);
 
 require_once 'config.php';
 require_once 'weather_lib.php';
+require_once 'drive_leg_lib.php';
 require_once 'share_lib.php';
 require_once 'summit_changelog_lib.php';
 session_start();
@@ -334,18 +335,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$summit_id]);
             $summit_data = $stmt->fetch();
 
-            $dest_lat = !empty($summit_data['trailhead_lat']) ? $summit_data['trailhead_lat'] : $summit_data['latitude'];
-            $dest_lng = !empty($summit_data['trailhead_lng']) ? $summit_data['trailhead_lng'] : $summit_data['longitude'];
-
-            $element_status = null;
-            $drive_time = calculateDriveTime(addressOrigin($db, $selected_address), $dest_lat, $dest_lng, $element_status);
-
-            // Trailhead coords can land on inaccessible road segments, retry with summit coords
-            if ($drive_time === null && $element_status === 'ZERO_RESULTS'
-                && !empty($summit_data['trailhead_lat'])
-                && ($dest_lat != $summit_data['latitude'] || $dest_lng != $summit_data['longitude'])) {
-                $drive_time = calculateDriveTime(addressOrigin($db, $selected_address), $summit_data['latitude'], $summit_data['longitude']);
-            }
+            // Google Routes (road closures included); falls back to summit coords if the trailhead has no road route
+            $dl = drive_leg_summit_rt($db, $summit_data, $selected_address);
+            $drive_time = $dl['rt'] === null ? null : intdiv($dl['rt'], 2);
 
             if ($drive_time !== null) {
                 $drive_time_rt = $drive_time * 2;
@@ -666,22 +658,15 @@ $trailhead_needs_validation = !empty($summit['trailhead_lat']) && empty($summit[
 
 $selected_address = getSelectedAddress($db);
 
-// Auto-calculate drive time on first load if it's missing and we have an address + coordinates
-if (empty($summit['drive_time_min']) && $selected_address && !empty($summit['latitude'])) {
-    $dest_lat = !empty($summit['trailhead_lat']) ? $summit['trailhead_lat'] : $summit['latitude'];
-    $dest_lng = !empty($summit['trailhead_lng']) ? $summit['trailhead_lng'] : $summit['longitude'];
-    $auto_el   = null;
-    $auto_drive = calculateDriveTime(addressOrigin($db, $selected_address), $dest_lat, $dest_lng, $auto_el);
-    // Retry with summit coords if trailhead landed on an inaccessible road segment
-    if ($auto_drive === null && $auto_el === 'ZERO_RESULTS' && !empty($summit['trailhead_lat'])) {
-        $auto_drive = calculateDriveTime(addressOrigin($db, $selected_address), $summit['latitude'], $summit['longitude']);
-    }
-    if ($auto_drive !== null) {
-        $auto_drive_rt = $auto_drive * 2;
-        $db->prepare("UPDATE summits SET drive_time_min = ? WHERE id = ?")
-           ->execute([$auto_drive_rt, $summit_id]);
-        saveDriveTimeCache($db, $summit, $selected_address, $auto_drive_rt);
-        $summit['drive_time_min'] = $auto_drive_rt;
+// Travel time comes from Google Routes (road closures included) and each leg is cached 30 days, so checking it on
+// every page load costs nothing after the first. Calculate it when missing and refresh the stored value when it moves.
+if ($selected_address && !empty($summit['latitude'])) {
+    $auto = drive_leg_summit_rt($db, $summit, $selected_address);
+    if ($auto['rt'] !== null && $auto['rt'] > 0 && (int)$auto['rt'] !== (int)($summit['drive_time_min'] ?? 0)
+        && ($auto['source'] !== 'matrix' || empty($summit['drive_time_min']))) {
+        $db->prepare("UPDATE summits SET drive_time_min = ? WHERE id = ?")->execute([$auto['rt'], $summit_id]);
+        saveDriveTimeCache($db, $summit, $selected_address, $auto['rt']);
+        $summit['drive_time_min'] = $auto['rt'];
     }
 }
 
@@ -1535,6 +1520,7 @@ if ($tl_show) {
           <?php if ($drive_rt): ?>
             <div class="stat-cell-val"><?= floor($drive_rt/60) ?>h <?= $drive_rt%60 ?>m</div>
             <div class="stat-cell-sub"><?= $selected_address ? htmlspecialchars($selected_address['label'] ?: 'from base') : 'round-trip' ?></div>
+            <div class="stat-cell-sub" style="margin-top:0.2rem; color:var(--ink-4);" title="Estimate for a typical Saturday morning. Roads and trailhead access roads can close for fire, snow or construction, so check conditions with the land manager before you leave.">Check road closures before you go</div>
             <?php if ($selected_address): ?>
             <button type="submit" name="calculate_drive_time"
                     title="<?= $travel_stale ? 'The starting point changed since this was calculated' : 'Recalculate travel time' ?>"
@@ -1674,7 +1660,6 @@ if ($tl_show) {
           <?php endif; ?>
           <span class="map-divider"></span>
           <span class="track-key" id="track-key">
-            <span id="track-key-drive" style="display:none;"><span class="track-key-swatch" style="background:#2563EB;"></span>Driving path</span>
             <span id="track-key-hike" style="display:none;"><span class="track-key-swatch" style="background:#9B6328;"></span>Hike</span>
           </span>
         </div>
@@ -2707,29 +2692,6 @@ function toggleCarrier(name) {
     btn.style.background = carrierColors[name]; btn.style.color = '#fff';
   }
 }
-
-<?php
-$drive_origin_geo = ($selected_address && $directions_lat && $directions_lng) ? addressGeo($db, $selected_address) : null;
-if ($drive_origin_geo): ?>
-// Driving route (OSRM) from the selected starting address to the starting point.
-// Drawn after the initial view is set and never touches fitBounds, so the map
-// stays focused on the hike and summit; the line may run off-screen.
-(function() {
-  const from = [<?= (float)$drive_origin_geo['lat'] ?>, <?= (float)$drive_origin_geo['lng'] ?>];
-  const to = [<?= (float)$directions_lat ?>, <?= (float)$directions_lng ?>];
-  fetch('https://router.project-osrm.org/route/v1/driving/' + from[1] + ',' + from[0] + ';' + to[1] + ',' + to[0] + '?overview=full&geometries=geojson')
-    .then(r => r.json())
-    .then(data => {
-      if (data.code !== 'Ok' || !data.routes || !data.routes[0]) return;
-      const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
-      L.polyline(coords, { color: '#2563EB', weight: 4, opacity: 0.8, lineJoin: 'round', lineCap: 'round' })
-        .bindPopup('<strong>Driving route</strong><br>from <?= htmlspecialchars(addslashes($selected_address['label'] ?: $selected_address['address']), ENT_QUOTES) ?>')
-        .addTo(map);
-      document.getElementById('track-key-drive').style.display = '';
-    })
-    .catch(() => {});
-})();
-<?php endif; ?>
 
 function initActivationZone(poly, source) {
   let coords;
