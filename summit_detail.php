@@ -2880,6 +2880,7 @@ fetch('activation_zone.php?sota_ref=<?= urlencode($summit['sota_ref']) ?>')
 const SOTAMAPS_SOTA_REF  = <?= json_encode($summit['sota_ref'] ?? '') ?>;
 const SOTAMAPS_SUMMIT_ID = <?= intval($summit_id) ?>;
 const SOTAMAPS_GROUP_ID  = <?= intval($current_group['id']) ?>;
+const SOTAMAPS_HAS_GPX   = <?= !empty($gpx_data) ? 'true' : 'false' ?>;   // only warn about replacing when there is something to replace
 
 function fetchSotaMaps(fetchBtn) {
   const resultEl = fetchBtn.closest('div').querySelector('#sotamaps-result')
@@ -2943,7 +2944,7 @@ function renderTrackList(data) {
 }
 
 function importSotaMapsTrack(hdrId, btn) {
-  if (!confirm('Import this track? It will replace any existing GPX for this summit.')) return;
+  if (SOTAMAPS_HAS_GPX && !confirm('Import this track? It will replace the GPX track this summit already has.')) return;
   btn.disabled = true;
   btn.textContent = 'Importing…';
 
