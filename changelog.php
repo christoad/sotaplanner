@@ -286,6 +286,8 @@ session_start();
         </div>
         <p class="version-desc">Adding summits to your dashboard is faster when you have a list to work through.</p>
         <ul>
+            <li>Clearer wording when you add summits: the buttons now say "Save to Dashboard" and "Save + Add more", and a summit that still needs trail information is labeled "Needs Research" on the dashboard and the summit page. It becomes "Researched" on its own once it has a recorded route and a starting point</li>
+            <li>When you import a new route from SOTA Maps on a summit page, the starting point is now found for you in the same step. SOTA Planner picks the trailhead or parking area from OpenStreetMap closest to where the route begins, fills in the starting point if the summit does not have one yet, and works out the travel time to it</li>
             <li>Every summit page now has a hidden Change log at the bottom. Open it to see which callsign changed what on that summit and what the old and new values were</li>
             <li>Multi-Activate shows an elevation profile under the route map, and in the PDF, for every hike in the day, with each leg in its own color and estimated stretches dashed</li>
             <li>Multi-Activate hikes between summits now follow recorded GPX tracks wherever the walk meets one, using estimated map trails only for the gaps, and the map draws the recorded stretches as solid lines</li>
@@ -293,7 +295,7 @@ session_start();
             <li>Multi-Activate "Show All Summits" now shows every SOTA summit in the part of the map you are looking at, not only your dashboard, and "+ Add to Route" adds a new summit to your dashboard and the route in one click</li>
             <li>The Multi-Activate "Zoom to Summits" button now toggles: press again to zoom back out to the whole route</li>
             <li>The About page now has a Data Sources and Credits section thanking the projects and communities behind the summit data, routes, maps and weather in SOTA Planner, with a Credits link in the footer of every page</li>
-            <li>The Nominate page has a new "Nominate + Add more" button, on both the Name / Reference and Search by Area tabs. It adds the summit and leaves you on the same page with the search cleared, so you can look up the next summit by name and add it, over and over, without going back to the dashboard each time</li>
+            <li>The summit search page has a new "Save + Add more" button, on both the Name / Reference and Search by Area tabs. It adds the summit and leaves you on the same page with the search cleared, so you can look up the next summit by name and add it, over and over, without going back to the dashboard each time</li>
         </ul>
     </div>
 

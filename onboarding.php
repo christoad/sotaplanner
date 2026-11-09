@@ -783,7 +783,7 @@ window.addEventListener('pageshow', snapTopAndFocus);
         <p class="hero-body">
             A <strong>dashboard</strong> is a single activator, or a team of activators, who
             collaborate together to find and research summits. Everyone on the dashboard shares the
-            same wishlist: nominating peaks, uploading GPX tracks, adding trail notes, and
+            same wishlist: adding peaks, uploading GPX tracks, adding trail notes, and
             building up research side by side.
         </p>
 

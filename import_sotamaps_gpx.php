@@ -8,6 +8,7 @@
  */
 
 require_once 'config.php';
+require_once 'osm_trailhead_lib.php';
 session_start();
 if (!isset($_SESSION['sota_callsign'])) {
     http_response_code(401);
@@ -244,6 +245,55 @@ if ($action === 'import') {
 
         $db->prepare("UPDATE summits SET gpx_opted_out = 0 WHERE id = ?")->execute([$summit_id]);
 
+        // Starting point in one shot: take the low end of the new track, snap it to an OpenStreetMap trailhead or
+        // parking area within 400 m (same rules as the nightly cron and gpx_fetch.php), and set it on the summit
+        // if it has none yet. A starting point already on the summit is never replaced. Then recalculate the
+        // travel time to it so the summit page is complete right away.
+        $trailhead = null; $drive_rt = null;
+        try {
+            $thLat = $gpx_stats['trailhead_lat'] ?? null;
+            $thLon = $gpx_stats['trailhead_lon'] ?? null;
+            if (empty($thLat) || empty($thLon)) {
+                // Elevation analysis returns nothing for flat tracks: use the first point of the track
+                $thLat = floatval($points[0]['latitude'] ?? 0);
+                $thLon = floatval($points[0]['longitude'] ?? 0);
+            }
+            if (!empty($thLat) && !empty($thLon)) {
+                $osm = osm_find_trailhead((float)$thLat, (float)$thLon, 400);
+                if ($osm) { $thLat = $osm['lat']; $thLon = $osm['lon']; }
+                $cur = $db->prepare("SELECT trailhead_lat, trailhead_lng FROM summits WHERE id = ?");
+                $cur->execute([$summit_id]);
+                $curRow = $cur->fetch(PDO::FETCH_ASSOC);
+                if ($curRow && (empty($curRow['trailhead_lat']) || empty($curRow['trailhead_lng']))) {
+                    $db->prepare("UPDATE summits SET trailhead_lat = ?, trailhead_lng = ? WHERE id = ?")
+                       ->execute([round($thLat, 8), round($thLon, 8), $summit_id]);
+                    $trailhead = ['lat' => (float)$thLat, 'lon' => (float)$thLon, 'osm' => (bool)$osm];
+                    $addr = getSelectedAddress($db);
+                    if ($addr) {
+                        $one_way = calculateDriveTime(addressOrigin($db, $addr), $thLat, $thLon);
+                        if ($one_way !== null) {
+                            $drive_rt = $one_way * 2;
+                            $db->prepare("UPDATE summits SET drive_time_min = ? WHERE id = ?")->execute([$drive_rt, $summit_id]);
+                            $sRow = $db->prepare("SELECT * FROM summits WHERE id = ?");
+                            $sRow->execute([$summit_id]);
+                            saveDriveTimeCache($db, $sRow->fetch(PDO::FETCH_ASSOC), $addr, $drive_rt);
+                        }
+                    }
+                }
+            }
+            // Same rule as nominate.php: a GPX track plus a starting point means "researched" (was "Needs Research")
+            $db->prepare("
+                UPDATE summits s
+                JOIN gpx_tracks g ON g.summit_id = s.id
+                SET s.status = 'researched'
+                WHERE s.id = ? AND s.status = 'nominated'
+                  AND s.trailhead_lat IS NOT NULL AND s.trailhead_lat != 0
+                  AND s.trailhead_lng IS NOT NULL AND s.trailhead_lng != 0
+            ")->execute([$summit_id]);
+        } catch (Throwable $e) {
+            error_log('sotamaps import trailhead step failed: ' . $e->getMessage());   // the track itself is already saved
+        }
+
         // Compute stats for response (no auto-update of summit, user must enable GPS data manually)
         $elevation_gain_ft = round($gpx_stats['elevation_gain'] * 3.28084);
         $distance_mi = round($gpx_stats['total_distance'] * 0.621371, 2);
@@ -256,6 +306,8 @@ if ($action === 'import') {
             'distance_mi'   => $distance_mi,
             'elevation_gain_ft' => $elevation_gain_ft,
             'elevation_gain_m'  => round($gpx_stats['elevation_gain']),
+            'trailhead'         => $trailhead,
+            'drive_time_rt_min' => $drive_rt,
         ]);
 
     } catch (Exception $e) {

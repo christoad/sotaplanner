@@ -46,8 +46,8 @@ $show_nomination_overlay = isset($_GET['nominated']);
 // Check for success messages
 if (isset($_GET['nominated'])) {
     $message = $fetch_gpx_async
-        ? "✓ Summit nominated! Searching for a community route…"
-        : "✓ Summit nominated! Use the tools below to add trail info and import a GPS track.";
+        ? "✓ Summit saved to your dashboard! Searching for a community route…"
+        : "✓ Summit saved to your dashboard! Use the tools below to add trail info and import a GPS track.";
 }
 if (isset($_GET['saved'])) {
     $message = "Summit updated successfully!";
@@ -1401,7 +1401,7 @@ if ($tl_show) {
         <?php if ($summit['difficulty']): ?>
           <span class="badge badge-<?= htmlspecialchars($summit['difficulty']) ?>"><?= ucfirst($summit['difficulty']) ?></span>
         <?php endif; ?>
-        <span class="badge badge-<?= htmlspecialchars($summit['status']) ?>"><?= ucfirst($summit['status']) ?></span>
+        <span class="badge badge-<?= htmlspecialchars($summit['status']) ?>"><?= statusLabel($summit['status']) ?></span>
         <?php if ($summit['sota_ref']): ?>
           <span class="sota-ref-designator" title="Click to copy" onclick="copySotaRef(this, '<?= htmlspecialchars($summit['sota_ref'], ENT_QUOTES) ?>')">
             <?= htmlspecialchars($summit['sota_ref']) ?>
@@ -1470,7 +1470,7 @@ if ($tl_show) {
   <!-- STATUS PIPELINE -->
   <?php
     $pipe_steps  = ['nominated','researched','ready','activated'];
-    $pipe_labels = ['ready' => 'Ready to Activate'];
+    $pipe_labels = ['nominated' => 'Needs Research', 'ready' => 'Ready to Activate'];
     $pipe_idx    = array_search($summit['status'], $pipe_steps);
     if ($pipe_idx === false) $pipe_idx = 0;
   ?>
@@ -1857,7 +1857,7 @@ if ($tl_show) {
         </div>
         <?php endif; ?>
         <div class="info-row">
-          <span class="info-label">Nominated</span>
+          <span class="info-label">Added</span>
           <span class="info-val"><?= $summit['nominated_date'] ? date('M j, Y', strtotime($summit['nominated_date'])) : '—' ?></span>
         </div>
         <div class="info-row">

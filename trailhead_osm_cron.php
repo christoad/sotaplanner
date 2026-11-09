@@ -1,6 +1,6 @@
 <?php
 /**
- * trailhead_osm_cron.php — CLI cron worker for OSM trailhead lookup.
+ * trailhead_osm_cron.php: CLI cron worker for OSM trailhead lookup.
  *
  * Finds global_gpx_tracks rows that have a GPX file but no trailhead coordinates,
  * then queries OpenStreetMap (Overpass API) within 400m of the GPX low-elevation
@@ -28,7 +28,7 @@ require_once __DIR__ . '/config.php';
 
 $db = getDbConnection();
 
-_th_clog("Trailhead cron starting — limit={$limit} delay={$delay_ms}ms");
+_th_clog("Trailhead cron starting: limit={$limit} delay={$delay_ms}ms");
 
 // Find global GPX tracks that are missing a trailhead
 $rows = $db->prepare("
@@ -51,7 +51,8 @@ if ($total === 0) {
     exit(0);
 }
 
-$counts = ['found' => 0, 'err' => 0];
+$counts = ['found' => 0, 'err' => 0, 'retry' => 0];
+$osm_fail_streak = 0;
 
 foreach ($queue as $i => $row) {
     $n         = $i + 1;
@@ -61,18 +62,33 @@ foreach ($queue as $i => $row) {
 
     if (!file_exists($file_path)) {
         $counts['err']++;
-        _th_clog("[{$n}/{$total}] ✗ {$sota_ref} — GPX file not on disk");
+        _th_clog("[{$n}/{$total}] ✗ {$sota_ref}: GPX file not on disk");
         continue;
     }
 
     $gpx_stats = analyze_gpx_track($file_path, null);
     if (!$gpx_stats || empty($gpx_stats['trailhead_lat']) || empty($gpx_stats['trailhead_lon'])) {
         $counts['err']++;
-        _th_clog("[{$n}/{$total}] · {$sota_ref} — GPX yielded no low-elevation endpoint");
+        _th_clog("[{$n}/{$total}] · {$sota_ref}: GPX yielded no low-elevation endpoint");
         continue;
     }
 
     $osm = _th_overpass((float)$gpx_stats['trailhead_lat'], (float)$gpx_stats['trailhead_lon'], 400);
+
+    // false means the lookup itself failed (Overpass busy or down), which is NOT the same as "nothing mapped nearby".
+    // Writing the GPX endpoint in that case would mark the track as done for good, so leave it for tomorrow night.
+    if ($osm === false) {
+        $counts['retry']++;
+        $osm_fail_streak++;
+        _th_clog("[{$n}/{$total}] ~ {$sota_ref}: OpenStreetMap lookup unavailable, will retry next run");
+        if ($osm_fail_streak >= 5) {
+            _th_clog("OpenStreetMap unavailable 5 times in a row, stopping early so we do not hammer it");
+            break;
+        }
+        usleep($delay_ms * 1000);
+        continue;
+    }
+    $osm_fail_streak = 0;
 
     $use_osm = false;
     if ($osm) {
@@ -109,7 +125,7 @@ foreach ($queue as $i => $row) {
     }
 }
 
-_th_clog("Done — found:{$counts['found']}  err:{$counts['err']}");
+_th_clog("Done: found:{$counts['found']}  err:{$counts['err']}  retry:{$counts['retry']}");
 _th_clog(str_repeat('-', 60));
 exit(0);
 
@@ -120,7 +136,8 @@ function _th_clog(string $msg): void {
     flush();
 }
 
-function _th_overpass(float $lat, float $lon, int $radius_m): ?array {
+/** Returns the best candidate array, null when nothing is mapped nearby, or false when the lookup itself failed. */
+function _th_overpass(float $lat, float $lon, int $radius_m) {
     $q = <<<OPQ
 [out:json][timeout:25];
 (
@@ -134,18 +151,30 @@ function _th_overpass(float $lat, float $lon, int $radius_m): ?array {
 out center;
 OPQ;
 
-    $ctx = stream_context_create(['http' => [
-        'method'        => 'POST',
-        'header'        => "Content-Type: application/x-www-form-urlencoded\r\nUser-Agent: SOTAPlanner-TrailheadCron/1.0\r\n",
-        'content'       => 'data=' . urlencode($q),
-        'timeout'       => 30,
-        'ignore_errors' => true,
-    ]]);
-    $raw = @file_get_contents('https://overpass-api.de/api/interpreter', false, $ctx);
-    if (!$raw) return null;
-
-    $data = json_decode($raw, true);
-    if (!isset($data['elements']) || !is_array($data['elements'])) return null;
+    // The main public Overpass server is often at capacity: try it with a short timeout, then a community mirror.
+    $attempts = [
+        ['https://overpass-api.de/api/interpreter', 20],
+        ['https://maps.mail.ru/osm/tools/overpass/api/interpreter', 40],
+    ];
+    $data = null;
+    foreach ($attempts as [$url, $timeout]) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => 'data=' . urlencode($q),
+            CURLOPT_HTTPHEADER     => ['Content-Type: application/x-www-form-urlencoded'],
+            CURLOPT_USERAGENT      => 'SOTAPlanner-TrailheadCron/1.0',
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT        => $timeout,
+        ]);
+        $raw  = curl_exec($ch);
+        $http = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        $j = ($http === 200 && $raw) ? json_decode($raw, true) : null;
+        if (is_array($j) && isset($j['elements']) && is_array($j['elements'])) { $data = $j; break; }
+    }
+    if ($data === null) return false;   // lookup failed: the caller retries later
 
     $candidates = [];
     foreach ($data['elements'] as $el) {

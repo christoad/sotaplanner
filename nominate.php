@@ -692,7 +692,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nominate Summit | SOTA Planner</title>
+  <title>Add Summits | SOTA Planner</title>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -1104,7 +1104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
 <div class="page">
 
   <div style="margin-bottom: 1.5rem;">
-    <h1 style="font-size: 1.375rem; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); margin-bottom: 0.25rem;">Nominate a Summit</h1>
+    <h1 style="font-size: 1.375rem; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); margin-bottom: 0.25rem;">Add a Summit</h1>
     <p style="font-size: 0.875rem; color: var(--ink-3);">Add one summit or a whole list to your dashboard.</p>
   </div>
 
@@ -1117,7 +1117,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
 
   <div class="group-badge">
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="4" cy="3.5" r="1.5" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="3.5" r="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M1 10c0-1.657 1.343-3 3-3s3 1.343 3 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M8 7c1.105 0 2 1.343 2 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-    Nominating for: <strong><?= htmlspecialchars($current_group['name']) ?></strong>
+    Adding to: <strong><?= htmlspecialchars($current_group['name']) ?></strong>
   </div>
 
   <!-- Tabbed nominate card -->
@@ -1171,8 +1171,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
           </div>
 
           <div class="nom-btn-row">
-            <button type="submit" id="nominate-btn" class="btn btn-primary nom-btn-main" disabled>Nominate Summit</button>
-            <button type="button" id="nominate-more-btn" class="btn btn-primary nom-btn-more" disabled>Nominate + Add more</button>
+            <button type="submit" id="nominate-btn" class="btn btn-primary nom-btn-main" disabled>Save to Dashboard</button>
+            <button type="button" id="nominate-more-btn" class="btn btn-primary nom-btn-more" disabled>Save + Add more</button>
           </div>
         </div>
       </div>
@@ -1559,10 +1559,10 @@ searchInput.addEventListener('input', function() {
                         selectedRef.textContent  = ref;
                     }
                 }
-                searchHint.textContent = 'Looks like a SOTA reference, ready to nominate.';
+                searchHint.textContent = 'Looks like a SOTA reference, ready to save.';
             })
             .catch(() => {
-                searchHint.textContent = 'Looks like a SOTA reference, ready to nominate.';
+                searchHint.textContent = 'Looks like a SOTA reference, ready to save.';
             });
         return;
     }
@@ -1713,12 +1713,12 @@ function renderBatchResults(results) {
     if (found.length > 0) {
         setNominateEnabled(true);
         nominateBtn.textContent = found.length === 1
-            ? 'Nominate 1 Summit'
-            : 'Nominate ' + found.length + ' Summits';
+            ? 'Save 1 Summit to Dashboard'
+            : 'Save ' + found.length + ' Summits to Dashboard';
         searchHint.textContent = '';
     } else {
         setNominateEnabled(false);
-        nominateBtn.textContent = 'Nominate Summit';
+        nominateBtn.textContent = 'Save to Dashboard';
         searchHint.textContent = 'None of the references were found. Check the format: ASSOC/CODE-NNN (e.g. W7O/NC-001).';
     }
 }
@@ -1728,7 +1728,7 @@ function setSingleMode(on) {
     if (on) {
         currentMode = 'single';
         formMode.value = 'single';
-        nominateBtn.textContent = 'Nominate Summit';
+        nominateBtn.textContent = 'Save to Dashboard';
         selectedBox.style.display = 'none';
     } else {
         currentMode = 'batch';
@@ -1759,7 +1759,7 @@ function resetSearchTab() {
     refInput.value = '';
     refsInput.value = '';
     formMode.value = 'single';
-    nominateBtn.textContent = 'Nominate Summit';
+    nominateBtn.textContent = 'Save to Dashboard';
     selectedBox.style.display = 'none';
     hideResults();
     setNominateEnabled(false);
@@ -1819,7 +1819,7 @@ document.getElementById('nominate-form').addEventListener('submit', function(e) 
     if (formMode.value === 'bulk') {
         e.preventDefault();
         const refs = refsInput.value.split(',').map(r => r.trim()).filter(r => r);
-        if (refs.length === 0) { alert('No valid summits to nominate.'); return; }
+        if (refs.length === 0) { alert('No valid summits to save.'); return; }
         runBulkNominateFlow(refs);
     } else {
         if (!refInput.value.trim()) {
@@ -2095,8 +2095,8 @@ function renderAreaResults(data) {
     html += '</div></div>';
 
     html += '<div class="nom-btn-row" style="margin-bottom:0.75rem;">';
-    html += '<button type="button" class="btn btn-primary nom-btn-main" id="area_nominate_btn" onclick="submitAreaSelection(false)" style="height:40px;" disabled>Nominate 0 Summits</button>';
-    html += '<button type="button" class="btn btn-primary nom-btn-more" id="area_nominate_more_btn" onclick="submitAreaSelection(true)" disabled>Nominate + Add more</button>';
+    html += '<button type="button" class="btn btn-primary nom-btn-main" id="area_nominate_btn" onclick="submitAreaSelection(false)" style="height:40px;" disabled>Save 0 Summits to Dashboard</button>';
+    html += '<button type="button" class="btn btn-primary nom-btn-more" id="area_nominate_more_btn" onclick="submitAreaSelection(true)" disabled>Save + Add more</button>';
     html += '</div>';
 
     html += '<div id="area_list" style="max-height:400px; overflow-y:auto; border:1px solid var(--border); border-radius:var(--r-md); margin-bottom:0.875rem;">';
@@ -2141,8 +2141,8 @@ function updateAreaBtn() {
     const more = document.getElementById('area_nominate_more_btn');
     if (more) more.disabled = checked.length === 0;
     btn.textContent = checked.length === 0
-        ? 'Nominate 0 Summits'
-        : 'Nominate ' + checked.length + ' Summit' + (checked.length !== 1 ? 's' : '');
+        ? 'Save 0 Summits to Dashboard'
+        : 'Save ' + checked.length + ' Summit' + (checked.length !== 1 ? 's' : '') + ' to Dashboard';
 }
 
 function submitAreaSelection(stay) {

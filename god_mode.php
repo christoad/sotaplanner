@@ -1293,7 +1293,7 @@ select.form-input { cursor: pointer; }
             <div id="cron-log-box" style="background:#1a1a1a; border-radius:0 0 var(--r-lg) var(--r-lg); font-family:var(--font-mono); font-size:0.74rem; line-height:1.65; padding:0.9rem 1rem; max-height:420px; overflow-y:auto;">
                 <?php foreach ($cron_log_lines as $line):
                     $esc = htmlspecialchars($line);
-                    if (str_contains($line, '✓') || str_contains($line, 'Done —')) $c = '#4ade80';
+                    if (str_contains($line, '✓') || str_contains($line, 'Done —') || str_contains($line, 'Done:')) $c = '#4ade80';
                     elseif (str_contains($line, '✗') || str_contains($line, 'Error')) $c = '#f87171';
                     elseif (str_contains($line, '⏭') || str_contains($line, 'Capped')) $c = '#facc15';
                     elseif (str_contains($line, '·') || str_contains($line, 'no tracks')) $c = '#888';

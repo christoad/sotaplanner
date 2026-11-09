@@ -82,7 +82,7 @@ $field_help = [
     
     'trailhead_coords' => [
         'title' => 'Starting Point Coordinates',
-        'content' => 'GPS coordinates where you start hiking — a trailhead, parking area, or transit stop. Used to:<br>
+        'content' => 'GPS coordinates where you start hiking: a trailhead, parking area, or transit stop. Used to:<br>
         • Calculate travel time from your address<br>
         • Generate Google Maps directions<br>
         • Show exact parking location<br><br>
@@ -188,7 +188,7 @@ $field_help = [
     'status' => [
         'title' => 'Summit Status',
         'content' => 'Current readiness state:<br><br>
-        <strong>Nominated:</strong> Added to list, needs research<br>
+        <strong>Needs Research:</strong> Saved to your dashboard, still needs trail info<br>
         <strong>Ready:</strong> All data complete, ready to activate<br>
         <strong>Activated:</strong> Successfully activated<br><br>
         Dashboard color coding:<br>

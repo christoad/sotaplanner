@@ -102,7 +102,7 @@ if (isset($_POST['calculate_drive_times'])) {
             $origin = addressOrigin($db, $selected_address);
 
             if (empty($summits)) {
-                $message = "No summits found for {$current_group['name']}. Nominate some summits first!";
+                $message = "No summits found for {$current_group['name']}. Add some summits first!";
             } else {
                 $updated = 0;
                 $failed = 0;
@@ -415,7 +415,7 @@ usort($summits, function ($a, $b) use ($current_group) {
 });
 
 // Truly blank dashboard (no summits and no filter hiding any): the empty state's
-// own "Nominate Your First Summit" button is the only add button shown.
+// own "Add Your First Summit" button is the only add button shown.
 $dashboard_blank = empty($summits) && count($active_filters) === 7;
 
 // Gentle nudge: pulse the Add Summits button until the dashboard has at least 3 summits (counted unfiltered)
@@ -708,7 +708,7 @@ function render_dashboard_row($summit, $current_group, $user_units, $activation_
                     <span class="badge badge-nominated">Needs Research</span>
                 <?php endif; ?>
             <?php else: ?>
-                <span class="badge badge-<?= htmlspecialchars($summit['status']) ?>"><?= ucfirst($summit['status']) ?></span>
+                <span class="badge badge-<?= htmlspecialchars($summit['status']) ?>"><?= statusLabel($summit['status']) ?></span>
             <?php endif; ?>
         </td>
         <td class="td-stats"><?= implode(' · ', $mobile_parts) ?></td>
@@ -1844,10 +1844,10 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
     <?php if (empty($summits)): ?>
         <div class="empty">
             <div class="empty-icon">⛰</div>
-            <h3>No summits<?= !$is_all ? ' match the current filters' : ' nominated yet' ?></h3>
-            <p><?= !$is_all ? 'Try adjusting the filters above.' : 'Nominate your first summit to start planning activations.' ?></p>
+            <h3>No summits<?= !$is_all ? ' match the current filters' : ' added yet' ?></h3>
+            <p><?= !$is_all ? 'Try adjusting the filters above.' : 'Add your first summit to start planning activations.' ?></p>
             <?php if ($is_all): ?>
-                <a href="nominate.php" class="btn btn-primary<?= $pulse_add_summits ? ' btn-pulse' : '' ?>" style="margin-top:var(--sp-4)">Nominate Your First Summit</a>
+                <a href="nominate.php" class="btn btn-primary<?= $pulse_add_summits ? ' btn-pulse' : '' ?>" style="margin-top:var(--sp-4)">Add Your First Summit</a>
             <?php endif; ?>
         </div>
     <?php else: ?>
@@ -2492,7 +2492,7 @@ var STEPS = [
     {
         sel: 'a[href="nominate.php"].btn',
         title: "Add your first summit",
-        body:  <?= json_encode(($dashboard_blank ? "Click 'Nominate Your First Summit'" : "Click '+ Add Summits'") . " and enter a SOTA reference code (like W7O/NC-001). SOTA Planner pulls the name, elevation, and coordinates automatically.") ?>,
+        body:  <?= json_encode(($dashboard_blank ? "Click 'Add Your First Summit'" : "Click '+ Add Summits'") . " and enter a SOTA reference code (like W7O/NC-001). SOTA Planner pulls the name, elevation, and coordinates automatically.") ?>,
     },
     {
         sel: '.toolbar',
