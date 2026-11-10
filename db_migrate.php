@@ -29,6 +29,37 @@ function step($label, $fn) {
     }
 }
 
+step('Create aws_server_readings', function () use ($db) {
+    $db->exec("CREATE TABLE IF NOT EXISTS aws_server_readings (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        fetched_at DATETIME NOT NULL,
+        metrics_at DATETIME NULL,
+        status_failed TINYINT(1) NULL,
+        cpu_pct DOUBLE NULL,
+        cpu_credit_balance DOUBLE NULL,
+        net_in_bps DOUBLE NULL,
+        net_out_bps DOUBLE NULL,
+        disk_read_bps DOUBLE NULL,
+        disk_write_bps DOUBLE NULL,
+        disk_size_gb INT NULL,
+        raw_json TEXT NOT NULL,
+        UNIQUE KEY uq_fetched (fetched_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    return 'ready';
+});
+
+// aws_server_stats (one row per day) was replaced the same day by aws_server_readings.
+// Its rows are copied across; the old table is left in place, unused.
+step('Copy readings from aws_server_stats', function () use ($db) {
+    if (!$db->query("SHOW TABLES LIKE 'aws_server_stats'")->fetch()) return 'no old table (skipped)';
+    $n = $db->exec("INSERT IGNORE INTO aws_server_readings
+        (fetched_at, metrics_at, status_failed, cpu_pct, cpu_credit_balance, net_in_bps, net_out_bps,
+         disk_read_bps, disk_write_bps, disk_size_gb, raw_json)
+        SELECT fetched_at, metrics_at, status_failed, cpu_pct, cpu_credit_balance, net_in_bps, net_out_bps,
+               disk_read_bps, disk_write_bps, disk_size_gb, raw_json FROM aws_server_stats");
+    return "$n row(s) copied";
+});
+
 step('Create trailhead_snap_queue', function () use ($db) {
     $db->exec("CREATE TABLE IF NOT EXISTS trailhead_snap_queue (
         summit_id INT NOT NULL PRIMARY KEY,
