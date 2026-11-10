@@ -12,6 +12,8 @@
 
 **Keep:** `brouter-paths` (active project, has one commit not in `main`) and `main`. Remind Chris at session start that this list is waiting, and remove this note once he confirms it is done.
 
+**`main` is behind production (noted 2026-11-10), do this first:** the God Mode AWS Server tab (branch `aws-server-stats`, commit b0b5e3a plus this note) went live on 2026-11-09, but `main` was not moved forward because it was checked out in the `brouter-paths` worktree and the shipping session was isolated in another worktree. From whichever folder holds `main`, run `git merge --ff-only aws-server-stats` (a plain fast-forward from 681e20d), then delete the local branches `aws-server-stats` and `cleanup-branch-notes` (both fully merged), remind Chris to push via GitHub Desktop, and remove this note.
+
 **Public summit pages (`/s/<designator>`, shipped 2026-10-27) and a queued idea (alternate destination and return-trip pulldown on summit detail):** see `research/public-summit-pages.md` before touching `summit_share.php`, `share_lib.php` or the summit page Share button.
 
 **Google Maps API — two-key setup (completed 2026-06-01):**
