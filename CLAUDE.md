@@ -7,12 +7,14 @@
 - `start-point-background-retry`
 - `multi-redesign-backup`
 - `multi-activate-polish`
-- `summit-drive-time` (also still a local branch and a worktree; delete once no session is using it)
-- `dev` (also still a local branch, checked out in the main project folder; the release flow no longer uses it, so switch that folder to `main` first, then delete)
+- `summit-drive-time`
+- `dev`
+- `aws-server-stats` (shipped 2026-11-09; the local branch is still checked out in the leftover worktree `.claude/worktrees/summit-drive-time`, so remove that worktree, then `git branch -d aws-server-stats`)
+- `cleanup-branch-notes` (only if it was ever pushed)
 
-**Keep:** `brouter-paths` (active project, has one commit not in `main`) and `main`. Remind Chris at session start that this list is waiting, and remove this note once he confirms it is done.
+The local `summit-drive-time`, `dev` and `cleanup-branch-notes` branches were deleted on 2026-11-10, when `main` was also fast-forwarded to production (25b7cce).
 
-**`main` is behind production (noted 2026-11-10), do this first:** the God Mode AWS Server tab (branch `aws-server-stats`, commit b0b5e3a plus this note) went live on 2026-11-09, but `main` was not moved forward because it was checked out in the `brouter-paths` worktree and the shipping session was isolated in another worktree. From whichever folder holds `main`, run `git merge --ff-only aws-server-stats` (a plain fast-forward from 681e20d), then delete the local branches `aws-server-stats` and `cleanup-branch-notes` (both fully merged), remind Chris to push via GitHub Desktop, and remove this note.
+**Keep:** `brouter-paths` (active project) and `main`. Remind Chris at session start that this list is waiting, and remove this note once he confirms it is done.
 
 **Public summit pages (`/s/<designator>`, shipped 2026-10-27) and a queued idea (alternate destination and return-trip pulldown on summit detail):** see `research/public-summit-pages.md` before touching `summit_share.php`, `share_lib.php` or the summit page Share button.
 
