@@ -2,19 +2,11 @@
 
 ## Pending Work — Ask Chris at Session Start
 
-**Branch cleanup left for Chris (noted 2026-11-09):** the local branches and worktrees for finished work were deleted on 2026-11-08, but these still exist on GitHub and Chris will delete them himself later (github.com, repository Branches page, trash icon next to each; or in GitHub Desktop via Branch menu). All are already merged into `main`, so nothing is lost:
-- `gpx-upload-start-point`
-- `start-point-background-retry`
-- `multi-redesign-backup`
-- `multi-activate-polish`
-- `summit-drive-time`
-- `dev`
-- `aws-server-stats` (shipped 2026-11-09; the local branch is still checked out in the leftover worktree `.claude/worktrees/summit-drive-time`, so remove that worktree, then `git branch -d aws-server-stats`)
-- `cleanup-branch-notes` (only if it was ever pushed)
+**Branch cleanup, mostly done (updated 2026-11-11):** on 2026-11-11 Claude deleted these merged branches from GitHub with `gh api -X DELETE repos/christoad/sotaplanner/git/refs/heads/<name>`: `aws-server-stats`, `gpx-upload-start-point`, `multi-activate-polish`, `multi-redesign-backup`, `start-point-background-retry`, `summit-drive-time`. Two leftovers:
+- `dev` on GitHub (merged into `main`, safe to delete). Claude Code's safety check refused to delete it, so Chris deletes it himself (github.com, repository Branches page, trash icon) or approves the command.
+- On the Mac, the old worktree folder `.claude/worktrees/summit-drive-time` still holds the local `aws-server-stats` branch. From a normal (not worktree-isolated) session in the main project folder: check `git -C .claude/worktrees/summit-drive-time status` is clean, then `git worktree remove .claude/worktrees/summit-drive-time` and `git branch -d aws-server-stats`.
 
-The local `summit-drive-time`, `dev` and `cleanup-branch-notes` branches were deleted on 2026-11-10, when `main` was also fast-forwarded to production (25b7cce).
-
-**Keep:** `brouter-paths` (active project) and `main`. Remind Chris at session start that this list is waiting, and remove this note once he confirms it is done.
+**Keep:** `brouter-paths` (active project) and `main`. Remind Chris at session start, and remove this note once both leftovers are gone.
 
 **Public summit pages (`/s/<designator>`, shipped 2026-10-27) and a queued idea (alternate destination and return-trip pulldown on summit detail):** see `research/public-summit-pages.md` before touching `summit_share.php`, `share_lib.php` or the summit page Share button.
 
