@@ -278,15 +278,39 @@ session_start();
         </ul>
     </div>
 
-    <!-- October 2026 -->
+    <!-- November 2026 -->
     <div class="version-block current">
         <div class="version-header">
-            <span class="version-number">October 2026 update</span>
+            <span class="version-number">November 2026 update</span>
             <span class="version-badge">Current</span>
+        </div>
+        <p class="version-desc">Adding summits to your dashboard is faster when you have a list to work through.</p>
+        <ul>
+            <li>Travel times on summit pages and in Multi-Activate now come from Google's road routing, which knows about road closures, and are refreshed automatically. Multi-Activate draws the actual road route, and summit pages remind you to check for closures before you go</li>
+            <li>Clearer wording when you add summits: the buttons now say "Save to Dashboard" and "Save + Add more", and a summit that still needs trail information is labeled "Needs Research" on the dashboard and the summit page. It becomes "Researched" on its own once it has a recorded route and a starting point</li>
+            <li>When you import a new route from SOTA Maps on a summit page, the starting point is now found for you in the same step. SOTA Planner picks the trailhead or parking area from OpenStreetMap closest to where the route begins, fills in the starting point if the summit does not have one yet, and works out the travel time to it</li>
+            <li>Every summit page now has a hidden Change log at the bottom. Open it to see which callsign changed what on that summit and what the old and new values were</li>
+            <li>Multi-Activate shows an elevation profile under the route map, and in the PDF, for every hike in the day, with each leg in its own color and estimated stretches dashed</li>
+            <li>Multi-Activate hikes between summits now follow recorded GPX tracks wherever the walk meets one, using estimated map trails only for the gaps, and the map draws the recorded stretches as solid lines</li>
+            <li>"Back the way we came" is now called "Track back" in Multi-Activate</li>
+            <li>Multi-Activate "Show All Summits" now shows every SOTA summit in the part of the map you are looking at, not only your dashboard, and "+ Add to Route" adds a new summit to your dashboard and the route in one click</li>
+            <li>The Multi-Activate "Zoom to Summits" button now toggles: press again to zoom back out to the whole route</li>
+            <li>The About page now has a Data Sources and Credits section thanking the projects and communities behind the summit data, routes, maps and weather in SOTA Planner, with a Credits link in the footer of every page</li>
+            <li>The summit search page has a new "Save + Add more" button, on both the Name / Reference and Search by Area tabs. It adds the summit and leaves you on the same page with the search cleared, so you can look up the next summit by name and add it, over and over, without going back to the dashboard each time</li>
+        </ul>
+    </div>
+
+    <!-- October 2026 -->
+    <div class="version-block">
+        <div class="version-header">
+            <span class="version-number">October 2026 update</span>
         </div>
         <p class="version-desc">Driving routes now appear on the summit map, and the offline PDF for Multi-Activate routes shows the same maps you see on the site.</p>
         <ul>
+            <li>The Multi-Activate PDF now includes the weather forecast for each summit: today's conditions, an hour-by-hour table for your planned time on the summit, and the next three days, so you have it offline</li>
+            <li>Shared Multi-Activate routes now match the summit pages: a Share button that confirms "Link copied!", a "Save this route" button, and a Login button that brings you back to the route</li>
             <li>The summit page now has a Community Notes section: articles and links other activators have posted on SOTA are listed as headlines you can open to read or follow to the original site, with a button to post your own on SOTA. Your private notes now show right on the page, visible to you and the members of your dashboards</li>
+            <li>Every SOTA summit now has its own public page you can send to anyone, no login needed. Tap Share on a summit to copy a readable link like sotaplanner.com/s/w6-ct-012-waterman-mtn (the summit reference alone works too). The page shows the map and route, elevation profile, activation zone, cell coverage, weather with a full forecast, upcoming activations, last activation, community notes and a GPX download, and visitors can change the planned summit time to see how it fits their day. Anyone who likes a summit can save it to their own dashboard with their SOTA login, no signup required, and it arrives with its trail research and is highlighted on their dashboard. Also new: Create Invite now opens the invitation form for you, and the Add Summits button gently pulses on dashboards with fewer than 3 summits</li>
             <li>Click any day in the summit weather to open a full 16-day forecast for the summit's elevation, with hour-by-hour detail: rain chance, wind and wind direction, cloud cover, visibility, lightning risk, freezing level, and sunrise and sunset</li>
             <li>SOTAwatch alerts on the summit page now appear within about a minute of being posted, without slowing the page down, and are shown in your own local time</li>
             <li>Summits now show a weather forecast for the summit's elevation: a small row on the summit page, and a full Summit Forecast on the activation invitation covering the hike (temperature, wind, precipitation, freezing level and thunderstorm warnings)</li>
@@ -314,8 +338,8 @@ session_start();
         </div>
         <p class="version-desc">Share a Multi-Activate route with anyone, and starting addresses that reliably produce travel times.</p>
         <ul>
-            <li>Saved Multi-Activate routes can now be shared: a "Share Link" button copies the route's link, and anyone who opens it sees a read-only view of the route (your starting address and other summits stay private)</li>
-            <li>People viewing a shared route can click "Add this Multi-Summit to your own dashboard" to copy its summits and route into one of their dashboards, or into a brand-new one. New users are walked through signing in and setting up a dashboard first</li>
+            <li>Saved Multi-Activate routes can now be shared: a "Share" button copies the route's link, and anyone who opens it sees a read-only view of the route (your starting address and other summits stay private)</li>
+            <li>People viewing a shared route can click "Save this route" to copy its summits and route into one of their dashboards, or into a brand-new one. New users are walked through signing in and setting up a dashboard first</li>
             <li>Starting addresses are now checked with Google Maps when you add them. If Google can't find the location you'll be asked to try a street address, cross streets with a city, or a zip code, and when it can you'll see exactly which address it matched</li>
             <li>Travel times now use the exact map location saved with your starting address, so an address that worked once keeps working. This fixes starting locations entered as a business name (like a coffee shop) that produced no travel times</li>
             <li>If travel times can't be calculated for some summits, those summits now show a blank instead of an old time left over from a different starting address, and the message explains how to fix the address</li>
@@ -521,7 +545,7 @@ session_start();
 </div>
 
 <footer>
-    SOTA Planner &nbsp;·&nbsp; <a href="changelog.php">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com">sotaplanner.com</a>
+    SOTA Planner &nbsp;·&nbsp; <a href="changelog.php">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="about.php#credits">Credits</a> &nbsp;·&nbsp; <a href="https://sotaplanner.com">sotaplanner.com</a>
 </footer>
 
 </body>

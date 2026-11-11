@@ -6,8 +6,12 @@ set_time_limit(180);
 require_once 'config.php';
 require_once __DIR__ . '/lib/fpdf.php';
 require_once __DIR__ . '/multi_alt_lib.php';
+require_once __DIR__ . '/drive_leg_lib.php';
 require_once __DIR__ . '/multi_leg_lib.php';
+require_once __DIR__ . '/multi_elev_lib.php';
+require_once __DIR__ . '/multi_elev_pdf_lib.php';
 require_once __DIR__ . '/pdf_map_lib.php';
+require_once __DIR__ . '/weather_lib.php';
 session_start();
 requireLogin();
 
@@ -66,7 +70,7 @@ foreach ($summit_ids as $sid) {
     $s = $summits_by_id[$sid];
     $track_type = $s['track_type'] ?? 'round-trip';
     $one_way = ($track_type === 'ascent' || $track_type === 'descent');
-    $has_ts = ($s['gpx_hiking_time'] ?? 0) > 0;
+    $has_ts = false; // recorded GPX time is never used; Naismith from distance and climb
 
     if ($s['use_for_elevation'] && $s['gpx_elevation_gain']) {
         $elev = ($track_type === 'descent') ? ($s['gpx_elevation_loss'] ?? 0) * 3.28084 : $s['gpx_elevation_gain'] * 3.28084;
@@ -112,7 +116,7 @@ $leg_modes = multi_leg_load($db, $multi_id);
 $want_hike = [];
 foreach ($stops as $i => $_st) {
     $m = multi_leg_mode_for($leg_modes, $stops, $i);
-    if ($m === 'car') unset($alt_lookup['active'][$i]);
+    if ($m === null || $m === 'car') unset($alt_lookup['active'][$i]);
     elseif ($m === 'hike' && !$_st['is_drive_up']) { unset($alt_lookup['active'][$i]); $want_hike[$i] = true; }
 }
 $pace_mult = $current_group['pace_multiplier'] ?? 1.0;
@@ -133,11 +137,17 @@ $end_label = $end_other ? multi_leg_address_label($finish_addr) : 'Home';
 $drive_cache = &$_SESSION['multi_drive_cache'];
 $get_leg = function ($fromKey, $fromCoord, $toKey, $toCoord) use (&$drive_cache) {
     if ($fromCoord === null || $toCoord === null) return ['min' => null, 'mi' => null];
+    if ($fromCoord === $toCoord) return ['min' => 0, 'mi' => 0];
+    // Starting points within ~0.25 mi count as the same parking spot (same rule as multi_activate.php)
+    $fp = explode(',', $fromCoord); $tp = explode(',', $toCoord);
+    if (count($fp) === 2 && count($tp) === 2
+        && haversine_distance((float)$fp[0], (float)$fp[1], (float)$tp[0], (float)$tp[1]) <= 402) {
+        return ['min' => 0, 'mi' => 0];
+    }
     $k = $fromKey . '>' . $toKey;
     if (array_key_exists($k, $drive_cache) && is_array($drive_cache[$k])) return $drive_cache[$k];
-    $distance_mi = null;
-    $t = calculateDriveTimeBetween($fromCoord, $toCoord, $distance_mi);
-    $result = ['min' => $t, 'mi' => $distance_mi];
+    $leg = drive_leg_get($fromCoord, $toCoord);
+    $result = ['min' => $leg['min'], 'mi' => $leg['mi']];
     $drive_cache[$k] = $result;
     return $result;
 };
@@ -223,7 +233,7 @@ $total_elev_ft_sum = array_sum(array_map(fn($s) => $s['elev_ft'] ?? 0, $stops));
 $total_drive_dist_mi_sum = array_sum(array_filter($leg_distances_mi)) + ($return_leg_distance_mi ?: 0);
 
 // ── Map data shared by the overview and per-summit maps (same sources as the
-// on-screen pages: GPX trail, activation zone, OSRM road geometry) ──
+// on-screen pages: GPX trail, activation zone, Google road geometry) ──
 foreach ($stops as $i => $stop) {
     // A summit only gets its community GPX linked once its detail page is opened,
     // so fall back to the shared library track (read-only) for the map.
@@ -239,7 +249,7 @@ foreach ($stops as $i => $stop) {
     $stops[$i]['az_ring'] = ($az_row && !empty($az_row['polygon'])) ? pdfmap_az_ring($az_row['polygon']) : [];
 }
 foreach ($legs as $li => $leg) {
-    $legs[$li]['geom'] = pdfmap_osrm_route($leg['from'], $leg['to']);
+    $legs[$li]['geom'] = ($leg['from'] && $leg['to']) ? drive_leg_get($leg['from'], $leg['to'])['line'] : null;
 }
 
 function multi_clock_label($minutes_from_midnight) {
@@ -261,6 +271,107 @@ function pdftext($s) {
     $s = str_replace(["\xE2\x86\x92" /* → */], '->', $s);
     $converted = @iconv('UTF-8', 'CP1252//TRANSLIT//IGNORE', $s);
     return $converted !== false ? $converted : preg_replace('/[^\x20-\x7E]/', '', $s);
+}
+
+// Weather block for one summit's close-up page: today's conditions, an hour-by-hour table across the
+// planned time on that summit, and the next three days. Same Open-Meteo data (elevation adjusted)
+// as the weather widget on the summit page. Draws nothing if no forecast is available.
+function pdf_weather_block($pdf, $page_w, $w, $units, $arrive_clock_min, $depart_clock_min) {
+    $d = $w['daily'] ?? null; $h = $w['hourly'] ?? null;
+    if (!$d || !$h || empty($d['time'])) return;
+
+    $date = $d['time'][0];
+    // Hours of today covering the planned time on the summit (clock minutes since midnight), at least 3 rows
+    $from_h = max(0, min(23, intdiv((int)$arrive_clock_min, 60)));
+    $to_h   = max($from_h + 2, min(23, intdiv((int)$depart_clock_min, 60)));
+    $to_h   = min(23, $to_h);
+    $rows = [];
+    foreach ($h['time'] as $k => $t) {
+        if (substr($t, 0, 10) !== $date) continue;
+        $hr = (int)substr($t, 11, 2);
+        if ($hr >= $from_h && $hr <= $to_h) $rows[] = $k;
+    }
+
+    $need = 1.7 + 0.2 * (count($rows) + 1);
+    if ($pdf->GetY() + $need > 10.3) $pdf->AddPage();
+
+    $pdf->Ln(0.12);
+    $pdf->SetFont('Helvetica', 'B', 9);
+    $pdf->Cell(0, 0.2, 'Weather at summit', 0, 1);
+
+    [$label] = weather_wmo($d['weather_code'][0]);
+    $snow = $d['snowfall_sum'][0] ?? 0;
+    $storm = false;
+    foreach ($rows as $k) if (($h['cape'][$k] ?? 0) >= 500 || $h['weather_code'][$k] >= 95) $storm = true;
+    $pp = $d['precipitation_probability_max'][0] ?? null;
+
+    $pdf->SetFont('Helvetica', '', 9);
+    $line1 = 'Today (' . date('D M j', strtotime($date)) . '): ' . $label . ', high ' . weather_temp($d['temperature_2m_max'][0], $units)
+        . ', low ' . weather_temp($d['temperature_2m_min'][0], $units)
+        . '. Wind up to ' . weather_speed($d['wind_speed_10m_max'][0], $units) . ', gusts ' . weather_speed($d['wind_gusts_10m_max'][0], $units) . '.';
+    $pdf->MultiCell($page_w, 0.19, pdftext($line1));
+    $line2 = ($pp !== null ? 'Rain chance ' . (int)$pp . '%, ' : '') . 'precipitation ' . weather_precip($d['precipitation_sum'][0], $units)
+        . ($snow > 0.1 ? ', snow ' . weather_snow($snow, $units) : '');
+    if (!empty($d['sunrise'][0]) && !empty($d['sunset'][0])) {
+        $line2 .= '. Sunrise ' . date('g:i A', strtotime($d['sunrise'][0])) . ', sunset ' . date('g:i A', strtotime($d['sunset'][0]));
+    }
+    $pdf->MultiCell($page_w, 0.19, pdftext($line2 . '.'));
+    if ($storm) {
+        $pdf->SetFont('Helvetica', 'B', 9);
+        $pdf->SetTextColor(192, 48, 48);
+        $pdf->Cell(0, 0.2, 'Storm risk during this window. Check the latest forecast before you go.', 0, 1);
+        $pdf->SetTextColor(28, 27, 25);
+    }
+
+    if ($rows) {
+        $pdf->Ln(0.05);
+        $pdf->SetFont('Helvetica', 'I', 8);
+        $pdf->SetTextColor(140, 138, 134);
+        $pdf->Cell(0, 0.18, pdftext('Hour by hour across your planned time on this summit, if you go today (local summit time).'), 0, 1);
+        $pdf->SetTextColor(28, 27, 25);
+        $cols = [['Time', 0.8], ['Conditions', 1.5], ['Temp', 0.7], ['Feels', 0.7], ['Wind', 0.85], ['Gusts', 0.85], ['Rain %', 0.7], ['Precip', $page_w - 6.1]];
+        $pdf->SetFont('Helvetica', 'B', 8);
+        $pdf->SetFillColor(239, 237, 232);
+        foreach ($cols as $c) $pdf->Cell($c[1], 0.2, $c[0], 0, 0, 'L', true);
+        $pdf->Ln();
+        $pdf->SetFont('Helvetica', '', 8.5);
+        foreach ($rows as $k) {
+            [$hl] = weather_wmo($h['weather_code'][$k]);
+            $cells = [
+                date('g A', strtotime($h['time'][$k])), $hl,
+                weather_temp($h['temperature_2m'][$k], $units), weather_temp($h['apparent_temperature'][$k], $units),
+                weather_speed($h['wind_speed_10m'][$k], $units), weather_speed($h['wind_gusts_10m'][$k], $units),
+                isset($h['precipitation_probability'][$k]) ? (int)$h['precipitation_probability'][$k] . '%' : '-',
+                weather_precip($h['precipitation'][$k], $units),
+            ];
+            foreach ($cells as $ci => $txt) $pdf->Cell($cols[$ci][1], 0.2, pdftext($txt));
+            $pdf->Ln();
+        }
+    }
+
+    // Next three days, same short outlook as the widget
+    $pdf->Ln(0.08);
+    $pdf->SetFont('Helvetica', 'B', 8);
+    $pdf->SetFillColor(239, 237, 232);
+    foreach ([['Outlook', 0.8], ['Conditions', 1.5], ['High / Low', 1.4], ['Wind', 1.3], ['Gusts', $page_w - 5.0]] as $c) $pdf->Cell($c[1], 0.2, $c[0], 0, 0, 'L', true);
+    $pdf->Ln();
+    $pdf->SetFont('Helvetica', '', 8.5);
+    for ($i = 1; $i <= 3 && $i < count($d['time']); $i++) {
+        [$dl] = weather_wmo($d['weather_code'][$i]);
+        $cells = [
+            date('D M j', strtotime($d['time'][$i])), $dl,
+            weather_temp($d['temperature_2m_max'][$i], $units) . ' / ' . weather_temp($d['temperature_2m_min'][$i], $units),
+            weather_speed($d['wind_speed_10m_max'][$i] ?? $d['wind_gusts_10m_max'][$i] ?? 0, $units),
+            weather_speed($d['wind_gusts_10m_max'][$i] ?? 0, $units),
+        ];
+        $wids = [0.8, 1.5, 1.4, 1.3, $page_w - 5.0];
+        foreach ($cells as $ci => $txt) $pdf->Cell($wids[$ci], 0.2, pdftext($txt));
+        $pdf->Ln();
+    }
+    $pdf->SetFont('Helvetica', 'I', 7.5);
+    $pdf->SetTextColor(140, 138, 134);
+    $pdf->Cell(0, 0.18, 'Weather data by Open-Meteo.com. Forecast as of ' . date('M j, g:i A') . '; adjusted to the summit elevation.', 0, 1);
+    $pdf->SetTextColor(28, 27, 25);
 }
 
 function hex2rgb($hex) {
@@ -422,7 +533,7 @@ if ($selected_address) {
 $pdf->Ln(0.1);
 
 // Stat tiles
-$stat_labels = ['Points', 'Hike Distance', 'Drive Distance', 'Total Time'];
+$stat_labels = ['Points', 'Hike Distance', 'Travel Distance', 'Total Time'];
 $stat_vals = [
     (string)($total_points_sum ?: '-'),
     $total_dist_mi_sum ? number_format(convertDistance($total_dist_mi_sum, $user_units), 1) . ' ' . getDistanceUnit($user_units) : '-',
@@ -532,7 +643,7 @@ if ($overview_img) {
     $pdf->SetY($pdf->GetY() + $overview_draw_h + 0.05);
     $pdf->SetFont('Helvetica', 'I', 7.5);
     $pdf->SetTextColor(140, 138, 134);
-    $pdf->Cell(0, 0.16, pdftext('Colored lines are the driving legs, green lines are hiking trails, red areas are activation zones.'), 0, 1);
+    $pdf->Cell(0, 0.16, pdftext('Colored lines are the travel legs, green lines are hiking trails, red areas are activation zones.'), 0, 1);
     $pdf->SetTextColor(28, 27, 25);
     $pdf->Ln(0.05);
 } else {
@@ -570,8 +681,14 @@ function static_map_marker_hex($hex) {
     return '0x' . ltrim($hex, '#');
 }
 
+// ── Elevation profile of the hikes (same data as the page) ──────────────────
+$pdf->Ln(0.12);
+$pg_before_elev = $pdf->PageNo();
+multi_elev_pdf_block($pdf, multi_elev_trips($stops), $page_w, $user_units !== 'metric', 'pdftext');
+$elev_opened_page = $pdf->PageNo() > $pg_before_elev;   // the profile had to start a new page, so the schedule can follow it there
+
 // ── Schedule table ─────────────────────────────────────────────────────────
-$pdf->AddPage();
+if ($elev_opened_page) $pdf->Ln(0.25); else $pdf->AddPage();
 $pdf->SetFont('Helvetica', 'B', 14);
 $pdf->Cell(0, 0.3, 'Schedule', 0, 1);
 $pdf->SetFont('Helvetica', 'I', 8.5);
@@ -610,7 +727,7 @@ foreach ($stops as $i => $stop) {
 $pdf->Ln(0.15);
 $pdf->SetFont('Helvetica', 'B', 8);
 $pdf->SetFillColor(239, 237, 232);
-foreach ([['#', 0.35], ['Summit', $page_w - 0.35 - 1.1 - 1.1 - 1.4], ['Hike (RT)', 1.1], ['Difficulty', 1.1], ['Drive here', 1.4]] as $c) {
+foreach ([['#', 0.35], ['Summit', $page_w - 0.35 - 1.1 - 1.1 - 1.4], ['Hike (RT)', 1.1], ['Difficulty', 1.1], ['Travel here', 1.4]] as $c) {
     $pdf->Cell($c[1], 0.22, $c[0], 0, 0, 'L', true);
 }
 $pdf->Ln();
@@ -783,6 +900,19 @@ foreach ($stops as $i => $stop) {
         $pdf->SetTextColor(140, 138, 134);
         $pdf->MultiCell($page_w, 0.18, pdftext('Shaded area on the map is the approximate activation zone (source: ' . $az['source'] . ').'));
         $pdf->SetTextColor(28, 27, 25);
+    }
+
+    // Weather at the summit (best effort: a slow or missing forecast just leaves this block out)
+    $arrive_min = null;
+    foreach ($milestones as $m) {
+        if (($m['stop_i'] ?? null) === $i && ($m['short'] === 'On Summit' || ($m['short'] === 'Arrive' && $arrive_min === null))) $arrive_min = $m['min'];
+    }
+    $wx_elev_m = (int)($stop['elevation_m'] ?? 0);
+    $wx = weather_fetch($stop['summit_lat'], $stop['summit_lng'], $wx_elev_m);
+    if ($wx) {
+        $a = $start_time_min + ($arrive_min ?? 0);
+        $dpt = $a + $activation_time_min;
+        pdf_weather_block($pdf, $page_w, $wx, $user_units, min($a, 1439), min($dpt, 1439));
     }
 }
 

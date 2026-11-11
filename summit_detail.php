@@ -4,6 +4,10 @@ ini_set('display_errors', 1);
 
 require_once 'config.php';
 require_once 'weather_lib.php';
+require_once 'drive_leg_lib.php';
+require_once 'osm_trailhead_lib.php';
+require_once 'share_lib.php';
+require_once 'summit_changelog_lib.php';
 session_start();
 requireLogin();
 
@@ -44,8 +48,8 @@ $show_nomination_overlay = isset($_GET['nominated']);
 // Check for success messages
 if (isset($_GET['nominated'])) {
     $message = $fetch_gpx_async
-        ? "✓ Summit nominated! Searching for a community route…"
-        : "✓ Summit nominated! Use the tools below to add trail info and import a GPS track.";
+        ? "✓ Summit saved to your dashboard! Searching for a community route…"
+        : "✓ Summit saved to your dashboard! Use the tools below to add trail info and import a GPS track.";
 }
 if (isset($_GET['saved'])) {
     $message = "Summit updated successfully!";
@@ -69,6 +73,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' || !empty($_FILES['gpx_file'])) {
     $log_sota_ref    = $_li['sota_ref'] ?? '';
     $log_group_name  = $_li['grp']      ?? ($current_group['name'] ?? '');
     unset($_ls, $_li);
+    // Change log: remember how the summit looks now; differences are recorded when the request ends
+    summit_log_watch($db, $summit_id);
 }
 
 // ========== GPX UPLOAD HANDLER ==========
@@ -143,8 +149,13 @@ if (isset($_FILES['gpx_file']) && $_FILES['gpx_file']['error'] === UPLOAD_ERR_OK
 
                             // Auto-set trailhead from GPX detection if none is saved yet
                             if (!empty($gpx_stats['trailhead_lat'])) {
-                                $db->prepare("UPDATE summits SET trailhead_lat = ?, trailhead_lng = ?, trailhead_manual = 0 WHERE id = ? AND (trailhead_lat IS NULL OR trailhead_lat = '')")
-                                   ->execute([$gpx_stats['trailhead_lat'], $gpx_stats['trailhead_lon'], $summit_id]);
+                                $thSet = $db->prepare("UPDATE summits SET trailhead_lat = ?, trailhead_lng = ?, trailhead_manual = 0 WHERE id = ? AND (trailhead_lat IS NULL OR trailhead_lat = '')");
+                                $thSet->execute([$gpx_stats['trailhead_lat'], $gpx_stats['trailhead_lon'], $summit_id]);
+                                // Then snap it to a nearby OpenStreetMap trailhead or parking spot in the background as soon as the
+                                // page reloads (same queue, retry and log as the SOTA Maps import; see osm_trailhead_lib.php)
+                                if ($thSet->rowCount() > 0) {
+                                    trailhead_snap_queue($db, $summit_id, $log_sota_ref, (float)$gpx_stats['trailhead_lat'], (float)$gpx_stats['trailhead_lon']);
+                                }
                             }
 
                             // Only overwrite distance/elevation from GPX when it has timestamps
@@ -165,14 +176,14 @@ if (isset($_FILES['gpx_file']) && $_FILES['gpx_file']['error'] === UPLOAD_ERR_OK
                             }
 
                             if ($use_for_hike) {
-                                $message = "✓ GPX uploaded with timestamps, hike time enabled. Hiking: " . format_time_duration($gpx_stats['hiking_time']) .
-                                           ", Activation: " . format_time_duration($gpx_stats['activation_time']);
+                                $message = "✓ GPX uploaded, hike time enabled (calculated from the track's distance and climb).";
                             } else {
                                 $message = "✓ GPX uploaded (route/track only, no timestamps). Map and elevation data saved; hike time not enabled.";
                             }
                             
                             $db->prepare("UPDATE summits SET gpx_opted_out = 0 WHERE id = ?")->execute([$summit_id]);
                             logActivity($db, 'GPX uploaded', $log_summit_name, $log_sota_ref, $log_group_name);
+                            summit_log_event($db, $summit_id, 'GPX track', '', 'Uploaded ' . basename($_FILES['gpx_file']['name']));
                             header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&gpx=1");
                             exit;
                         } catch (Exception $e) {
@@ -200,6 +211,7 @@ if (isset($_POST['update_gpx_preferences'])) {
             WHERE summit_id = ? AND planning_group_id = ?
         ");
         $stmt->execute([$use_gps, $use_gps, $summit_id, $current_group['id']]);
+        summit_log_event($db, $summit_id, 'Use GPX data for hike time and elevation', $use_gps ? 'Off' : 'On', $use_gps ? 'On' : 'Off');
 
         header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
         exit;
@@ -218,6 +230,7 @@ if (isset($_POST['remove_gpx_track'])) {
             }
             $db->prepare("DELETE FROM gpx_tracks WHERE summit_id = ? AND planning_group_id = ?")->execute([$summit_id, $current_group['id']]);
             $db->prepare("UPDATE summits SET gpx_opted_out = 1 WHERE id = ?")->execute([$summit_id]);
+            summit_log_event($db, $summit_id, 'GPX track', 'Track present', 'Removed');
         }
         header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
         exit;
@@ -328,18 +341,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$summit_id]);
             $summit_data = $stmt->fetch();
 
-            $dest_lat = !empty($summit_data['trailhead_lat']) ? $summit_data['trailhead_lat'] : $summit_data['latitude'];
-            $dest_lng = !empty($summit_data['trailhead_lng']) ? $summit_data['trailhead_lng'] : $summit_data['longitude'];
-
-            $element_status = null;
-            $drive_time = calculateDriveTime(addressOrigin($db, $selected_address), $dest_lat, $dest_lng, $element_status);
-
-            // Trailhead coords can land on inaccessible road segments, retry with summit coords
-            if ($drive_time === null && $element_status === 'ZERO_RESULTS'
-                && !empty($summit_data['trailhead_lat'])
-                && ($dest_lat != $summit_data['latitude'] || $dest_lng != $summit_data['longitude'])) {
-                $drive_time = calculateDriveTime(addressOrigin($db, $selected_address), $summit_data['latitude'], $summit_data['longitude']);
-            }
+            // Google Routes (road closures included); falls back to summit coords if the trailhead has no road route
+            $dl = drive_leg_summit_rt($db, $summit_data, $selected_address);
+            $drive_time = $dl['rt'] === null ? null : intdiv($dl['rt'], 2);
 
             if ($drive_time !== null) {
                 $drive_time_rt = $drive_time * 2;
@@ -420,14 +424,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $db->prepare("INSERT INTO summit_notes (summit_id, user_callsign, note, planning_group_id, is_public) VALUES (?, ?, ?, ?, ?)");
         $stmt->execute([$summit_id, $_SESSION['sota_callsign'], $_POST['note'], $current_group['id'], $is_public]);
         logActivity($db, 'Note added', $log_summit_name, $log_sota_ref, $log_group_name);
+        summit_log_event($db, $summit_id, 'Note added', '', trim($_POST['note'] ?? ''));
         header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
         exit;
     }
 
     // Delete note
     if (isset($_POST['delete_note'])) {
+        $_on = $db->prepare("SELECT note FROM summit_notes WHERE id = ? AND summit_id = ?");
+        $_on->execute([$_POST['note_id'], $summit_id]);
+        $_old_note = $_on->fetchColumn();
         $stmt = $db->prepare("DELETE FROM summit_notes WHERE id = ? AND (planning_group_id = ? OR user_callsign = ? OR planning_group_id IS NULL)");
         $stmt->execute([$_POST['note_id'], $current_group['id'], $_SESSION['sota_callsign']]);
+        if ($stmt->rowCount() && $_old_note !== false) summit_log_event($db, $summit_id, 'Note deleted', trim($_old_note), '');
         header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
         exit;
     }
@@ -453,6 +462,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 getCurrentCallsign()
             ]);
             logActivity($db, 'Activation scheduled', $log_summit_name, $log_sota_ref, $log_group_name);
+            summit_log_event($db, $summit_id, 'Planned activation', '', 'Scheduled for ' . ($_POST['planned_date'] ?? '') . ' ' . ($_POST['hike_start_time'] ?? ''));
             header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
             exit;
         }
@@ -463,7 +473,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($current_group) {
             $pa_id = (int)$_POST['planned_activation_id'];
             $stmt = $db->prepare("DELETE FROM planned_activations WHERE id = ? AND planning_group_id = ?");
+            $_pd = $db->prepare("SELECT planned_date, hike_start_time FROM planned_activations WHERE id = ? AND planning_group_id = ?");
+            $_pd->execute([$pa_id, $current_group['id']]);
+            $_pdr = $_pd->fetch(PDO::FETCH_ASSOC);
             $stmt->execute([$pa_id, $current_group['id']]);
+            if ($_pdr && $stmt->rowCount()) summit_log_event($db, $summit_id, 'Planned activation', 'Scheduled for ' . $_pdr['planned_date'] . ' ' . $_pdr['hike_start_time'], 'Deleted');
             header("Location: summit_detail.php?id=" . $summit_id . "&group=" . $current_group['id'] . "&saved=1");
             exit;
         }
@@ -650,22 +664,15 @@ $trailhead_needs_validation = !empty($summit['trailhead_lat']) && empty($summit[
 
 $selected_address = getSelectedAddress($db);
 
-// Auto-calculate drive time on first load if it's missing and we have an address + coordinates
-if (empty($summit['drive_time_min']) && $selected_address && !empty($summit['latitude'])) {
-    $dest_lat = !empty($summit['trailhead_lat']) ? $summit['trailhead_lat'] : $summit['latitude'];
-    $dest_lng = !empty($summit['trailhead_lng']) ? $summit['trailhead_lng'] : $summit['longitude'];
-    $auto_el   = null;
-    $auto_drive = calculateDriveTime(addressOrigin($db, $selected_address), $dest_lat, $dest_lng, $auto_el);
-    // Retry with summit coords if trailhead landed on an inaccessible road segment
-    if ($auto_drive === null && $auto_el === 'ZERO_RESULTS' && !empty($summit['trailhead_lat'])) {
-        $auto_drive = calculateDriveTime(addressOrigin($db, $selected_address), $summit['latitude'], $summit['longitude']);
-    }
-    if ($auto_drive !== null) {
-        $auto_drive_rt = $auto_drive * 2;
-        $db->prepare("UPDATE summits SET drive_time_min = ? WHERE id = ?")
-           ->execute([$auto_drive_rt, $summit_id]);
-        saveDriveTimeCache($db, $summit, $selected_address, $auto_drive_rt);
-        $summit['drive_time_min'] = $auto_drive_rt;
+// Travel time comes from Google Routes (road closures included) and each leg is cached 30 days, so checking it on
+// every page load costs nothing after the first. Calculate it when missing and refresh the stored value when it moves.
+if ($selected_address && !empty($summit['latitude'])) {
+    $auto = drive_leg_summit_rt($db, $summit, $selected_address);
+    if ($auto['rt'] !== null && $auto['rt'] > 0 && (int)$auto['rt'] !== (int)($summit['drive_time_min'] ?? 0)
+        && ($auto['source'] !== 'matrix' || empty($summit['drive_time_min']))) {
+        $db->prepare("UPDATE summits SET drive_time_min = ? WHERE id = ?")->execute([$auto['rt'], $summit_id]);
+        saveDriveTimeCache($db, $summit, $selected_address, $auto['rt']);
+        $summit['drive_time_min'] = $auto['rt'];
     }
 }
 
@@ -723,9 +730,9 @@ $gpx_download_name = $gpx_data ? preg_replace('/[^a-zA-Z0-9]+/', '-', $summit['n
     . ($summit['sota_ref'] ? '-' . preg_replace('/[^a-zA-Z0-9]+/', '-', $summit['sota_ref']) : '')
     . '.gpx' : '';
 $one_way = ($track_type === 'ascent' || $track_type === 'descent');
-// has_timestamps is not stored in the DB, derive it from hiking_time:
-// if the track had no timestamps, hiking_time stays 0 since speed can't be computed.
-$has_timestamps = $gpx_data && $gpx_data['hiking_time'] > 0;
+// // Recorded GPX times are never used: pace differs per hiker, so hike time is always
+// Naismith's rule applied to the track's distance and climb.
+$has_timestamps = false;
 
 // Elevation gain, resolve first so hike time can use it
 // A track with no <ele> data (some SOTAmaps uploads) records 0 gain/loss; treat that as
@@ -768,23 +775,20 @@ if ($gpx_data && $gpx_data['use_for_hike_time'] && $has_timestamps) {
     $hike_time_source = ($gpx_data && $gpx_data['use_for_hike_time'] && !$has_timestamps)
         ? 'Estimated' : 'Calculated';
 }
+// Drive Up means no hike at all, whatever distance/gain/GPX data is still on file.
+$is_drive_up = (($summit['difficulty'] ?? '') === 'drive-up');
+if ($is_drive_up) $hike_time_total = 0;
 $directions_lat = $summit['trailhead_lat'] ?? $summit['latitude'];
 $directions_lng = $summit['trailhead_lng'] ?? $summit['longitude'];
 
 // --- Timeline Gantt data ---
 $tl_drive_one = $summit['drive_time_min'] ? intval(round($summit['drive_time_min'] / 2)) : 0;
-if ($hike_time_total) {
-    // Always use the live $hike_time_total (GPS or Naismith) so the Gantt
-    // matches the stats shown above it and is never stale.
-    $tl_hike_up   = intval(round($hike_time_total * 0.6));
-    $tl_hike_down = $hike_time_total - $tl_hike_up;
-} elseif ($summit['hike_time_up_min'] && $summit['hike_time_down_min']) {
-    // Fallback: pre-stored leg times (only reached if no distance/elevation data at all)
-    $tl_hike_up   = $summit['hike_time_up_min'];
-    $tl_hike_down = $summit['hike_time_down_min'];
-} else {
-    $tl_hike_up = $tl_hike_down = 0;
-}
+// The Gantt is always driven by the live $hike_time_total (GPS or Naismith) so it matches the
+// stats above it. The stored summits.hike_time_up_min / hike_time_down_min columns are only a
+// stale cache from earlier saves, so they are never used here (they used to leak in whenever
+// the live value rounded to 0, e.g. a 1 ft gain, or after a GPX was dropped or Drive Up chosen).
+$tl_hike_up   = $hike_time_total ? intval(round($hike_time_total * 0.6)) : 0;
+$tl_hike_down = $hike_time_total ? $hike_time_total - $tl_hike_up : 0;
 // Always use the user's configured radio time for planning, never the GPX-recorded activation time
 $tl_activation = $default_activation_min;
 $tl_total = $tl_drive_one * 2 + $tl_hike_up + $tl_activation + $tl_hike_down;
@@ -1104,6 +1108,9 @@ if ($tl_show) {
       font-size: 0.75rem; color: var(--ink-3);
     }
     #summit-map { height: 280px; border-radius: var(--r-lg); border: 1px solid var(--border); overflow: hidden; margin-bottom: 0.75rem; }
+    .track-key { display: flex; gap: 1.1rem; flex-wrap: wrap; margin: 0; font-size: 0.76rem; color: var(--ink-3); }
+    .track-key > span { display: inline-flex; align-items: center; gap: 6px; }
+    .track-key-swatch { display: inline-block; width: 16px; height: 4px; border-radius: 2px; }
     .map-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; align-items: center; }
     .carrier-btn { height: 28px; padding: 0 0.625rem; font-size: 0.75rem; font-weight: 600; border-radius: var(--r-sm); border: 1.5px solid; cursor: pointer; transition: all 0.12s; font-family: var(--font-sans); }
     .map-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
@@ -1233,6 +1240,13 @@ if ($tl_show) {
     .section-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 1.5rem; box-shadow: var(--shadow-sm); margin-bottom: 1rem; }
     .section-title { font-size: 1rem; font-weight: 600; color: var(--ink); margin-bottom: 1rem; }
 
+    /* Change log */
+    .cl-table { width:100%; border-collapse:collapse; font-size:0.8rem; }
+    .cl-table th { text-align:left; font-size:0.68rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-3); padding:0.6rem 0.9rem; border-bottom:1px solid var(--border); background:var(--bg); }
+    .cl-table td { padding:0.55rem 0.9rem; border-bottom:1px solid var(--border); vertical-align:top; color:var(--ink-2); }
+    .cl-table tr:last-child td { border-bottom:none; }
+    .cl-val { max-width:22rem; overflow-wrap:anywhere; white-space:pre-wrap; }
+    .cl-empty { color:var(--ink-4); font-style:italic; }
     /* Community Notes */
     .cn-summary { display:flex; align-items:center; justify-content:space-between; gap:1rem; cursor:pointer; list-style:none; }
     .cn-summary::-webkit-details-marker { display:none; }
@@ -1294,6 +1308,17 @@ if ($tl_show) {
       opacity: 0; pointer-events: none; transition: opacity 0.15s, transform 0.15s;
     }
     .sota-ref-designator .copied-tip.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    /* Share button: same little "copied" pop-up as the designator, button itself never changes */
+    .share-tip-host { position: relative; }
+    .share-tip-host .copied-tip {
+      position: absolute; bottom: calc(100% + 6px); left: 50%;
+      transform: translateX(-50%) translateY(4px);
+      background: var(--ink); color: #fff; font-family: var(--font-sans);
+      font-size: 0.7rem; font-weight: 600; letter-spacing: 0;
+      padding: 0.25rem 0.55rem; border-radius: var(--r-sm); white-space: nowrap;
+      opacity: 0; pointer-events: none; transition: opacity 0.15s, transform 0.15s;
+    }
+    .share-tip-host .copied-tip.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
     /* GPS prefs block */
     .gps-prefs { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 0.875rem 1rem; margin-top: 0.75rem; }
@@ -1367,7 +1392,7 @@ if ($tl_show) {
         <?php if ($summit['difficulty']): ?>
           <span class="badge badge-<?= htmlspecialchars($summit['difficulty']) ?>"><?= ucfirst($summit['difficulty']) ?></span>
         <?php endif; ?>
-        <span class="badge badge-<?= htmlspecialchars($summit['status']) ?>"><?= ucfirst($summit['status']) ?></span>
+        <span class="badge badge-<?= htmlspecialchars($summit['status']) ?>"><?= statusLabel($summit['status']) ?></span>
         <?php if ($summit['sota_ref']): ?>
           <span class="sota-ref-designator" title="Click to copy" onclick="copySotaRef(this, '<?= htmlspecialchars($summit['sota_ref'], ENT_QUOTES) ?>')">
             <?= htmlspecialchars($summit['sota_ref']) ?>
@@ -1403,7 +1428,10 @@ if ($tl_show) {
         ?>
         <a href="<?= htmlspecialchars($invite_url0) ?>" target="_blank" class="btn btn-secondary btn-sm">Activation Invite</a>
       <?php else: ?>
-        <a href="#planned-activations" class="btn btn-secondary btn-sm">Create Invite</a>
+        <a href="#planned-activations" class="btn btn-secondary btn-sm" onclick="openCreateInvite()">Create Invite</a>
+      <?php endif; ?>
+      <?php if (!empty($summit['sota_ref'])): ?>
+        <button type="button" class="btn btn-secondary btn-sm share-tip-host" id="shareSummitBtn" data-url="<?= htmlspecialchars(shareUrl(shareMakeSlug($summit['sota_ref'], $summit['name']))) ?>" onclick="shareSummit(this)" title="Copy the public page link for this summit, anyone can open it without logging in"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg><span id="shareLbl">Share</span><span class="copied-tip">Link copied!</span></button>
       <?php endif; ?>
       <button class="btn btn-primary btn-sm" type="submit" form="main-edit-form" name="update_summit">Save Changes</button>
     </div>
@@ -1433,7 +1461,7 @@ if ($tl_show) {
   <!-- STATUS PIPELINE -->
   <?php
     $pipe_steps  = ['nominated','researched','ready','activated'];
-    $pipe_labels = ['ready' => 'Ready to Activate'];
+    $pipe_labels = ['nominated' => 'Needs Research', 'ready' => 'Ready to Activate'];
     $pipe_idx    = array_search($summit['status'], $pipe_steps);
     if ($pipe_idx === false) $pipe_idx = 0;
   ?>
@@ -1498,6 +1526,7 @@ if ($tl_show) {
           <?php if ($drive_rt): ?>
             <div class="stat-cell-val"><?= floor($drive_rt/60) ?>h <?= $drive_rt%60 ?>m</div>
             <div class="stat-cell-sub"><?= $selected_address ? htmlspecialchars($selected_address['label'] ?: 'from base') : 'round-trip' ?></div>
+            <div class="stat-cell-sub" style="margin-top:0.2rem; color:var(--ink-4);" title="Estimate for a typical Saturday morning. Roads and trailhead access roads can close for fire, snow or construction, so check conditions with the land manager before you leave.">Check road closures before you go</div>
             <?php if ($selected_address): ?>
             <button type="submit" name="calculate_drive_time"
                     title="<?= $travel_stale ? 'The starting point changed since this was calculated' : 'Recalculate travel time' ?>"
@@ -1635,6 +1664,10 @@ if ($tl_show) {
           <?php if ($selected_address && $directions_lat && $directions_lng): ?>
             <a href="https://www.google.com/maps/dir/?api=1&origin=<?= urlencode(addressOrigin($db, $selected_address)) ?>&destination=<?= $directions_lat ?>,<?= $directions_lng ?>" target="_blank" class="btn btn-sm btn-ghost">Directions ↗</a>
           <?php endif; ?>
+          <span class="map-divider"></span>
+          <span class="track-key" id="track-key">
+            <span id="track-key-hike" style="display:none;"><span class="track-key-swatch" style="background:#9B6328;"></span>Hike</span>
+          </span>
         </div>
       </div>
       <div id="map-backdrop" class="map-backdrop" onclick="toggleMapExpand()"></div>
@@ -1693,16 +1726,16 @@ if ($tl_show) {
         </div>
       </div>
 
-      <!-- Cell Service · Trailhead in one row -->
+      <!-- Summit Mobile Service · Trailhead in one row -->
       <div class="field-row-2" style="margin-bottom:1rem;">
         <div class="form-group" style="margin:0;">
-          <label class="form-label">Cell Service</label>
+          <label class="form-label">Summit Mobile Service</label>
           <select class="form-select" name="cell_service">
             <option value="">Unknown</option>
-            <option value="full"         <?= ($summit['cell_service'] ?? '') === 'full'         ? 'selected' : '' ?>>Full Coverage</option>
-            <option value="intermittent" <?= ($summit['cell_service'] ?? '') === 'intermittent' ? 'selected' : '' ?>>Intermittent</option>
-            <option value="summit_only"  <?= ($summit['cell_service'] ?? '') === 'summit_only'  ? 'selected' : '' ?>>Summit Only</option>
-            <option value="none"         <?= ($summit['cell_service'] ?? '') === 'none'         ? 'selected' : '' ?>>No Service</option>
+            <?php $cs = ($summit['cell_service'] ?? '') === 'summit_only' ? 'full' : ($summit['cell_service'] ?? ''); ?>
+            <option value="full"         <?= $cs === 'full'         ? 'selected' : '' ?>>Good Service</option>
+            <option value="intermittent" <?= $cs === 'intermittent' ? 'selected' : '' ?>>Spotty Service</option>
+            <option value="none"         <?= $cs === 'none'         ? 'selected' : '' ?>>No Service</option>
           </select>
         </div>
         <!-- Trailhead location -->
@@ -1815,7 +1848,7 @@ if ($tl_show) {
         </div>
         <?php endif; ?>
         <div class="info-row">
-          <span class="info-label">Nominated</span>
+          <span class="info-label">Added</span>
           <span class="info-val"><?= $summit['nominated_date'] ? date('M j, Y', strtotime($summit['nominated_date'])) : '—' ?></span>
         </div>
         <div class="info-row">
@@ -1876,20 +1909,7 @@ if ($tl_show) {
           </div>
           <div id="sotamaps-result" style="margin-top:0.5rem; display:none;"></div>
           <?php endif; ?>
-          <?php if ($has_timestamps): ?>
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-bottom:0.75rem;">
-            <div style="background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-md); padding:0.625rem; text-align:center;">
-              <div style="font-size:0.65rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-3); margin-bottom:3px;">Hiking</div>
-              <div style="font-size:0.95rem; font-weight:600; color:var(--ink);"><?= format_time_duration($gpx_data['hiking_time']) ?></div>
-            </div>
-            <div style="background:var(--bg-2); border:1px solid var(--border); border-radius:var(--r-md); padding:0.625rem; text-align:center;">
-              <div style="font-size:0.65rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-3); margin-bottom:3px;">Summit</div>
-              <div style="font-size:0.95rem; font-weight:600; color:var(--ink);"><?= format_time_duration($gpx_data['activation_time']) ?></div>
-            </div>
-          </div>
-          <?php else: ?>
-            <div style="font-size:0.78rem; color:var(--ink-3); margin-bottom:0.75rem;">Route-only GPX (no timestamps), map loaded<?= $gpx_data['elevation_gain'] > 0 ? ', elevation data loaded' : ' (no elevation data in track)' ?>.</div>
-          <?php endif; ?>
+          <div style="font-size:0.78rem; color:var(--ink-3); margin-bottom:0.75rem;">Route loaded<?= $gpx_data['elevation_gain'] > 0 ? ', elevation data loaded' : ' (no elevation data in track)' ?>. Hike time is calculated from the track's distance and climb.</div>
           <?php
             $track_type_label = ['ascent' => 'Ascent only', 'descent' => 'Descent only', 'round-trip' => 'Round-trip'][$track_type] ?? 'Round-trip';
           ?>
@@ -2203,7 +2223,7 @@ if ($tl_show) {
         </fieldset>
       </details>
 
-      <details style="margin-top:0.875rem;">
+      <details id="create-invite-details" style="margin-top:0.875rem; scroll-margin-top:72px;">
         <summary style="cursor:pointer; font-size:0.875rem; font-weight:600; color:var(--accent); margin-bottom:0.875rem; display:inline-flex; align-items:center; gap:0.4rem;">
           + Create an Invite to This Activation
         </summary>
@@ -2339,6 +2359,40 @@ if ($tl_show) {
   </div>
   <?php endif; ?>
 
+  <!-- CHANGE LOG -->
+  <?php $change_log = summit_log_fetch($db, $summit_id, 100); ?>
+  <?php if ($change_log !== null): ?>
+  <div style="margin-top:1rem;">
+    <details class="cl-box">
+      <summary style="cursor:pointer; font-size:0.78rem; color:var(--ink-4); display:inline-flex; align-items:center; gap:0.35rem;">
+        Change log<?= $change_log ? ' (' . count($change_log) . (count($change_log) >= 100 ? '+' : '') . ')' : '' ?>
+      </summary>
+      <div class="card" style="margin-top:0.75rem; padding:0;">
+        <?php if (!$change_log): ?>
+          <p style="padding:1rem 1.25rem; color:var(--ink-3); font-size:0.85rem;">No changes recorded yet. Edits made from now on will appear here.</p>
+        <?php else: ?>
+        <div style="overflow-x:auto;">
+        <table class="cl-table">
+          <thead><tr><th>When</th><th>Callsign</th><th>What</th><th>Was</th><th>Now</th></tr></thead>
+          <tbody>
+          <?php foreach ($change_log as $cl): ?>
+            <tr>
+              <td style="white-space:nowrap;"><?= htmlspecialchars(date('M j, Y g:i A', strtotime($cl['created_at']))) ?></td>
+              <td style="font-family:var(--font-mono); font-weight:600;"><?= htmlspecialchars($cl['callsign']) ?></td>
+              <td><?= htmlspecialchars($cl['field_label']) ?></td>
+              <td class="cl-val"><?= ($cl['old_value'] === null || $cl['old_value'] === '') ? '<span class="cl-empty">empty</span>' : htmlspecialchars($cl['old_value']) ?></td>
+              <td class="cl-val"><?= ($cl['new_value'] === null || $cl['new_value'] === '') ? '<span class="cl-empty">empty</span>' : htmlspecialchars($cl['new_value']) ?></td>
+            </tr>
+          <?php endforeach; ?>
+          </tbody>
+        </table>
+        </div>
+        <?php endif; ?>
+      </div>
+    </details>
+  </div>
+  <?php endif; ?>
+
   <!-- DANGER ZONE -->
   <div style="margin-top:1rem; margin-bottom:1rem;">
     <details>
@@ -2357,7 +2411,7 @@ if ($tl_show) {
 </div><!-- .page -->
 
 <footer class="footer">
-  SOTAplanner &middot; <a href="about.php">About</a> &middot; <a href="https://sotaplanner.com">sotaplanner.com</a>
+  SOTAplanner &middot; <a href="about.php">About</a> &middot; <a href="about.php#credits">Credits</a> &nbsp;·&nbsp; <a href="https://sotaplanner.com">sotaplanner.com</a>
 </footer>
 
 <script>
@@ -2385,6 +2439,16 @@ function geocodeAddress() {
 }
 
 // ── Copy invite link ────────────────────────────────────────────────────────
+// "Create Invite" at the top of the page jumps here: open the invite form so it is ready to fill in
+function openCreateInvite() {
+  var d = document.getElementById('create-invite-details');
+  if (!d) return;
+  d.open = true;
+  setTimeout(function () { d.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
+}
+if (window.location.hash === '#planned-activations') openCreateInvite();
+window.addEventListener('hashchange', function () { if (window.location.hash === '#planned-activations') openCreateInvite(); });
+
 function togglePaEdit(id) {
   var el = document.getElementById('pa-edit-' + id);
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
@@ -2635,28 +2699,6 @@ function toggleCarrier(name) {
   }
 }
 
-<?php
-$drive_origin_geo = ($selected_address && $directions_lat && $directions_lng) ? addressGeo($db, $selected_address) : null;
-if ($drive_origin_geo): ?>
-// Driving route (OSRM) from the selected starting address to the starting point.
-// Drawn after the initial view is set and never touches fitBounds, so the map
-// stays focused on the hike and summit; the line may run off-screen.
-(function() {
-  const from = [<?= (float)$drive_origin_geo['lat'] ?>, <?= (float)$drive_origin_geo['lng'] ?>];
-  const to = [<?= (float)$directions_lat ?>, <?= (float)$directions_lng ?>];
-  fetch('https://router.project-osrm.org/route/v1/driving/' + from[1] + ',' + from[0] + ';' + to[1] + ',' + to[0] + '?overview=full&geometries=geojson')
-    .then(r => r.json())
-    .then(data => {
-      if (data.code !== 'Ok' || !data.routes || !data.routes[0]) return;
-      const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
-      L.polyline(coords, { color: '#2563EB', weight: 4, opacity: 0.8, lineJoin: 'round', lineCap: 'round' })
-        .bindPopup('<strong>Driving route</strong><br>from <?= htmlspecialchars(addslashes($selected_address['label'] ?: $selected_address['address']), ENT_QUOTES) ?>')
-        .addTo(map);
-    })
-    .catch(() => {});
-})();
-<?php endif; ?>
-
 function initActivationZone(poly, source) {
   let coords;
   if (Array.isArray(poly[0]) && Array.isArray(poly[0][0]) && Array.isArray(poly[0][0][0])) coords = poly[0][0].map(c => [c[1], c[0]]);
@@ -2713,6 +2755,7 @@ fetch('load_gpx.php?id=<?= $gpx_data['id'] ?>')
       if (ele) elevPts.push([lat, lon, parseFloat(ele.textContent)]);
     });
     gpxPolyline = L.polyline(coords, { color: '#9B6328', weight: 3, opacity: 0.85 }).addTo(map);
+    document.getElementById('track-key-hike').style.display = '';
     const elevState = drawElevationProfile(elevPts);
     if (elevState) setupElevMapHover(elevState, map);
     map.fitBounds(L.polyline(coords).getBounds(), { padding: [50, 50] });
@@ -2805,6 +2848,7 @@ fetch('activation_zone.php?sota_ref=<?= urlencode($summit['sota_ref']) ?>')
 const SOTAMAPS_SOTA_REF  = <?= json_encode($summit['sota_ref'] ?? '') ?>;
 const SOTAMAPS_SUMMIT_ID = <?= intval($summit_id) ?>;
 const SOTAMAPS_GROUP_ID  = <?= intval($current_group['id']) ?>;
+const SOTAMAPS_HAS_GPX   = <?= !empty($gpx_data) ? 'true' : 'false' ?>;   // only warn about replacing when there is something to replace
 
 function fetchSotaMaps(fetchBtn) {
   const resultEl = fetchBtn.closest('div').querySelector('#sotamaps-result')
@@ -2868,7 +2912,7 @@ function renderTrackList(data) {
 }
 
 function importSotaMapsTrack(hdrId, btn) {
-  if (!confirm('Import this track? It will replace any existing GPX for this summit.')) return;
+  if (SOTAMAPS_HAS_GPX && !confirm('Import this track? It will replace the GPX track this summit already has.')) return;
   btn.disabled = true;
   btn.textContent = 'Importing…';
 
@@ -2900,6 +2944,17 @@ function importSotaMapsTrack(hdrId, btn) {
       alert('Network error during import.');
     });
 }
+
+<?php if (trailhead_snap_due($db, $summit_id)): ?>
+// A start point set from an imported track is still waiting for its OpenStreetMap trailhead or parking spot.
+// Look it up now, in the background after the page has loaded; reload once only if the starting point moved.
+window.addEventListener('load', function() {
+  fetch('trailhead_snap.php', { method: 'POST', body: new URLSearchParams({ summit_id: <?= (int)$summit_id ?> }) })
+    .then(r => r.json())
+    .then(d => { if (d && d.result === 'moved') window.location.reload(); })
+    .catch(() => {});
+});
+<?php endif; ?>
 
 function escHtml(str) {
   return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -3107,6 +3162,32 @@ function saveActTime() {
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
         body: 'minutes=' + encodeURIComponent(minutes)
     }).then(() => { window.location.reload(); });
+}
+</script>
+<script>
+// Share button: copies this summit's public page link (every summit has one, nothing to set up)
+function shareSummit(btn) {
+  var url = btn.dataset.url, tip = btn.querySelector('.copied-tip');
+  var done = function () {
+    tip.classList.add('show');
+    clearTimeout(btn._copyTipTimer);
+    btn._copyTipTimer = setTimeout(function () { tip.classList.remove('show'); }, 1200);
+  };
+  // Older-browser fallback: copy through a temporary text box so no pop-up is needed
+  var legacy = function () {
+    var t = document.createElement('textarea');
+    t.value = url; t.style.position = 'fixed'; t.style.opacity = '0';
+    document.body.appendChild(t); t.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(t);
+    if (ok) done(); else window.prompt('Copy this link to share the summit:', url);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(done, legacy);
+  } else {
+    legacy();
+  }
 }
 </script>
 <script>

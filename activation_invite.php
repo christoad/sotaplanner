@@ -142,7 +142,7 @@ $pace_multiplier = (float)($pa['pace_multiplier'] ?? 1.0);
 // Mirror summit_detail hike time logic exactly
 $track_type     = $gpx ? ($gpx['track_type'] ?? 'round-trip') : 'round-trip';
 $one_way        = ($track_type === 'ascent' || $track_type === 'descent');
-$has_timestamps = $gpx && $gpx['hiking_time'] > 0;
+$has_timestamps = false; // recorded GPX time is never used; Naismith from distance and climb
 
 $hike_time_total = 0;
 if ($gpx && $gpx['use_for_hike_time']) {
@@ -177,15 +177,13 @@ if ($gpx && $gpx['use_for_elevation']) {
     $elevation_gain_display = $pa['hike_elevation_gain_ft'];
 }
 
-if ($hike_time_total > 0) {
-    $hike_up_min   = intval(round($hike_time_total * 0.6));
-    $hike_down_min = $hike_time_total - $hike_up_min;
-} elseif ($pa['hike_time_up_min'] && $pa['hike_time_down_min']) {
-    $hike_up_min   = (int)$pa['hike_time_up_min'];
-    $hike_down_min = (int)$pa['hike_time_down_min'];
-} else {
-    $hike_up_min = $hike_down_min = 0;
-}
+// Drive Up means no hike, whatever distance/gain/GPX data is still on file.
+if (($pa['difficulty'] ?? '') === 'drive-up') $hike_time_total = 0;
+
+// Always the live value. The stored hike_time_up_min / hike_time_down_min columns are a stale
+// cache and are never used (they leaked in after a GPX was dropped or Drive Up was chosen).
+$hike_up_min   = $hike_time_total > 0 ? intval(round($hike_time_total * 0.6)) : 0;
+$hike_down_min = $hike_time_total > 0 ? $hike_time_total - $hike_up_min : 0;
 
 $hike_start_ts    = strtotime($pa['planned_date'] . ' ' . $pa['hike_start_time']);
 $leave_home_ts    = $drive_one_way > 0 ? $hike_start_ts - ($drive_one_way * 60) : null;
@@ -253,10 +251,10 @@ $callsign_list = array_filter(array_map('trim', explode(',', $pa['callsigns'])))
 
 // Cell service label
 $cell_labels = [
-    'full'         => ['Full Coverage Expected',      '📶', 'oklch(50% 0.13 155)', 'var(--green-bg)',  'oklch(82% 0.07 155)'],
-    'intermittent' => ['Intermittent Signal',          '📶', 'oklch(56% 0.14 58)',  'oklch(96% 0.05 58)', 'oklch(88% 0.08 58)'],
-    'summit_only'  => ['Coverage at Summit Only',      '📶', 'var(--accent)',        'var(--accent-bg)', 'var(--accent-border)'],
-    'none'         => ['No Cell Service Expected',     '📵', 'var(--red)',           'var(--red-bg)',    'oklch(85% 0.06 22)'],
+    'full'         => ['Mobile Service Expected at the Summit', '📶', 'oklch(50% 0.13 155)', 'var(--green-bg)',  'oklch(82% 0.07 155)'],
+    'intermittent' => ['Spotty Mobile Service at the Summit', '📶', 'oklch(56% 0.14 58)',  'oklch(96% 0.05 58)', 'oklch(88% 0.08 58)'],
+    'summit_only'  => ['Mobile Service Expected at the Summit', '📶', 'var(--accent)',        'var(--accent-bg)', 'var(--accent-border)'],
+    'none'         => ['No Mobile Service at the Summit', '📵', 'var(--red)',           'var(--red-bg)',    'oklch(85% 0.06 22)'],
 ];
 $cell_info = isset($cell_labels[$pa['cell_service']]) ? $cell_labels[$pa['cell_service']] : null;
 
@@ -1484,9 +1482,9 @@ $difficulty_labels = [
 </div>
 <?php endif; ?>
 
-<!-- CELL COVERAGE & SAFETY -->
+<!-- SUMMIT MOBILE SERVICE & SAFETY -->
 <div class="section">
-    <div class="section-title">Cell Coverage &amp; Safety</div>
+    <div class="section-title">Summit Mobile Service &amp; Safety</div>
 
     <?php if ($cell_info): ?>
     <div class="cell-banner" style="background:<?= $cell_info[4] ?>20; border:1px solid <?= $cell_info[4] ?>;">
@@ -1500,7 +1498,7 @@ $difficulty_labels = [
     <div class="cell-banner" style="background:var(--bg-2); border:1px solid var(--border);">
         <span class="cell-banner-icon">📵</span>
         <div class="cell-banner-text">
-            <span style="color:var(--ink-2);">Cell service coverage is unknown for this route. Let someone know your plans before heading out.</span>
+            <span style="color:var(--ink-2);">Mobile service at the summit is unknown. Let someone know your plans before heading out.</span>
         </div>
     </div>
     <?php endif; ?>
@@ -1596,7 +1594,7 @@ function openTrailheadDirections(lat, lng) {
 </div>
 
 <footer class="invite-footer">
-    SOTA Planner &nbsp;·&nbsp; <a href="changelog.php">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com">sotaplanner.com</a>
+    SOTA Planner &nbsp;·&nbsp; <a href="changelog.php">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="about.php#credits">Credits</a> &nbsp;·&nbsp; <a href="https://sotaplanner.com">sotaplanner.com</a>
 </footer>
 </body>
 </html>

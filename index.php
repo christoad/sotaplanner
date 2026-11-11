@@ -102,7 +102,7 @@ if (isset($_POST['calculate_drive_times'])) {
             $origin = addressOrigin($db, $selected_address);
 
             if (empty($summits)) {
-                $message = "No summits found for {$current_group['name']}. Nominate some summits first!";
+                $message = "No summits found for {$current_group['name']}. Add some summits first!";
             } else {
                 $updated = 0;
                 $failed = 0;
@@ -287,9 +287,7 @@ $naismith_sql = "(($eff_dist) / 2.5 * 60 + ($eff_gain) / 1500 * 60) * 1.10";
 $gps_time_sql = "ROUND(g.hiking_time * CASE WHEN g.track_type IN ('ascent','descent') THEN 2 ELSE 1 END / 60)";
 
 // Full hike time: GPS recorded if timestamps exist, else Naismith from active source
-$hike_time_sql = "CASE WHEN g.use_for_hike_time = 1 AND COALESCE(g.hiking_time, 0) > 0
-    THEN $gps_time_sql
-    ELSE $naismith_sql END";
+$hike_time_sql = $naismith_sql; // recorded GPX times are never used (pace differs per hiker)
 
 // Time columns treat "no data" (0) as NULL so those summits always sort last,
 // in either direction, instead of clumping at the short end.
@@ -417,8 +415,17 @@ usort($summits, function ($a, $b) use ($current_group) {
 });
 
 // Truly blank dashboard (no summits and no filter hiding any): the empty state's
-// own "Nominate Your First Summit" button is the only add button shown.
+// own "Add Your First Summit" button is the only add button shown.
 $dashboard_blank = empty($summits) && count($active_filters) === 7;
+
+// Gentle nudge: pulse the Add Summits button until the dashboard has at least 3 summits (counted unfiltered)
+$pulse_add_summits = false;
+if (!empty($current_group)) {
+    $_pc = $db->prepare("SELECT COUNT(*) FROM summits WHERE planning_group_id = ?");
+    $_pc->execute([$current_group['id']]);
+    $pulse_add_summits = ((int)$_pc->fetchColumn()) < 3;
+    unset($_pc);
+}
 
 // Saved multi-activations for this group, keyed by the first (lead) summit's id.
 // A saved route replaces its member summits' individual dashboard rows with one
@@ -519,7 +526,7 @@ if (!empty($missing_member_ids)) {
 function dashboard_hike_stats($summit, $current_group) {
     $track_type    = $summit['track_type'] ?? 'round-trip';
     $one_way       = ($track_type === 'ascent' || $track_type === 'descent');
-    $has_timestamps = ($summit['gpx_hiking_time'] ?? 0) > 0;
+    $has_timestamps = false; // recorded GPX time is never used; Naismith from distance and climb
 
     if ($summit['use_for_elevation'] && $summit['gpx_elevation_gain']) {
         $elevation_for_display = ($track_type === 'descent')
@@ -546,6 +553,8 @@ function dashboard_hike_stats($summit, $current_group) {
             ? calculateHikeTime($distance_display_mi ?? 0, $elevation_for_display ?? 0, $current_group['pace_multiplier'] ?? 1.0)
             : 0;
     }
+    // Drive Up has no hike, whatever distance/gain/GPX data is still on file
+    if (($summit['difficulty'] ?? '') === 'drive-up') $hike_time_total = 0;
     return [$distance_display_mi, $elevation_for_display, $hike_time_total];
 }
 
@@ -699,7 +708,7 @@ function render_dashboard_row($summit, $current_group, $user_units, $activation_
                     <span class="badge badge-nominated">Needs Research</span>
                 <?php endif; ?>
             <?php else: ?>
-                <span class="badge badge-<?= htmlspecialchars($summit['status']) ?>"><?= ucfirst($summit['status']) ?></span>
+                <span class="badge badge-<?= htmlspecialchars($summit['status']) ?>"><?= statusLabel($summit['status']) ?></span>
             <?php endif; ?>
         </td>
         <td class="td-stats"><?= implode(' · ', $mobile_parts) ?></td>
@@ -713,7 +722,7 @@ foreach ($summits as $sm) {
     if (!$sm['latitude'] || !$sm['longitude']) continue;
     $tt = $sm['track_type'] ?? 'round-trip';
     $ow = ($tt === 'ascent' || $tt === 'descent');
-    $has_ts = ($sm['gpx_hiking_time'] ?? 0) > 0;
+    $has_ts = false; // recorded GPX time is never used; Naismith from distance and climb
     if ($sm['use_for_elevation'] && $sm['gpx_elevation_gain']) {
         $elev = ($tt === 'descent') ? ($sm['gpx_elevation_loss'] ?? 0) * 3.28084 : $sm['gpx_elevation_gain'] * 3.28084;
     } else {
@@ -729,6 +738,7 @@ foreach ($summits as $sm) {
     } else {
         $hike_min = ($dist || $elev) ? calculateHikeTime($dist ?? 0, $elev ?? 0, $current_group['pace_multiplier'] ?? 1.0) : 0;
     }
+    if (($sm['difficulty'] ?? '') === 'drive-up') $hike_min = 0;
     $drv = $sm['drive_time_min'] ?? 0;
     $tot = $hike_min + $drv + $activation_time;
     $is_drive_up = ($sm['difficulty'] ?? '') === 'drive-up';
@@ -908,6 +918,12 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
     .btn:hover { text-decoration: none; }
     .btn:active { transform: scale(0.98); }
     .btn-primary { background: var(--ink); color: #fff; }
+    .btn-pulse { animation: addSummitsPulse 2s ease-in-out infinite; }
+    @keyframes addSummitsPulse {
+      0%, 100% { box-shadow: 0 0 0 0 oklch(52% 0.13 50 / 0.55); transform: scale(1); }
+      50%      { box-shadow: 0 0 0 9px oklch(52% 0.13 50 / 0); transform: scale(1.05); }
+    }
+    @media (prefers-reduced-motion: reduce) { .btn-pulse { animation: none; box-shadow: 0 0 0 3px oklch(84% 0.08 65); } }
     .btn-primary:hover { background: var(--ink-2); color: #fff; }
     .btn-ghost {
       background: transparent; color: var(--ink-2);
@@ -1648,7 +1664,7 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
             </div>
         </div>
         <?php if (!$dashboard_blank): ?>
-        <a href="nominate.php" class="btn btn-primary btn-sm">+ Add Summits</a>
+        <a href="nominate.php" class="btn btn-primary btn-sm<?= $pulse_add_summits ? ' btn-pulse' : '' ?>">+ Add Summits</a>
         <?php endif; ?>
         <div class="topbar-divider"></div>
         <div class="user-chip" id="userChip">
@@ -1688,6 +1704,15 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
         <span><?= $_GET['imported']
             ? 'The shared multi-summit route has been added to this dashboard, along with its summits and their trail research.'
             : 'Sorry, the shared route could not be copied into this dashboard. Open the shared link again and try once more.' ?></span>
+        <button class="msg-dismiss" onclick="this.parentElement.remove()">×</button>
+    </div>
+    <?php endif; ?>
+
+    <?php if (isset($_GET['summit_saved'])): ?>
+    <div class="msg <?= $_GET['summit_saved'] ? 'msg-success' : 'msg-info' ?>" style="margin-bottom:1rem;">
+        <span><?= $_GET['summit_saved']
+            ? 'The shared summit has been saved to this dashboard, along with its trail research.'
+            : 'Sorry, the shared summit could not be saved. Open the shared link again and try once more.' ?></span>
         <button class="msg-dismiss" onclick="this.parentElement.remove()">×</button>
     </div>
     <?php endif; ?>
@@ -1819,10 +1844,10 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
     <?php if (empty($summits)): ?>
         <div class="empty">
             <div class="empty-icon">⛰</div>
-            <h3>No summits<?= !$is_all ? ' match the current filters' : ' nominated yet' ?></h3>
-            <p><?= !$is_all ? 'Try adjusting the filters above.' : 'Nominate your first summit to start planning activations.' ?></p>
+            <h3>No summits<?= !$is_all ? ' match the current filters' : ' added yet' ?></h3>
+            <p><?= !$is_all ? 'Try adjusting the filters above.' : 'Add your first summit to start planning activations.' ?></p>
             <?php if ($is_all): ?>
-                <a href="nominate.php" class="btn btn-primary" style="margin-top:var(--sp-4)">Nominate Your First Summit</a>
+                <a href="nominate.php" class="btn btn-primary<?= $pulse_add_summits ? ' btn-pulse' : '' ?>" style="margin-top:var(--sp-4)">Add Your First Summit</a>
             <?php endif; ?>
         </div>
     <?php else: ?>
@@ -1981,7 +2006,7 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
 
     <?php if (!$dashboard_blank): ?>
     <div class="add-summits-footer">
-        <a href="nominate.php" class="btn btn-primary">+ Add Summits</a>
+        <a href="nominate.php" class="btn btn-primary<?= $pulse_add_summits ? ' btn-pulse' : '' ?>">+ Add Summits</a>
     </div>
     <?php endif; ?>
     </div><!-- /#list-view -->
@@ -1990,7 +2015,7 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
 </div><!-- /.page -->
 
 <footer class="footer">
-    SOTAplanner &nbsp;·&nbsp; <a href="changelog.php">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="https://sotaplanner.com">sotaplanner.com</a>
+    SOTAplanner &nbsp;·&nbsp; <a href="changelog.php">v<?= APP_VERSION ?></a> &nbsp;·&nbsp; <a href="about.php#credits">Credits</a> &nbsp;·&nbsp; <a href="https://sotaplanner.com">sotaplanner.com</a>
 </footer>
 
 <!-- How It Works Modal -->
@@ -2467,7 +2492,7 @@ var STEPS = [
     {
         sel: 'a[href="nominate.php"].btn',
         title: "Add your first summit",
-        body:  <?= json_encode(($dashboard_blank ? "Click 'Nominate Your First Summit'" : "Click '+ Add Summits'") . " and enter a SOTA reference code (like W7O/NC-001). SOTA Planner pulls the name, elevation, and coordinates automatically.") ?>,
+        body:  <?= json_encode(($dashboard_blank ? "Click 'Add Your First Summit'" : "Click '+ Add Summits'") . " and enter a SOTA reference code (like W7O/NC-001). SOTA Planner pulls the name, elevation, and coordinates automatically.") ?>,
     },
     {
         sel: '.toolbar',

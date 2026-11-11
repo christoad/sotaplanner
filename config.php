@@ -1,5 +1,5 @@
 <?php
-define('APP_VERSION', '2026.10');
+define('APP_VERSION', '2026.11');
 
 // Enable error reporting for debugging
 error_reporting(E_ALL);
@@ -67,6 +67,12 @@ function calculateHikeTime($distance_mi, $elevation_gain_ft, $pace_multiplier = 
 }
 
 // Helper function to format time in hours and minutes
+/** User-facing name of a summit status. The stored value stays 'nominated' (renamed in the UI only, like Dashboard and Starting Point). */
+function statusLabel($status) {
+    $labels = ['nominated' => 'Needs Research', 'ready' => 'Ready'];
+    return $labels[$status] ?? ucfirst((string)$status);
+}
+
 function formatTime($minutes) {
     if ($minutes < 60) {
         return $minutes . " min";

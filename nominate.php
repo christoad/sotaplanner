@@ -4,6 +4,7 @@ ini_set('display_errors', 1);
 
 require_once 'config.php';
 require_once 'sota_cache_helper.php';
+require_once 'nominate_lib.php';
 session_start();
 requireLogin();
 // Release the session lock now: this endpoint only reads the session, and holding the lock
@@ -15,86 +16,6 @@ function _set_activation_count(PDO $db, int $summit_id, $summit_data): void {
     if (!is_array($summit_data) || !isset($summit_data['activationCount'])) return;
     $db->prepare("UPDATE summits SET activation_count = ? WHERE id = ?")
        ->execute([(int)$summit_data['activationCount'], $summit_id]);
-}
-
-// Link a global GPX library track to a newly-created summit row.
-// Creates a gpx_tracks row pointing at the shared file and fills in
-// hike distance, elevation gain, and trailhead on the summit.
-function _link_global_gpx(PDO $db, int $summit_id, int $group_id, string $sota_ref): void {
-    $st = $db->prepare("SELECT * FROM global_gpx_tracks WHERE sota_ref = ?");
-    $st->execute([$sota_ref]);
-    $g = $st->fetch();
-    if (!$g || !file_exists($g['file_path'])) return;
-
-    // Don't add a second gpx_tracks row if one already exists,
-    // but still update the trailhead on the summit if the global track has one
-    $chk = $db->prepare("SELECT id FROM gpx_tracks WHERE summit_id = ? LIMIT 1");
-    $chk->execute([$summit_id]);
-    if ($chk->fetch()) {
-        if (!empty($g['trailhead_lat']) && $g['trailhead_lat'] != 0) {
-            $db->prepare("UPDATE summits SET trailhead_lat = COALESCE(NULLIF(trailhead_lat, 0), ?), trailhead_lng = COALESCE(NULLIF(trailhead_lng, 0), ?) WHERE id = ?")
-               ->execute([$g['trailhead_lat'], $g['trailhead_lon'], $summit_id]);
-        }
-        return;
-    }
-
-    $db->prepare("
-        INSERT IGNORE INTO gpx_tracks (
-            summit_id, planning_group_id, filename, file_path,
-            total_time, hiking_time, activation_time, rest_break_time,
-            total_distance, hiking_distance, max_elevation, min_elevation,
-            elevation_gain, elevation_loss, avg_speed, hiking_speed,
-            num_points, summit_lat, summit_lon, using_api,
-            activation_zone_polygon, activation_zone_method,
-            use_for_hike_time, use_for_elevation, from_global_library
-        ) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, 0, NULL, 'none', 1, 1, 1)
-    ")->execute([
-        $summit_id, $group_id, $g['filename'], $g['file_path'],
-        $g['total_distance'], $g['total_distance'],
-        $g['max_elevation'], $g['min_elevation'],
-        $g['elevation_gain'], $g['elevation_loss'],
-        $g['num_points'], $g['summit_lat'], $g['summit_lon'],
-    ]);
-
-    // Auto-fill summit fields only if not already set
-    $updates = [];
-    $params  = [];
-    if ($g['elevation_gain'] && $g['elevation_gain'] > 0) {
-        $updates[] = "hike_elevation_gain_ft = COALESCE(hike_elevation_gain_ft, ?)";
-        $params[]  = round($g['elevation_gain'] * 3.28084);
-    }
-    if ($g['total_distance'] && $g['total_distance'] > 0) {
-        $updates[] = "hike_distance_mi = COALESCE(hike_distance_mi, ?)";
-        $params[]  = round($g['total_distance'] * 2 * 0.621371, 2);
-    }
-    if (!empty($g['trailhead_lat']) && $g['trailhead_lat'] != 0) {
-        $updates[] = "trailhead_lat = COALESCE(NULLIF(trailhead_lat, 0), ?)";
-        $params[]  = $g['trailhead_lat'];
-        $updates[] = "trailhead_lng = COALESCE(NULLIF(trailhead_lng, 0), ?)";
-        $params[]  = $g['trailhead_lon'];
-    }
-    if ($updates) {
-        $params[] = $summit_id;
-        $db->prepare("UPDATE summits SET " . implode(', ', $updates) . " WHERE id = ?")->execute($params);
-    }
-}
-
-// Set summit status to 'researched' if it has both a GPX track and a valid trailhead.
-function _maybe_set_researched(PDO $db, int $summit_id): void {
-    $chk = $db->prepare("
-        SELECT s.id
-        FROM summits s
-        JOIN gpx_tracks g ON g.summit_id = s.id
-        WHERE s.id = ?
-          AND s.trailhead_lat IS NOT NULL AND s.trailhead_lat != 0
-          AND s.trailhead_lng IS NOT NULL AND s.trailhead_lng != 0
-          AND s.status = 'nominated'
-        LIMIT 1
-    ");
-    $chk->execute([$summit_id]);
-    if ($chk->fetch()) {
-        $db->prepare("UPDATE summits SET status = 'researched' WHERE id = ?")->execute([$summit_id]);
-    }
 }
 
 // ── AJAX search endpoint ─────────────────────────────────────────────────────
@@ -771,7 +692,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nominate Summit | SOTA Planner</title>
+  <title>Add Summits | SOTA Planner</title>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -954,6 +875,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
     .btn-primary { background: var(--ink); color: #fff; width: 100%; height: 40px; font-size: 0.9rem; }
     .btn-primary:hover:not(:disabled) { background: var(--ink-2); }
     .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+    .nom-btn-row { display: flex; gap: 0.5rem; align-items: center; }
+    .nom-btn-row .nom-btn-main { flex: 1; width: auto; height: 40px; }
+    .nom-btn-row .nom-btn-more { width: auto; height: 40px; padding: 0 1.75rem; }
+    @media (max-width: 640px) {
+      .nom-btn-row { flex-direction: column; align-items: stretch; }
+      .nom-btn-row .nom-btn-main, .nom-btn-row .nom-btn-more { flex: none; width: 100%; padding: 0 1rem; }
+    }
 
     /* Group badge */
     .group-badge {
@@ -1176,7 +1104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
 <div class="page">
 
   <div style="margin-bottom: 1.5rem;">
-    <h1 style="font-size: 1.375rem; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); margin-bottom: 0.25rem;">Nominate a Summit</h1>
+    <h1 style="font-size: 1.375rem; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); margin-bottom: 0.25rem;">Add a Summit</h1>
     <p style="font-size: 0.875rem; color: var(--ink-3);">Add one summit or a whole list to your dashboard.</p>
   </div>
 
@@ -1189,7 +1117,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
 
   <div class="group-badge">
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="4" cy="3.5" r="1.5" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="3.5" r="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M1 10c0-1.657 1.343-3 3-3s3 1.343 3 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M8 7c1.105 0 2 1.343 2 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-    Nominating for: <strong><?= htmlspecialchars($current_group['name']) ?></strong>
+    Adding to: <strong><?= htmlspecialchars($current_group['name']) ?></strong>
   </div>
 
   <!-- Tabbed nominate card -->
@@ -1242,7 +1170,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
             </div>
           </div>
 
-          <button type="submit" id="nominate-btn" class="btn btn-primary" disabled>Nominate Summit</button>
+          <div class="nom-btn-row">
+            <button type="submit" id="nominate-btn" class="btn btn-primary nom-btn-main" disabled>Save to Dashboard</button>
+            <button type="button" id="nominate-more-btn" class="btn btn-primary nom-btn-more" disabled>Save + Add more</button>
+          </div>
         </div>
       </div>
 
@@ -1302,6 +1233,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
 
 </div>
 
+<div id="nom-toast" role="status" style="display:none; position:fixed; left:50%; bottom:1.5rem; transform:translateX(-50%); z-index:9200; background:var(--ink); color:#fff; padding:0.65rem 1.1rem; border-radius:var(--r-md); font-size:0.875rem; font-weight:500; box-shadow:var(--shadow-lg); max-width:90vw;"></div>
+
 <!-- Bulk nomination progress overlay (hidden until bulk submit) -->
 <div id="nom-progress-overlay" style="display:none;">
   <div class="nom-progress-card">
@@ -1347,7 +1280,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
   SOTA Planner &nbsp;·&nbsp;
   <a href="changelog.php" style="color:var(--ink-4); text-decoration:none;">v<?= APP_VERSION ?></a>
   &nbsp;·&nbsp;
-  <a href="https://sotaplanner.com" style="color:var(--ink-4); text-decoration:none;">sotaplanner.com</a>
+  <a href="about.php#credits" style="color:var(--ink-4); text-decoration:none;">Credits</a> &nbsp;·&nbsp; <a href="https://sotaplanner.com" style="color:var(--ink-4); text-decoration:none;">sotaplanner.com</a>
 </footer>
 
 <script>
@@ -1626,10 +1559,10 @@ searchInput.addEventListener('input', function() {
                         selectedRef.textContent  = ref;
                     }
                 }
-                searchHint.textContent = 'Looks like a SOTA reference, ready to nominate.';
+                searchHint.textContent = 'Looks like a SOTA reference, ready to save.';
             })
             .catch(() => {
-                searchHint.textContent = 'Looks like a SOTA reference, ready to nominate.';
+                searchHint.textContent = 'Looks like a SOTA reference, ready to save.';
             });
         return;
     }
@@ -1780,12 +1713,12 @@ function renderBatchResults(results) {
     if (found.length > 0) {
         setNominateEnabled(true);
         nominateBtn.textContent = found.length === 1
-            ? 'Nominate 1 Summit'
-            : 'Nominate ' + found.length + ' Summits';
+            ? 'Save 1 Summit to Dashboard'
+            : 'Save ' + found.length + ' Summits to Dashboard';
         searchHint.textContent = '';
     } else {
         setNominateEnabled(false);
-        nominateBtn.textContent = 'Nominate Summit';
+        nominateBtn.textContent = 'Save to Dashboard';
         searchHint.textContent = 'None of the references were found. Check the format: ASSOC/CODE-NNN (e.g. W7O/NC-001).';
     }
 }
@@ -1795,7 +1728,7 @@ function setSingleMode(on) {
     if (on) {
         currentMode = 'single';
         formMode.value = 'single';
-        nominateBtn.textContent = 'Nominate Summit';
+        nominateBtn.textContent = 'Save to Dashboard';
         selectedBox.style.display = 'none';
     } else {
         currentMode = 'batch';
@@ -1805,7 +1738,58 @@ function setSingleMode(on) {
 }
 
 function hideResults() { resultsBox.style.display = 'none'; resultsBox.innerHTML = ''; }
-function setNominateEnabled(on) { nominateBtn.disabled = !on; nominateBtn.style.opacity = on ? '1' : '0.45'; }
+const nominateMoreBtn = document.getElementById('nominate-more-btn');
+function setNominateEnabled(on) {
+    nominateBtn.disabled = !on; nominateBtn.style.opacity = on ? '1' : '0.45';
+    nominateMoreBtn.disabled = !on; nominateMoreBtn.style.opacity = on ? '1' : '0.45';
+}
+
+let toastTimer = null;
+function showToast(msg) {
+    const t = document.getElementById('nom-toast');
+    t.textContent = msg;
+    t.style.display = 'block';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function() { t.style.display = 'none'; }, 4000);
+}
+
+// Reset the Name / Reference tab so another summit can be searched right away.
+function resetSearchTab() {
+    clearTimeout(debounceTimer);
+    refInput.value = '';
+    refsInput.value = '';
+    formMode.value = 'single';
+    nominateBtn.textContent = 'Save to Dashboard';
+    selectedBox.style.display = 'none';
+    hideResults();
+    setNominateEnabled(false);
+    searchInput.value = '';
+    searchHint.textContent = 'Type a summit name to search, or enter a SOTA reference directly (e.g., W6/CT-225).';
+    searchInput.focus();
+}
+
+// Reset the area tab results so another location can be searched.
+function resetAreaTab() {
+    const loc = document.getElementById('area_location');
+    loc.value = '';
+    document.getElementById('area_results').innerHTML = '<div id="area_results_placeholder" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.75rem; padding:3rem 1.5rem; color:var(--ink-4); text-align:center; border:1px solid var(--border); border-radius:var(--r-md); background:var(--bg);"><img src="sota-planner-logo.svg" width="48" height="48" alt="" style="opacity:0.25;"><div style="font-size:0.9rem; font-weight:600; color:var(--ink-3);">Summit List</div><div style="font-size:0.8rem; color:var(--ink-4);">Search a location to see summits in the area</div></div>';
+    if (areaCircle) { areaCircle.setMap(null); areaCircle = null; }
+    areaMarkers.forEach(function(m) { m.setMap(null); });
+    areaMarkers = []; summitMarkerMap = {};
+    loc.focus();
+}
+
+nominateMoreBtn.addEventListener('click', function() {
+    if (formMode.value === 'bulk') {
+        const refs = refsInput.value.split(',').map(r => r.trim()).filter(r => r);
+        if (refs.length === 0) return;
+        runBulkNominateFlow(refs, true);
+    } else {
+        const ref = refInput.value.trim();
+        if (!ref) return;
+        runBulkNominateFlow([ref], true);
+    }
+});
 
 function escHtml(s)  { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function escAttr(s)  { return String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
@@ -1827,7 +1811,7 @@ function winterBonusSeasonText(bonus, lat) {
         ? 'June 1 \u2013 September 15 (Southern Hemisphere winter)'
         : 'December 1 \u2013 March 15 (Northern Hemisphere winter)';
     const label = bonus === 1 ? 'point' : 'points';
-    return '+' + bonus + ' winter bonus ' + label + ' \u2014 typically awarded ' + season + '. Exact dates are set by this summit\'s SOTA association.';
+    return '+' + bonus + ' winter bonus ' + label + ': typically awarded ' + season + '. Exact dates are set by this summit\'s SOTA association.';
 }
 
 // ── Form submit validation ────────────────────────────────────────────────────
@@ -1835,7 +1819,7 @@ document.getElementById('nominate-form').addEventListener('submit', function(e) 
     if (formMode.value === 'bulk') {
         e.preventDefault();
         const refs = refsInput.value.split(',').map(r => r.trim()).filter(r => r);
-        if (refs.length === 0) { alert('No valid summits to nominate.'); return; }
+        if (refs.length === 0) { alert('No valid summits to save.'); return; }
         runBulkNominateFlow(refs);
     } else {
         if (!refInput.value.trim()) {
@@ -1846,7 +1830,7 @@ document.getElementById('nominate-form').addEventListener('submit', function(e) 
 });
 
 // ── Bulk AJAX nomination flow ─────────────────────────────────────────────────
-async function runBulkNominateFlow(refs) {
+async function runBulkNominateFlow(refs, stay) {
     const overlay   = document.getElementById('nom-progress-overlay');
     const barEl     = document.getElementById('nom-bar');
     const counterEl = document.getElementById('nom-counter');
@@ -1924,6 +1908,20 @@ async function runBulkNominateFlow(refs) {
                 driveMsg = ' • travel time added for ' + dt.updated + ' summit' + (dt.updated !== 1 ? 's' : '');
             }
         } catch (_) { /* non-fatal, continue to dashboard either way */ }
+    }
+
+    if (stay) {
+        const okCount = newIds.length;
+        currentEl.textContent = '✓ Done!';
+        barEl.style.width = '100%';
+        await new Promise(function(r) { setTimeout(r, 500); });
+        overlay.style.display = 'none';
+        barEl.style.width = '0%';
+        logEl.innerHTML = '';
+        const tab = document.getElementById('panel-area').classList.contains('active') ? 'area' : 'search';
+        if (tab === 'area') resetAreaTab(); else resetSearchTab();
+        showToast(okCount + ' summit' + (okCount !== 1 ? 's' : '') + ' added' + driveMsg + '. Search for another.');
+        return;
     }
 
     let doneMsg = done + ' summit' + (done !== 1 ? 's' : '') + ' added';
@@ -2096,7 +2094,10 @@ function renderAreaResults(data) {
     html += '<button type="button" onclick="areaSelectAll(false)" style="background:none; border:none; font-size:0.75rem; color:var(--ink-3); cursor:pointer; font-family:var(--font-sans); padding:0;">None</button>';
     html += '</div></div>';
 
-    html += '<button type="button" class="btn btn-primary" id="area_nominate_btn" onclick="submitAreaSelection()" style="height:40px; width:100%; margin-bottom:0.75rem;" disabled>Nominate 0 Summits</button>';
+    html += '<div class="nom-btn-row" style="margin-bottom:0.75rem;">';
+    html += '<button type="button" class="btn btn-primary nom-btn-main" id="area_nominate_btn" onclick="submitAreaSelection(false)" style="height:40px;" disabled>Save 0 Summits to Dashboard</button>';
+    html += '<button type="button" class="btn btn-primary nom-btn-more" id="area_nominate_more_btn" onclick="submitAreaSelection(true)" disabled>Save + Add more</button>';
+    html += '</div>';
 
     html += '<div id="area_list" style="max-height:400px; overflow-y:auto; border:1px solid var(--border); border-radius:var(--r-md); margin-bottom:0.875rem;">';
 
@@ -2137,15 +2138,17 @@ function updateAreaBtn() {
     const btn = document.getElementById('area_nominate_btn');
     if (!btn) return;
     btn.disabled = checked.length === 0;
+    const more = document.getElementById('area_nominate_more_btn');
+    if (more) more.disabled = checked.length === 0;
     btn.textContent = checked.length === 0
-        ? 'Nominate 0 Summits'
-        : 'Nominate ' + checked.length + ' Summit' + (checked.length !== 1 ? 's' : '');
+        ? 'Save 0 Summits to Dashboard'
+        : 'Save ' + checked.length + ' Summit' + (checked.length !== 1 ? 's' : '') + ' to Dashboard';
 }
 
-function submitAreaSelection() {
+function submitAreaSelection(stay) {
     const checked = Array.from(document.querySelectorAll('.area-chk:checked')).map(function(cb) { return cb.dataset.ref; });
     if (checked.length === 0) return;
-    runBulkNominateFlow(checked);
+    runBulkNominateFlow(checked, !!stay);
 }
 </script>
 </body>

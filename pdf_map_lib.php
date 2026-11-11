@@ -3,7 +3,7 @@
  * Server-side map renderer for PDF exports.
  *
  * The on-screen maps (multi_activate.php, summit_detail.php) are Leaflet maps
- * on OpenStreetMap tiles with OSRM road routes, GPX trails and activation
+ * on OpenStreetMap tiles with Google road routes, GPX trails and activation
  * zones. To make the offline PDF look the same, this stitches the very same
  * tiles together with GD and draws the same overlays on top, instead of using
  * Google Static Maps (which can only draw straight lines between points).
@@ -255,32 +255,6 @@ function pdfmap_render(array $spec) {
     @unlink($tmp);
     imagejpeg($out, $path, 88);
     return $path;
-}
-
-// Real road geometry for one drive leg, the same OSRM service the on-screen
-// map uses. $from/$to are "lat,lng" strings. Cached per session; returns a list
-// of [lat,lng] or null (caller then draws a dashed straight line, like the page).
-function pdfmap_osrm_route($from, $to) {
-    if (!$from || !$to) return null;
-    if (!isset($_SESSION['multi_osrm_cache']) || !is_array($_SESSION['multi_osrm_cache'])) $_SESSION['multi_osrm_cache'] = [];
-    $k = $from . '>' . $to;
-    if (isset($_SESSION['multi_osrm_cache'][$k])) return $_SESSION['multi_osrm_cache'][$k];
-    [$flat, $flng] = array_map('floatval', explode(',', $from));
-    [$tlat, $tlng] = array_map('floatval', explode(',', $to));
-    $url = "https://router.project-osrm.org/route/v1/driving/$flng,$flat;$tlng,$tlat?overview=full&geometries=geojson";
-    for ($try = 0; $try < 2; $try++) {
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10, CURLOPT_USERAGENT => 'SOTAplanner/1.0 (https://sotaplanner.com; PDF export)']);
-        $resp = curl_exec($ch);
-        $data = $resp ? json_decode($resp, true) : null;
-        if (($data['code'] ?? '') === 'Ok' && !empty($data['routes'][0]['geometry']['coordinates'])) {
-            $pts = array_map(fn($c) => [$c[1], $c[0]], $data['routes'][0]['geometry']['coordinates']);
-            $_SESSION['multi_osrm_cache'][$k] = $pts;
-            return $pts;
-        }
-        usleep(400000);
-    }
-    return null;
 }
 
 // Track points from a GPX file ([lat,lng] list, evenly thinned to ~$max points).

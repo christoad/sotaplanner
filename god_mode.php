@@ -418,7 +418,7 @@ if (is_dir($gpx_dir)) {
 }
 
 $active_tab = $_GET['tab'] ?? 'overview';
-$tabs = ['overview' => 'Overview', 'users' => 'Users', 'groups' => 'Dashboards', 'activity' => 'Activity', 'data' => 'Data Tools', 'cleanup' => 'Cleanup', 'api' => 'API Status'];
+$tabs = ['overview' => 'Overview', 'users' => 'Users', 'groups' => 'Dashboards', 'activity' => 'Activity', 'data' => 'Data Tools', 'cleanup' => 'Cleanup', 'api' => 'API Status', 'server' => 'AWS Server'];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -489,7 +489,8 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--ink); 
 .tag-improve { background:var(--blue-bg); color:var(--blue); }
 .tag-accent { background:var(--accent-bg); color:var(--accent); }
 /* Tabs */
-.tab-bar { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: var(--sp-8); }
+.tab-bar { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: var(--sp-8); overflow-x: auto; }
+.tab-btn { flex-shrink: 0; }
 .tab-btn { display: inline-flex; align-items: center; padding: 0.6rem 1rem; font-size: 0.875rem; font-weight: 500; color: var(--ink-3); border: none; background: none; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; font-family: var(--font-sans); text-decoration: none; transition: color 0.12s, border-color 0.12s; }
 .tab-btn:hover { color: var(--ink); }
 .tab-btn.active { color: var(--ink); border-bottom-color: var(--ink); }
@@ -1293,7 +1294,7 @@ select.form-input { cursor: pointer; }
             <div id="cron-log-box" style="background:#1a1a1a; border-radius:0 0 var(--r-lg) var(--r-lg); font-family:var(--font-mono); font-size:0.74rem; line-height:1.65; padding:0.9rem 1rem; max-height:420px; overflow-y:auto;">
                 <?php foreach ($cron_log_lines as $line):
                     $esc = htmlspecialchars($line);
-                    if (str_contains($line, '✓') || str_contains($line, 'Done —')) $c = '#4ade80';
+                    if (str_contains($line, '✓') || str_contains($line, 'Done —') || str_contains($line, 'Done:')) $c = '#4ade80';
                     elseif (str_contains($line, '✗') || str_contains($line, 'Error')) $c = '#f87171';
                     elseif (str_contains($line, '⏭') || str_contains($line, 'Capped')) $c = '#facc15';
                     elseif (str_contains($line, '·') || str_contains($line, 'no tracks')) $c = '#888';
@@ -1398,6 +1399,216 @@ select.form-input { cursor: pointer; }
             </table>
             <?php endif; ?>
         </div>
+
+    <!-- ── AWS SERVER ── -->
+    <?php elseif ($active_tab === 'server'): ?>
+
+        <?php
+        require_once __DIR__ . '/aws_stats_lib.php';
+        $aws_rows   = aws_stats_history($db, 30);
+        $aws_status = aws_stats_status($db);
+        $aws_latest = $aws_rows[0] ?? null;
+        $aws_health = function ($failed) {
+            if ($failed === null) return ['Unknown', 'var(--ink-3)'];
+            return (int)$failed === 0 ? ['Healthy', 'var(--green)'] : ['Failing', 'var(--red)'];
+        };
+        ?>
+
+        <div class="section-head">
+            <div>
+                <h2>BRouter AWS Server</h2>
+                <p>Checked four times a day (4 AM, 10 AM, 4 PM and 10 PM Pacific). Each value is the 5-minute average AWS reported at that moment.</p>
+            </div>
+        </div>
+
+        <?php if (($aws_status['ok'] ?? true) === false): ?>
+            <div class="msg msg-error">The last check failed: <?= htmlspecialchars($aws_status['error'] ?? 'unknown error') ?></div>
+        <?php endif; ?>
+
+        <?php if (!$aws_latest): ?>
+            <div class="card">No readings yet. The first one arrives at the next scheduled check.</div>
+        <?php else: ?>
+            <?php
+            [$aws_health_text, $aws_health_color] = $aws_health($aws_latest['status_failed']);
+            $aws_tiles = [
+                ['CPU', $aws_latest['cpu_pct'] === null ? '-' : number_format((float)$aws_latest['cpu_pct'], 1) . '%', ''],
+                ['CPU Credits', $aws_latest['cpu_credit_balance'] === null ? '-' : number_format((float)$aws_latest['cpu_credit_balance']), 'Full at 576'],
+                ['Network In', aws_stats_rate($aws_latest['net_in_bps']), ''],
+                ['Network Out', aws_stats_rate($aws_latest['net_out_bps']), ''],
+                ['Disk Read', aws_stats_rate($aws_latest['disk_read_bps']), ''],
+                ['Disk Write', aws_stats_rate($aws_latest['disk_write_bps']), $aws_latest['disk_size_gb'] ? (int)$aws_latest['disk_size_gb'] . ' GB volume' : ''],
+            ];
+            ?>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:var(--sp-3); margin-bottom:var(--sp-3);">
+                <div class="stat-card">
+                    <div class="stat-num" style="font-size:1.5rem; color:<?= $aws_health_color ?>;"><?= $aws_health_text ?></div>
+                    <div class="stat-label">AWS Health Checks</div>
+                </div>
+                <?php foreach ($aws_tiles as [$aws_label, $aws_value, $aws_note]): ?>
+                    <div class="stat-card">
+                        <div class="stat-num" style="font-size:1.5rem;"><?= htmlspecialchars($aws_value) ?></div>
+                        <div class="stat-label"><?= htmlspecialchars($aws_label) ?></div>
+                        <?php if ($aws_note !== ''): ?><div style="font-size:0.7rem; color:var(--ink-3); margin-top:0.25rem;"><?= htmlspecialchars($aws_note) ?></div><?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <p style="font-size:0.8rem; color:var(--ink-3); margin-bottom:var(--sp-8);">
+                Latest reading taken <?= htmlspecialchars(date('M j, Y g:i A', strtotime($aws_latest['fetched_at']))) ?> Pacific. AWS does not report how full the disk is, only its activity.
+            </p>
+
+            <?php
+            $aws_la = new DateTimeZone('America/Los_Angeles');
+            $aws_points = [];
+            foreach (array_reverse($aws_rows) as $aws_row) {
+                if ($aws_row['cpu_credit_balance'] === null) continue;
+                $aws_when = new DateTime($aws_row['fetched_at'], $aws_la);
+                $aws_points[] = [
+                    't' => $aws_when->getTimestamp(),
+                    'v' => round((float)$aws_row['cpu_credit_balance']),
+                    'day' => $aws_when->format('M j'),
+                    'label' => $aws_when->format('M j, g:i A'),
+                ];
+            }
+            ?>
+            <div class="section-head">
+                <div>
+                    <h2>CPU Credit Balance</h2>
+                    <p>Last 30 days. The server earns 24 credits an hour, spends them when it runs above about 20% CPU, and stops filling at 576.</p>
+                </div>
+            </div>
+            <div class="card" style="padding:var(--sp-4) var(--sp-4) var(--sp-3);">
+                <div id="awsCreditChart" style="position:relative; height:240px;"
+                     role="img" aria-label="CPU credit balance over the last 30 days; latest <?= $aws_points ? end($aws_points)['v'] : 'unknown' ?> of 576"></div>
+                <?php if (count($aws_points) < 2): ?>
+                    <p style="font-size:0.75rem; color:var(--ink-3); margin-top:var(--sp-2);">The line fills in as readings arrive, four a day.</p>
+                <?php endif; ?>
+            </div>
+            <script>
+            (function () {
+                var points = <?= json_encode($aws_points) ?>;
+                var box = document.getElementById('awsCreditChart');
+                if (!box || !points.length) return;
+                var NS = 'http://www.w3.org/2000/svg';
+                var FULL = 576, YMAX = 600;
+                var css = getComputedStyle(document.documentElement);
+                var c = {
+                    line: css.getPropertyValue('--accent').trim(),
+                    grid: css.getPropertyValue('--border').trim(),
+                    axis: css.getPropertyValue('--ink-3').trim(),
+                    ink: css.getPropertyValue('--ink').trim(),
+                    surface: '#fff'
+                };
+                var tip = document.createElement('div');
+                tip.style.cssText = 'position:absolute; pointer-events:none; display:none; background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md); box-shadow:var(--shadow-md); padding:0.4rem 0.6rem; font-size:0.78rem; white-space:nowrap; z-index:5;';
+
+                function el(name, attrs, parent) {
+                    var e = document.createElementNS(NS, name);
+                    for (var k in attrs) e.setAttribute(k, attrs[k]);
+                    if (parent) parent.appendChild(e);
+                    return e;
+                }
+
+                function draw() {
+                    box.innerHTML = '';
+                    tip.style.display = 'none';
+                    box.appendChild(tip);
+                    var W = box.clientWidth, H = box.clientHeight;
+                    var m = {l: 40, r: 12, t: 12, b: 26};
+                    var pw = W - m.l - m.r, ph = H - m.t - m.b;
+                    var t0 = points[0].t, t1 = points[points.length - 1].t;
+                    if (t1 - t0 < 86400) { t0 -= 43200; t1 += 43200; }
+                    var x = function (t) { return m.l + (t - t0) / (t1 - t0) * pw; };
+                    var y = function (v) { return m.t + ph - v / YMAX * ph; };
+                    var svg = el('svg', {width: W, height: H, 'aria-hidden': 'true'}, box);
+                    svg.style.fontFamily = 'var(--font-sans)';
+
+                    [0, 100, 200, 300, 400, 500].forEach(function (v) {
+                        el('line', {x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: c.grid, 'stroke-width': 1}, svg);
+                        el('text', {x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: c.axis}, svg).textContent = v;
+                    });
+                    el('line', {x1: m.l, x2: W - m.r, y1: y(FULL), y2: y(FULL), stroke: c.axis, 'stroke-width': 1, 'stroke-dasharray': '4 4'}, svg);
+                    el('text', {x: W - m.r, y: y(FULL) - 5, 'text-anchor': 'end', 'font-size': 11, fill: c.axis}, svg).textContent = 'Full (576)';
+
+                    // Day labels: first reading of each day, thinned to fit.
+                    var days = [];
+                    points.forEach(function (p, i) { if (i === 0 || p.day !== points[i - 1].day) days.push(p); });
+                    var step = Math.max(1, Math.ceil(days.length / Math.max(1, Math.floor(pw / 70))));
+                    days.forEach(function (p, i) {
+                        if (i % step) return;
+                        el('text', {x: x(p.t), y: H - 6, 'text-anchor': 'middle', 'font-size': 11, fill: c.axis}, svg).textContent = p.day;
+                    });
+
+                    if (points.length > 1) {
+                        el('polyline', {
+                            points: points.map(function (p) { return x(p.t) + ',' + y(p.v); }).join(' '),
+                            fill: 'none', stroke: c.line, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round'
+                        }, svg);
+                    }
+                    var last = points[points.length - 1];
+                    el('circle', {cx: x(last.t), cy: y(last.v), r: 4, fill: c.line, stroke: c.surface, 'stroke-width': 2}, svg);
+
+                    var cross = el('line', {y1: m.t, y2: m.t + ph, stroke: c.axis, 'stroke-width': 1, visibility: 'hidden'}, svg);
+                    var dot = el('circle', {r: 4, fill: c.line, stroke: c.surface, 'stroke-width': 2, visibility: 'hidden'}, svg);
+                    var hit = el('rect', {x: m.l, y: 0, width: pw, height: H, fill: 'transparent'}, svg);
+
+                    function show(clientX) {
+                        var bx = box.getBoundingClientRect();
+                        var mx = clientX - bx.left, best = points[0];
+                        points.forEach(function (p) { if (Math.abs(x(p.t) - mx) < Math.abs(x(best.t) - mx)) best = p; });
+                        var px = x(best.t), py = y(best.v);
+                        cross.setAttribute('x1', px); cross.setAttribute('x2', px); cross.setAttribute('visibility', 'visible');
+                        dot.setAttribute('cx', px); dot.setAttribute('cy', py); dot.setAttribute('visibility', 'visible');
+                        tip.innerHTML = '<div style="color:var(--ink-3);">' + best.label + '</div><div style="font-weight:600; color:var(--ink);">' + best.v + ' credits</div>';
+                        tip.style.display = 'block';
+                        var tx = px + 12;
+                        if (tx + tip.offsetWidth > W) tx = px - 12 - tip.offsetWidth;
+                        tip.style.left = Math.max(0, tx) + 'px';
+                        tip.style.top = Math.max(0, py - tip.offsetHeight - 8) + 'px';
+                    }
+                    function hide() {
+                        cross.setAttribute('visibility', 'hidden'); dot.setAttribute('visibility', 'hidden'); tip.style.display = 'none';
+                    }
+                    hit.addEventListener('mousemove', function (e) { show(e.clientX); });
+                    hit.addEventListener('mouseleave', hide);
+                    hit.addEventListener('touchstart', function (e) { show(e.touches[0].clientX); }, {passive: true});
+                    hit.addEventListener('touchmove', function (e) { show(e.touches[0].clientX); }, {passive: true});
+                }
+
+                draw();
+                var resizeTimer;
+                window.addEventListener('resize', function () { clearTimeout(resizeTimer); resizeTimer = setTimeout(draw, 150); });
+            })();
+            </script>
+
+            <div class="section-head" style="margin-top:var(--sp-8);">
+                <div>
+                    <h2>Recent Readings</h2>
+                    <p>The last <?= min(12, count($aws_rows)) ?> <?= min(12, count($aws_rows)) === 1 ? 'reading' : 'readings' ?>, newest first.</p>
+                </div>
+            </div>
+            <div class="card" style="padding:0; overflow-x:auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr><th>Taken</th><th>Health</th><th>CPU</th><th>Credits</th><th>Net In</th><th>Net Out</th><th>Disk Read</th><th>Disk Write</th></tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach (array_slice($aws_rows, 0, 12) as $aws_row): ?>
+                            <?php [$aws_row_text, $aws_row_color] = $aws_health($aws_row['status_failed']); ?>
+                            <tr>
+                                <td style="white-space:nowrap;"><?= htmlspecialchars(date('M j, g:i A', strtotime($aws_row['fetched_at']))) ?></td>
+                                <td style="color:<?= $aws_row_color ?>; font-weight:600;"><?= $aws_row_text ?></td>
+                                <td><?= $aws_row['cpu_pct'] === null ? '-' : number_format((float)$aws_row['cpu_pct'], 1) . '%' ?></td>
+                                <td><?= $aws_row['cpu_credit_balance'] === null ? '-' : number_format((float)$aws_row['cpu_credit_balance']) ?></td>
+                                <td style="white-space:nowrap;"><?= aws_stats_rate($aws_row['net_in_bps']) ?></td>
+                                <td style="white-space:nowrap;"><?= aws_stats_rate($aws_row['net_out_bps']) ?></td>
+                                <td style="white-space:nowrap;"><?= aws_stats_rate($aws_row['disk_read_bps']) ?></td>
+                                <td style="white-space:nowrap;"><?= aws_stats_rate($aws_row['disk_write_bps']) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
 
     <!-- ── API STATUS ── -->
     <?php elseif ($active_tab === 'api'): ?>
@@ -1634,7 +1845,7 @@ select.form-input { cursor: pointer; }
 
 <footer style="text-align:center; padding:1.5rem 1rem; color:var(--ink-4); font-size:0.78rem;">
     SOTA Planner &nbsp;·&nbsp; <a href="changelog.php" style="color:var(--ink-4); text-decoration:none;">v<?= APP_VERSION ?></a>
-    &nbsp;·&nbsp; <a href="https://sotaplanner.com" style="color:var(--ink-4); text-decoration:none;">sotaplanner.com</a>
+    &nbsp;·&nbsp; <a href="about.php#credits" style="color:var(--ink-4); text-decoration:none;">Credits</a> &nbsp;·&nbsp; <a href="https://sotaplanner.com" style="color:var(--ink-4); text-decoration:none;">sotaplanner.com</a>
 </footer>
 
 <script>

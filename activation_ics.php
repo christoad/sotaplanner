@@ -16,7 +16,8 @@ $stmt = $db->prepare("
            pa.travel_notes,
            s.name as summit_name, s.sota_ref, s.region,
            s.latitude, s.longitude, s.trailhead_lat, s.trailhead_lng,
-           s.hike_time_up_min, s.hike_time_down_min,
+           s.hike_distance_mi, s.hike_elevation_gain_ft, s.difficulty,
+           pg.pace_multiplier,
            pg.name as group_name
     FROM planned_activations pa
     JOIN summits s ON s.id = pa.summit_id
@@ -31,18 +32,34 @@ if (!$pa) {
     die('Invitation not found.');
 }
 
-// Also check GPX for hike time override
-$stmt2 = $db->prepare("SELECT hiking_time, use_for_hike_time FROM gpx_tracks WHERE summit_id = (SELECT summit_id FROM planned_activations WHERE id = ?) AND planning_group_id = (SELECT planning_group_id FROM planned_activations WHERE id = ?)");
+// Hike time: same logic as summit_detail.php / activation_invite.php (GPX if enabled, else
+// Naismith from the manual numbers; Drive Up has no hike). Stored hike_time_*_min columns are stale.
+$stmt2 = $db->prepare("SELECT hiking_time, total_distance, elevation_gain, elevation_loss, track_type, use_for_hike_time, use_for_elevation FROM gpx_tracks WHERE summit_id = (SELECT summit_id FROM planned_activations WHERE id = ?) AND planning_group_id = (SELECT planning_group_id FROM planned_activations WHERE id = ?)");
 $stmt2->execute([$pa_id, $pa_id]);
 $gpx = $stmt2->fetch();
 
-$hike_up_min   = (int)($pa['hike_time_up_min'] ?? 0);
-$hike_down_min = (int)($pa['hike_time_down_min'] ?? 0);
-if ($gpx && $gpx['use_for_hike_time'] && $gpx['hiking_time'] > 0) {
-    $total_gpx_min = round($gpx['hiking_time'] / 60);
-    $hike_up_min   = round($total_gpx_min * 0.6);
-    $hike_down_min = $total_gpx_min - $hike_up_min;
+$track_type = $gpx ? ($gpx['track_type'] ?? 'round-trip') : 'round-trip';
+$one_way    = ($track_type === 'ascent' || $track_type === 'descent');
+$has_ts     = false; // recorded GPX time is never used; Naismith from distance and climb
+
+if ($gpx && $gpx['use_for_elevation'] && ($gpx['elevation_gain'] ?? 0) > 0) {
+    $elev_ft = ($track_type === 'descent' ? $gpx['elevation_loss'] : $gpx['elevation_gain']) * 3.28084;
+} else {
+    $elev_ft = $pa['hike_elevation_gain_ft'];
 }
+if ($gpx && $gpx['use_for_hike_time'] && $gpx['total_distance'] > 0) {
+    $dist_mi = round($gpx['total_distance'] * ($one_way ? 2 : 1) * 0.621371, 2);
+} else {
+    $dist_mi = $pa['hike_distance_mi'];
+}
+if ($gpx && $gpx['use_for_hike_time'] && $has_ts) {
+    $total_hike_min = round($gpx['hiking_time'] * ($one_way ? 2 : 1) / 60);
+} else {
+    $total_hike_min = ($dist_mi || $elev_ft) ? calculateHikeTime($dist_mi ?? 0, $elev_ft ?? 0, (float)($pa['pace_multiplier'] ?? 1.0)) : 0;
+}
+if (($pa['difficulty'] ?? '') === 'drive-up') $total_hike_min = 0;
+$hike_up_min   = (int)round($total_hike_min * 0.6);
+$hike_down_min = (int)($total_hike_min - $hike_up_min);
 
 $activation_min = (int)$pa['activation_duration_min'];
 
@@ -70,7 +87,7 @@ $geo = ($trailhead_lat && $trailhead_lng) ? $trailhead_lat . ';' . $trailhead_ln
 // Build description
 $callsigns = $pa['callsigns'];
 $desc_lines = [
-    'SOTA Activation — ' . $pa['sota_ref'] . ' ' . $pa['summit_name'],
+    'SOTA Activation: ' . $pa['sota_ref'] . ' ' . $pa['summit_name'],
     'Operators: ' . $callsigns,
 ];
 if ($pa['invitation_message']) {
