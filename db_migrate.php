@@ -7,6 +7,7 @@
 //   multi_stop_times         per route: on-the-air minutes for one summit (overrides the route default)
 //   multi_stop_exit          per route: summits where the walk down goes on to a new trailhead
 //   multi_activations.finish_address_id  where a route's last drive ends (NULL = starting address)
+//   multi_activations.breaks             rest stops placed between summits (NULL = none)
 // Also: shared_summits table (public share links for a summit page).
 // Additive and safe to run twice. Delete this file after running.
 require_once 'config.php';
@@ -188,6 +189,14 @@ step('Create shared_summits table', function () use ($db) {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     ");
     return 'table ready';
+});
+
+// Multi-Activate breaks (multi_break_lib.php): "pos:min,pos:min", NULL = no breaks
+step('Add multi_activations.breaks', function () use ($db) {
+    $has = $db->query("SHOW COLUMNS FROM multi_activations LIKE 'breaks'")->fetch();
+    if ($has) return 'already there (skipped)';
+    $db->exec("ALTER TABLE multi_activations ADD COLUMN breaks VARCHAR(255) NULL DEFAULT NULL");
+    return 'added';
 });
 
 echo "\nDone. Delete this file from the server now.\n";

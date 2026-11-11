@@ -10,6 +10,7 @@ require_once __DIR__ . '/drive_leg_lib.php';
 require_once __DIR__ . '/multi_leg_lib.php';
 require_once __DIR__ . '/multi_elev_lib.php';
 require_once __DIR__ . '/multi_elev_pdf_lib.php';
+require_once __DIR__ . '/multi_break_lib.php';
 require_once __DIR__ . '/pdf_map_lib.php';
 require_once __DIR__ . '/weather_lib.php';
 session_start();
@@ -51,6 +52,16 @@ $summits_by_id = [];
 foreach ($stmt->fetchAll() as $r) $summits_by_id[$r['id']] = $r;
 $summit_ids = array_values(array_filter($summit_ids, fn($id) => isset($summits_by_id[$id])));
 if (count($summit_ids) < 2) { header('Location: index.php'); exit; }
+
+// Breaks (multi_break_lib.php): from the ids list when the page built the link (bk=1), else the saved ones
+if (isset($_GET['bk'])) {
+    $breaks = multi_breaks_from_ids_param($ids_param, array_flip($summit_ids));
+} elseif (!empty($row)) {
+    $breaks = multi_breaks_decode($row['breaks'] ?? '', count($summit_ids));
+} else {
+    $breaks = [];
+}
+$break_rows = [];   // pos => [['start' => elapsed min, 'min' => length]], for the schedule table
 
 if (!isset($_SESSION['multi_drive_cache']) || !is_array($_SESSION['multi_drive_cache'])) $_SESSION['multi_drive_cache'] = [];
 if (!isset($_SESSION['multi_directions_cache']) || !is_array($_SESSION['multi_directions_cache'])) $_SESSION['multi_directions_cache'] = [];
@@ -192,7 +203,14 @@ $leg_color_i = 0;
 $legs = []; // ordered list of drive legs for the Directions section + overview map path
 $milestones = [['short' => 'Depart', 'full' => 'Depart', 'min' => 0]];
 $elapsed = 0;
+$add_breaks = function ($pos) use ($breaks, &$elapsed, &$break_rows) {
+    foreach (multi_breaks_at($breaks, $pos) as $b) {
+        $break_rows[$pos][] = ['start' => $elapsed, 'min' => $b['min']];
+        $elapsed += $b['min'];
+    }
+};
 foreach ($stops as $i => $stop) {
+    $add_breaks($i);
     if ($leg_times[$i]) {
         $color = $LEG_COLORS[$leg_color_i % count($LEG_COLORS)]; $leg_color_i++;
         $from_label = $leg_from_name[$i];
@@ -213,6 +231,7 @@ foreach ($stops as $i => $stop) {
     $elapsed += $stop['down_min'];
     $milestones[] = ['short' => 'Depart', 'full' => 'Depart ' . $stop['name'], 'min' => $elapsed, 'stop_i' => $i];
 }
+$add_breaks(count($stops));
 if ($return_leg_time) {
     $color = $LEG_COLORS[$leg_color_i % count($LEG_COLORS)]; $leg_color_i++;
     $legs[] = [
@@ -709,7 +728,21 @@ function schedule_header($pdf, $page_w) {
 }
 schedule_header($pdf, $page_w);
 $pdf->SetFont('Helvetica', '', 8.5);
+$schedule_breaks = function ($pos) use ($pdf, $page_w, &$break_rows, $start_time_min) {
+    foreach ($break_rows[$pos] ?? [] as $b) {
+        if ($pdf->GetY() > 10.0) { $pdf->AddPage(); schedule_header($pdf, $page_w); }
+        $pdf->SetFont('Helvetica', 'I', 8.5);
+        $pdf->Cell(0.35, 0.24, '');
+        $pdf->Cell($page_w - 0.35 - 0.7 - 1.0 - 1.15 - 1.15, 0.24, pdftext('Break, ' . formatTime($b['min'])));
+        $pdf->Cell(0.7, 0.24, '');
+        $pdf->Cell(1.15, 0.24, multi_clock_label($start_time_min + $b['start']));
+        $pdf->Cell(1.15, 0.24, multi_clock_label($start_time_min + $b['start'] + $b['min']));
+        $pdf->Ln();
+        $pdf->SetFont('Helvetica', '', 8.5);
+    }
+};
 foreach ($stops as $i => $stop) {
+    $schedule_breaks($i);
     if ($pdf->GetY() > 10.0) { $pdf->AddPage(); schedule_header($pdf, $page_w); $pdf->SetFont('Helvetica', '', 8.5); }
     $arrive_min = null; $depart_min = null;
     foreach ($milestones as $m) {
@@ -724,6 +757,7 @@ foreach ($stops as $i => $stop) {
     $pdf->Cell(1.15, 0.24, $depart_min !== null ? multi_clock_label($start_time_min + $depart_min) : '-');
     $pdf->Ln();
 }
+$schedule_breaks(count($stops));
 $pdf->Ln(0.15);
 $pdf->SetFont('Helvetica', 'B', 8);
 $pdf->SetFillColor(239, 237, 232);

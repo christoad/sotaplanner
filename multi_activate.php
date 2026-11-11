@@ -8,6 +8,7 @@ require_once 'multi_alt_lib.php';     // alternate hike starts (see file header)
 require_once 'drive_leg_lib.php';     // drive time, distance and road line from one Google Routes call
 require_once 'multi_leg_lib.php';     // car/hike between summits + finish address (BRouter)
 require_once 'multi_elev_lib.php';    // elevation profiles of the hikes (page and PDF)
+require_once 'multi_break_lib.php';   // breaks (rest stops) placed between summits
 session_start();
 
 $db = getDbConnection();
@@ -93,7 +94,8 @@ if ($multi_id) {
         $stmt = $db->prepare("SELECT summit_id FROM multi_activation_summits WHERE multi_activation_id = ? ORDER BY sort_order");
         $stmt->execute([$multi_id]);
         $stored_ids = array_column($stmt->fetchAll(), 'summit_id');
-        $qs = ['id' => $multi_id, 'ids' => implode(',', $stored_ids), 'group' => $current_group['id']];
+        $stored_tokens = multi_route_tokens($stored_ids, multi_breaks_decode($multi_row['breaks'] ?? '', count($stored_ids)));
+        $qs = ['id' => $multi_id, 'ids' => implode(',', $stored_tokens), 'bk' => 1, 'group' => $current_group['id']];
         if (isset($_GET['activation_time'])) $qs['activation_time'] = $_GET['activation_time'];
         header('Location: multi_activate.php?' . http_build_query($qs));
         exit;
@@ -124,6 +126,19 @@ foreach ($stmt->fetchAll() as $r) $summits_by_id[$r['id']] = $r;
 
 $summit_ids = array_values(array_filter($summit_ids, fn($id) => isset($summits_by_id[$id])));
 if (count($summit_ids) < 2) { header('Location: ' . ($public_view && !getCurrentCallsign() ? 'login.php' : 'index.php')); exit; }
+
+// Breaks (multi_break_lib.php): from the ids list when this page built the link (bk=1),
+// otherwise the ones saved with the route
+if (!$public_view && isset($_GET['bk'])) {
+    $breaks = multi_breaks_from_ids_param($_GET['ids'] ?? '', array_flip($summit_ids));
+    foreach ($breaks as &$_b) $_b['pos'] = min($_b['pos'], count($summit_ids));
+    unset($_b);
+} elseif ($multi_row) {
+    $breaks = multi_breaks_decode($multi_row['breaks'] ?? '', count($summit_ids));
+} else {
+    $breaks = [];
+}
+$route_tokens = multi_route_tokens($summit_ids, $breaks);
 
 if (!isset($_SESSION['multi_drive_cache']) || !is_array($_SESSION['multi_drive_cache'])) {
     $_SESSION['multi_drive_cache'] = [];
@@ -374,8 +389,17 @@ $map_legs = [];
 $segments = [];
 $milestones = [['short' => 'Depart', 'full' => 'Depart', 'min' => 0]];
 $elapsed = 0;
+$BREAK_COLOR = '#A8A296';
+$add_breaks = function ($pos) use ($breaks, &$segments, &$elapsed, &$milestones, $BREAK_COLOR) {
+    foreach (multi_breaks_at($breaks, $pos) as $b) {
+        $segments[] = ['type' => 'break', 'label' => 'Break', 'minutes' => $b['min'], 'stop' => null, 'color' => $BREAK_COLOR];
+        $milestones[] = ['short' => 'Break', 'full' => 'Break, ' . formatTime($b['min']), 'min' => $elapsed];
+        $elapsed += $b['min'];
+    }
+};
 foreach ($stops as $i => $stop) {
     $n = $i + 1;
+    $add_breaks($i);
     if ($leg_times[$i]) {
         $leg_key = 'stop-' . $i;
         $color = $LEG_COLORS[$leg_color_i % count($LEG_COLORS)]; $leg_color_i++;
@@ -424,6 +448,7 @@ foreach ($stops as $i => $stop) {
         $elapsed += $stop['down_min'];
     }
 }
+$add_breaks(count($stops));
 if ($return_leg_time) {
     $leg_key = 'return';
     $color = $LEG_COLORS[$leg_color_i % count($LEG_COLORS)]; $leg_color_i++;
@@ -477,7 +502,7 @@ function multi_clock_label($minutes_from_midnight) {
     return $label;
 }
 
-$SEG_COLORS = ['drive' => '#7A6858', 'hike' => '#6E8155', 'radio' => '#DE6E5A'];
+$SEG_COLORS = ['drive' => '#7A6858', 'hike' => '#6E8155', 'radio' => '#DE6E5A', 'break' => '#A8A296'];
 
 // Aggregate stats snapshot, persisted on save so the dashboard can show a
 // summary row for the whole route without recomputing hike/drive times live.
@@ -527,12 +552,20 @@ if (!$public_view) {
     foreach ($summit_ids as $i => $sid) {
         $ins->execute([$multi_id, $sid, $i, $leg_times[$i] ?? null]);
     }
+    // Breaks live in multi_activations.breaks (added by db_migrate.php). Until that column exists the
+    // page still works; breaks then only last as long as the link that carries them.
+    try {
+        $db->prepare("UPDATE multi_activations SET breaks = ? WHERE id = ?")
+           ->execute([$breaks ? multi_breaks_encode($breaks) : null, $multi_id]);
+    } catch (PDOException $e) {
+        error_log('multi_activate: could not save breaks: ' . $e->getMessage());
+    }
 }
 
 // Canonicalize the URL after a fresh save or a rename, so a reload/bookmark
 // never re-triggers either, everything else (reorder etc.) renders in place.
 if ($renaming || $was_new) {
-    $qs = ['id' => $multi_id, 'ids' => implode(',', $summit_ids), 'group' => $current_group['id'], 'activation_time' => $activation_time_min];
+    $qs = ['id' => $multi_id, 'ids' => implode(',', $route_tokens), 'bk' => 1, 'group' => $current_group['id'], 'activation_time' => $activation_time_min];
     if ($was_new) $qs['new'] = 1;
     header('Location: multi_activate.php?' . http_build_query($qs));
     exit;
@@ -541,9 +574,23 @@ if ($renaming || $was_new) {
 // ── URL builder for reorder/remove links ──
 $url_base = ['group' => $current_group['id'], 'activation_time' => $activation_time_min];
 if ($multi_id) $url_base['id'] = $multi_id;
+// $ids is the full route token list (summit ids and "b30" break tokens), see multi_break_lib.php
 function multi_url($base, $ids) {
-    return 'multi_activate.php?' . http_build_query(array_merge($base, ['ids' => implode(',', $ids), 'ordered' => 1]));
+    return 'multi_activate.php?' . http_build_query(array_merge($base, ['ids' => implode(',', $ids), 'bk' => 1, 'ordered' => 1]));
 }
+// Swap two neighbouring entries of the route token list
+function multi_tokens_swap(array $t, $a, $b) {
+    [$t[$a], $t[$b]] = [$t[$b], $t[$a]];
+    return $t;
+}
+// Where each summit stop and each break sits in the route token list
+$stop_tok_idx = []; $break_tok = [];
+$_si = 0;
+foreach ($route_tokens as $ti => $tok) {
+    if (is_int($tok)) $stop_tok_idx[$_si++] = $ti;
+    else $break_tok[] = ['tok' => $ti, 'min' => (int)substr($tok, 1), 'pos' => $_si];
+}
+$last_tok = count($route_tokens) - 1;
 
 // Map data for JS
 $map_stops = [];
@@ -567,6 +614,7 @@ foreach ($stops as $i => $stop) {
 }
 $map_origin = $origin_geo ? ['lat' => $origin_geo['lat'], 'lng' => $origin_geo['lng'], 'label' => $selected_address['label'] ?? $selected_address['address']] : null;
 $CURRENT_IDS = array_values($summit_ids);
+$ROUTE_TOKENS = array_map('strval', $route_tokens);
 
 // Per-leg coordinates for the map's color-coded route lines (see $LEG_COLORS above)
 $MAP_LEGS = [];
@@ -856,6 +904,18 @@ a:hover { text-decoration: underline; }
 .act-link { font-size: 0.7rem; color: var(--ink-3); background: none; border: none; text-decoration: underline; cursor: pointer; padding: 0; }
 .tile-end-add { display: flex; flex-direction: column; align-items: center; gap: 0.2rem; text-decoration: none; color: var(--ink-3); padding: 0.6rem; border: 1px dashed var(--border-2); border-radius: var(--r-md); }
 .tile-end-add:hover { color: var(--ink); background: var(--bg-2); }
+.tile-end-adds { display: flex; flex-direction: column; gap: 0.5rem; }
+.tile-end-adds .tile-end-add { width: 100%; font: inherit; background: transparent; cursor: pointer; text-align: center; justify-content: center; }
+.tile-end-adds .tile-end-add:hover { background: var(--bg-2); }
+.tile-end-adds .tile-end-add:disabled { opacity: 0.4; cursor: not-allowed; background: transparent; }
+/* Break tiles: a rest stop between summits, same size as a summit tile (height matched in JS).
+   No "after" box under them, so the line out of a break runs straight across */
+.tile.tile-break { display: flex; flex-direction: column; }
+.tile.tile-break .tile-controls { margin-top: auto; }
+.tile.tile-break { background: var(--bg); border-style: dashed; border-color: var(--border-2); box-shadow: none; }
+.tile-order.tile-order-break { background: var(--gray-badge); }
+.conn.conn-flat .c-h1, .conn.conn-flat .c-v { display: none; }
+.conn.conn-flat .c-h2 { left: 0; }
 .tile-end-finish { padding-bottom: 0.2rem; }
 .finish-val { font-size: 0.85rem; font-weight: 500; }
 .finish-edit { display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem; }
@@ -1125,14 +1185,15 @@ a:hover { text-decoration: underline; }
       <?php endif; ?>
       <?php else: ?>
       <button type="button" class="btn btn-secondary btn-sm share-tip-host" onclick="copyShareLink(this)" title="Copy the public page link for this route, anyone can open it without logging in"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg><span>Share</span><span class="copied-tip">Link copied!</span></button>
-      <a href="<?= htmlspecialchars('multi_activate.php?' . http_build_query(array_merge($url_base, ['ids' => implode(',', $summit_ids), 'ordered' => 1, 'recalc' => 1]))) ?>" class="btn btn-ghost btn-sm">Recalculate Travel Times</a>
+      <a href="<?= htmlspecialchars('multi_activate.php?' . http_build_query(array_merge($url_base, ['ids' => implode(',', $route_tokens), 'bk' => 1, 'ordered' => 1, 'recalc' => 1]))) ?>" class="btn btn-ghost btn-sm">Recalculate Travel Times</a>
       <?php if ($gmaps_url): ?>
         <a href="<?= htmlspecialchars($gmaps_url) ?>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" title="Open a round-trip route through every stop in Google Maps">Directions ↗</a>
       <?php endif; ?>
       <a href="#" id="download-pdf-link" class="btn btn-ghost btn-sm" onclick="return downloadMultiPdf(this)" title="Download a printable PDF with the summit list, directions, and offline reference maps">Download PDF</a>
       <form method="GET" action="multi_activate.php" class="save-inline">
         <input type="hidden" name="id" value="<?= $multi_id ?>">
-        <input type="hidden" name="ids" value="<?= htmlspecialchars(implode(',', $summit_ids)) ?>">
+        <input type="hidden" name="ids" value="<?= htmlspecialchars(implode(',', $route_tokens)) ?>">
+        <input type="hidden" name="bk" value="1">
         <input type="hidden" name="group" value="<?= $current_group['id'] ?>">
         <input type="hidden" name="activation_time" value="<?= $activation_time_min ?>">
         <input type="text" name="name" class="form-input" placeholder="Route name (optional)" value="<?= htmlspecialchars($multi_name) ?>">
@@ -1220,20 +1281,69 @@ a:hover { text-decoration: underline; }
       $finish_text = $end_other ? multi_leg_address_label($finish_addr)
           : ($selected_address ? multi_leg_address_label($selected_address) : 'the last trailhead');
       $EDIT_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5l2 2L5 13H3v-2l8.5-8.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
+      $BREAK_SVG = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2.5 6h8.5v3.5a3.5 3.5 0 0 1-3.5 3.5h-1.5a3.5 3.5 0 0 1-3.5-3.5V6z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M11 7h1a1.75 1.75 0 0 1 0 3.5h-1.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M5.5 2v2M8 2v2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+      $TRASH_SVG = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M5.5 4V2.5A1 1 0 0 1 6.5 1.5h3a1 1 0 0 1 1 1V4M6.5 7.5v4M9.5 7.5v4M3.5 4l.7 8.4A1 1 0 0 0 5.2 13.5h5.6a1 1 0 0 0 1-1.1L12.5 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      $n_stops = count($stops);
+      // One break tile (multi_break_lib.php). Movable like a summit tile: drag, or the arrows,
+      // which step it past one summit or break at a time.
+      $render_break = function ($bk) use ($public_view, $route_tokens, $url_base, $last_tok, $n_stops, $EDIT_SVG, $BREAK_SVG, $TRASH_SVG) {
+          $ti = $bk['tok'];
+          $where = $bk['pos'] === 0 ? 'Before the first summit' : ($bk['pos'] >= $n_stops ? 'After the last summit' : 'Between #' . $bk['pos'] . ' and #' . ($bk['pos'] + 1));
+          $prev_is_break = $ti > 0 && !is_int($route_tokens[$ti - 1]);
+          if ($ti > 0): ?><div class="conn<?= $prev_is_break ? ' conn-flat' : '' ?>" title="Then a break"><i class="c-h1"></i><i class="c-v"></i><i class="c-h2"></i><i class="c-head"></i></div><?php endif; ?>
+      <div class="stop-col break-col">
+        <?php if ($public_view): ?>
+        <div class="tile tile-break" data-pos="<?= $ti ?>">
+        <?php else: ?>
+        <div class="tile tile-break tile-movable" data-pos="<?= $ti ?>" title="Drag to move this break"
+             onmousedown="this.draggable = !event.target.closest('button,input,select,a,textarea,label')"
+             ondragstart="onTileDragStart(event, <?= $ti ?>)"
+             ondragover="onTileDragOver(event)"
+             ondragleave="onTileDragLeave(event)"
+             ondrop="onTileDrop(event, <?= $ti ?>)"
+             ondragend="onTileDragEnd(event)">
+        <?php endif; ?>
+          <div class="tile-head">
+            <div class="tile-order tile-order-break" title="Break"><?= $BREAK_SVG ?></div>
+            <?php if (!$public_view): ?><div class="tile-drag-handle" title="Drag to move this break" onmousedown="this.closest('.tile').draggable = true">⠿</div><?php endif; ?>
+          </div>
+          <div class="tile-name">Break</div>
+          <div class="tile-ref" style="font-family:var(--font-sans);"><?= htmlspecialchars($where) ?></div>
+          <div class="tile-stats">
+            <div class="act-stat" id="brk-<?= $ti ?>"><span class="lbl">Length:</span> <span class="act-val"><?= formatTime($bk['min']) ?></span><?php if (!$public_view): ?> <button type="button" class="act-edit" title="Change how long this break is" aria-label="Edit break length" onclick="editBreak(<?= $ti ?>)"><?= $EDIT_SVG ?></button><?php endif; ?></div>
+          </div>
+          <?php if (!$public_view):
+              $rm = $route_tokens; unset($rm[$ti]); $rm = array_values($rm);
+          ?>
+          <div class="tile-controls">
+            <div class="tile-reorder">
+              <?php if ($ti > 0): ?><a href="<?= htmlspecialchars(multi_url($url_base, multi_tokens_swap($route_tokens, $ti, $ti - 1))) ?>" title="Move earlier">◀</a><?php else: ?><span>◀</span><?php endif; ?>
+              <?php if ($ti < $last_tok): ?><a href="<?= htmlspecialchars(multi_url($url_base, multi_tokens_swap($route_tokens, $ti, $ti + 1))) ?>" title="Move later">▶</a><?php else: ?><span>▶</span><?php endif; ?>
+            </div>
+            <div class="tile-actions">
+              <a href="<?= htmlspecialchars(multi_url($url_base, $rm)) ?>" class="tile-remove" title="Remove this break" aria-label="Remove this break"><?= $TRASH_SVG ?></a>
+            </div>
+          </div>
+          <?php endif; ?>
+        </div>
+      </div>
+      <?php };
     ?>
     <div class="tiles-row" id="tiles-row">
       <?php foreach ($stops as $i => $stop):
-          $up_ids = $summit_ids;
-          if ($i > 0) { [$up_ids[$i - 1], $up_ids[$i]] = [$up_ids[$i], $up_ids[$i - 1]]; }
-          $down_ids = $summit_ids;
-          if ($i < count($summit_ids) - 1) { [$down_ids[$i], $down_ids[$i + 1]] = [$down_ids[$i + 1], $down_ids[$i]]; }
-          // Remove/duplicate operate on this tile's POSITION, not the summit id: a summit can appear
-          // more than once (e.g. re-activating after UTC midnight for double points)
-          $remove_ids = $summit_ids;
-          unset($remove_ids[$i]);
+          foreach ($break_tok as $_bk) if ($_bk['pos'] === $i) $render_break($_bk);
+          // Arrows, remove and duplicate work on this tile's POSITION in the route token list, not the
+          // summit id: a summit can appear more than once (e.g. re-activating after UTC midnight for
+          // double points), and the list also holds breaks, which the arrows step past one at a time
+          $ti = $stop_tok_idx[$i];
+          $up_ids = $ti > 0 ? multi_tokens_swap($route_tokens, $ti, $ti - 1) : null;
+          $down_ids = $ti < $last_tok ? multi_tokens_swap($route_tokens, $ti, $ti + 1) : null;
+          $remove_ids = $route_tokens;
+          unset($remove_ids[$ti]);
           $remove_ids = array_values($remove_ids);
-          $dup_ids = $summit_ids;
-          array_splice($dup_ids, $i + 1, 0, [$stop['id']]);
+          $dup_ids = $route_tokens;
+          array_splice($dup_ids, $ti + 1, 0, [$stop['id']]);
+          $after_break = $ti > 0 && !is_int($route_tokens[$ti - 1]);
 
           $on_foot = !empty($stop['chained']);
           $alt_ret = $on_foot && (($stop['alt']['mode'] ?? '') === 'return');
@@ -1251,17 +1361,17 @@ a:hover { text-decoration: underline; }
           $can_alt = !$public_view && $has_next && !$nx['is_drive_up'] && $nx['ref'] !== $stop['ref'];
           $me_cs = getCurrentCallsign();
       ?>
-      <?php if ($i > 0): ?><div class="conn<?= $on_foot ? ' conn-foot' : '' ?>" title="<?= $on_foot ? 'Hiked on foot from the previous summit' : 'Travel to the next starting point' ?>"><i class="c-h1"></i><i class="c-v"></i><i class="c-h2"></i><i class="c-head"></i></div><?php endif; ?>
+      <?php if ($ti > 0): ?><div class="conn<?= $on_foot ? ' conn-foot' : '' ?><?= $after_break ? ' conn-flat' : '' ?>" title="<?= $on_foot ? 'Hiked on foot from the previous summit' : 'Travel to the next starting point' ?>"><i class="c-h1"></i><i class="c-v"></i><i class="c-h2"></i><i class="c-head"></i></div><?php endif; ?>
       <div class="stop-col">
       <?php if ($public_view): ?>
-      <div class="tile" data-pos="<?= $i ?>">
+      <div class="tile" data-pos="<?= $ti ?>" data-stop-i="<?= $i ?>">
       <?php else: ?>
-      <div class="tile tile-movable" data-pos="<?= $i ?>" title="Drag to reorder"
+      <div class="tile tile-movable" data-pos="<?= $ti ?>" data-stop-i="<?= $i ?>" title="Drag to reorder"
            onmousedown="this.draggable = !event.target.closest('button,input,select,a,textarea,label')"
-           ondragstart="onTileDragStart(event, <?= $i ?>)"
+           ondragstart="onTileDragStart(event, <?= $ti ?>)"
            ondragover="onTileDragOver(event)"
            ondragleave="onTileDragLeave(event)"
-           ondrop="onTileDrop(event, <?= $i ?>)"
+           ondrop="onTileDrop(event, <?= $ti ?>)"
            ondragend="onTileDragEnd(event)">
       <?php endif; ?>
         <div class="tile-head">
@@ -1285,8 +1395,8 @@ a:hover { text-decoration: underline; }
         <?php if (!$public_view): ?>
         <div class="tile-controls">
           <div class="tile-reorder">
-            <?php if ($i > 0): ?><a href="<?= htmlspecialchars(multi_url($url_base, $up_ids)) ?>" title="Move earlier">◀</a><?php else: ?><span>◀</span><?php endif; ?>
-            <?php if ($i < count($summit_ids) - 1): ?><a href="<?= htmlspecialchars(multi_url($url_base, $down_ids)) ?>" title="Move later">▶</a><?php else: ?><span>▶</span><?php endif; ?>
+            <?php if ($up_ids): ?><a href="<?= htmlspecialchars(multi_url($url_base, $up_ids)) ?>" title="Move earlier">◀</a><?php else: ?><span>◀</span><?php endif; ?>
+            <?php if ($down_ids): ?><a href="<?= htmlspecialchars(multi_url($url_base, $down_ids)) ?>" title="Move later">▶</a><?php else: ?><span>▶</span><?php endif; ?>
           </div>
           <div class="tile-actions">
             <?php if (count($summit_ids) < $MULTI_MAX): ?>
@@ -1374,12 +1484,13 @@ a:hover { text-decoration: underline; }
       </div>
       </div>
       <?php endforeach; ?>
+      <?php foreach ($break_tok as $_bk) if ($_bk['pos'] >= $n_stops) $render_break($_bk); ?>
       <?php if (!$public_view):
           $add_qs = ['group' => $current_group['id'], 'multi_select' => implode(',', $summit_ids)];
           if ($multi_id) $add_qs['multi_edit_id'] = $multi_id;
           $add_summit_url = 'index.php?' . http_build_query($add_qs);
       ?>
-      <div class="conn"><i class="c-h1"></i><i class="c-v"></i><i class="c-h2"></i><i class="c-head"></i></div>
+      <div class="conn<?= !is_int($route_tokens[$last_tok]) ? ' conn-flat' : '' ?>"><i class="c-h1"></i><i class="c-v"></i><i class="c-h2"></i><i class="c-head"></i></div>
       <div class="tile tile-end">
         <div class="tile-end-finish">
           <div class="tile-next-label">Finish at</div>
@@ -1398,13 +1509,19 @@ a:hover { text-decoration: underline; }
           <?php elseif ($origin_geo || $end_other): ?><div class="tile-next-msg">The travel <?= $end_other ? 'to the finish' : 'home' ?> could not be calculated from where this route ends (Google found no road route from that starting point), so the totals leave it out. Check the last summit's starting point in Trail Research.</div><?php endif; ?>
           <?php if ($finish_warn): ?><div class="tile-next-msg"><?= htmlspecialchars($finish_warn) ?></div><?php endif; ?>
         </div>
-        <?php if (count($summit_ids) < $MULTI_MAX): ?>
         <div class="tile-or"><span>OR</span></div>
-        <a href="<?= htmlspecialchars($add_summit_url) ?>" class="tile-end-add" title="Add another summit to this route">
-          <span class="tile-add-plus">+</span>
-          <span class="tile-add-label">Add Summit</span>
-        </a>
-        <?php endif; ?>
+        <div class="tile-end-adds">
+          <?php if (count($summit_ids) < $MULTI_MAX): ?>
+          <a href="<?= htmlspecialchars($add_summit_url) ?>" class="tile-end-add" title="Add another summit to this route">
+            <span class="tile-add-plus">+</span>
+            <span class="tile-add-label">Add Summit</span>
+          </a>
+          <?php endif; ?>
+          <button type="button" class="tile-end-add" onclick="addBreak()"<?= count($breaks) >= MULTI_BREAK_MAX_COUNT ? ' disabled title="A route can have up to ' . MULTI_BREAK_MAX_COUNT . ' breaks"' : ' title="Add a break (lunch, a rest, a coffee stop). It lands at the end of the route; drag it to where you want it."' ?>>
+            <span class="tile-add-plus">+</span>
+            <span class="tile-add-label">Add Break</span>
+          </button>
+        </div>
       </div>
       <?php endif; ?>
     </div>
@@ -1569,6 +1686,9 @@ const ELEV_TRIPS = <?= json_encode($elev_trips, JSON_UNESCAPED_UNICODE) ?>;
 const ELEV_IMPERIAL = <?= json_encode($user_units !== 'metric') ?>;
 const OTHER_SUMMITS = <?= json_encode($other_summits, JSON_UNESCAPED_UNICODE) ?>;
 const CURRENT_IDS = <?= json_encode($CURRENT_IDS) ?>;
+// The whole route in order: summit ids plus "b30"-style break tokens (multi_break_lib.php)
+const ROUTE_TOKENS = <?= json_encode($ROUTE_TOKENS) ?>;
+const BREAK_MAX = <?= (int)MULTI_BREAK_MAX_COUNT ?>;
 const URL_BASE = <?= json_encode($url_base) ?>;
 const MULTI_MAX = <?= (int)$MULTI_MAX ?>;
 let mapInstance = null;
@@ -1636,8 +1756,8 @@ function applyHighlight(legKeys, stopIndexes, azStop) {
         el.classList.toggle('hl-active', match);
         el.classList.toggle('hl-dim', !match);
     });
-    document.querySelectorAll('.tile[data-pos]').forEach(el => {
-        const pos = el.getAttribute('data-pos');
+    document.querySelectorAll('.tile[data-stop-i]').forEach(el => {
+        const pos = el.getAttribute('data-stop-i');
         const match = pos !== null && stopIndexes.includes(parseInt(pos, 10));
         el.classList.toggle('hl-active', match);
         el.classList.toggle('hl-dim', stopIndexes.length > 0 && !match);
@@ -1720,7 +1840,8 @@ function updateStartTime() {
 function downloadMultiPdf(link) {
     const params = new URLSearchParams({
         group: URL_BASE.group,
-        ids: CURRENT_IDS.join(','),
+        ids: ROUTE_TOKENS.join(','),
+        bk: '1',
         activation_time: URL_BASE.activation_time,
     });
     if (URL_BASE.id) params.set('id', URL_BASE.id);
@@ -1768,12 +1889,65 @@ if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
 }
 
 // ── Drag-and-drop tile reorder ──
-function navigateToOrder(ids) {
+// ids is the full route token list (summit ids and break tokens like "b30")
+function navigateToOrder(ids, extra) {
     const params = new URLSearchParams(URL_BASE);
     params.set('ids', ids.join(','));
+    params.set('bk', '1');
     params.set('ordered', '1');
+    if (extra) Object.keys(extra).forEach(k => params.set(k, extra[k]));
     window.location = 'multi_activate.php?' + params.toString();
 }
+
+// ── Breaks: add one at the end of the route (then drag it into place), or change a break's length ──
+function addBreak() {
+    if (ROUTE_TOKENS.filter(t => /^b/.test(t)).length >= BREAK_MAX) { alert('A route can have up to ' + BREAK_MAX + ' breaks.'); return; }
+    const ids = ROUTE_TOKENS.slice();
+    ids.push('b30');
+    navigateToOrder(ids, { edit_break: ids.length - 1 });
+}
+function editBreak(ti) {
+    const row = document.getElementById('brk-' + ti);
+    if (!row) return;
+    const cur = parseInt(String(ROUTE_TOKENS[ti] || '').slice(1), 10) || 30;
+    row.innerHTML = '<span class="lbl">Length:</span> '
+        + '<input type="number" class="act-input" min="5" max="720" step="5" value="' + cur + '" aria-label="Break length in minutes"> min '
+        + '<button type="button" class="act-btn primary">Save</button> '
+        + '<button type="button" class="act-btn">Cancel</button>';
+    const inp = row.querySelector('input'), btns = row.querySelectorAll('button');
+    inp.focus(); inp.select();
+    const save = () => {
+        const v = Math.max(5, Math.min(720, parseInt(inp.value, 10) || 0));
+        if (!v) return;
+        btns[0].disabled = true;
+        const ids = ROUTE_TOKENS.slice();
+        ids[ti] = 'b' + v;
+        navigateToOrder(ids);
+    };
+    const cancel = () => window.location.reload();
+    btns[0].onclick = save;
+    btns[1].onclick = cancel;
+    inp.onkeydown = e => { if (e.key === 'Enter') save(); else if (e.key === 'Escape') cancel(); };
+}
+// Break tiles take the height of the tallest summit tile so the row lines up
+function sizeBreakTiles() {
+    const breaks = document.querySelectorAll('.tile.tile-break');
+    if (!breaks.length) return;
+    let h = 0;
+    document.querySelectorAll('.tile[data-stop-i]').forEach(el => { h = Math.max(h, el.offsetHeight); });
+    breaks.forEach(el => { el.style.minHeight = h ? h + 'px' : ''; });
+}
+document.addEventListener('DOMContentLoaded', sizeBreakTiles);
+window.addEventListener('resize', sizeBreakTiles);
+document.addEventListener('DOMContentLoaded', function() {
+    const p = new URLSearchParams(window.location.search).get('edit_break');
+    if (p === null) return;
+    const ti = parseInt(p, 10);
+    const tile = document.getElementById('brk-' + ti);
+    // Drop the flag from the address bar so a later reload does not reopen the editor
+    try { const u = new URL(window.location); u.searchParams.delete('edit_break'); history.replaceState(null, '', u.toString()); } catch (e) {}
+    if (tile) { tile.closest('.tile').scrollIntoView({ block: 'nearest', inline: 'nearest' }); editBreak(ti); }
+});
 // Position-based, not id-based, a summit can appear more than once in the
 // route (re-activated after UTC midnight for double points), so tracking the
 // dragged tile by its summit id would move every copy of it. The dragged
@@ -1803,7 +1977,7 @@ function onTileDrop(e, targetPos) {
     e.currentTarget.classList.remove('drag-over');
     const fromPos = dragFromPos;
     if (fromPos === null || fromPos === targetPos) return;
-    const ids = CURRENT_IDS.slice();
+    const ids = ROUTE_TOKENS.slice();
     const moved = ids.splice(fromPos, 1)[0];
     ids.splice(targetPos, 0, moved);
     navigateToOrder(ids);
@@ -2163,8 +2337,8 @@ async function initMap() {
         el.addEventListener('mouseenter', () => highlightStop(parseInt(el.getAttribute('data-stop'), 10)));
         el.addEventListener('mouseleave', clearHighlight);
     });
-    document.querySelectorAll('.tile[data-pos]').forEach(el => {
-        el.addEventListener('mouseenter', () => highlightStop(parseInt(el.getAttribute('data-pos'), 10)));
+    document.querySelectorAll('.tile[data-stop-i]').forEach(el => {
+        el.addEventListener('mouseenter', () => highlightStop(parseInt(el.getAttribute('data-stop-i'), 10)));
         el.addEventListener('mouseleave', clearHighlight);
     });
     document.querySelectorAll('.legend-chip[data-leg-key]').forEach(el => {
@@ -2553,8 +2727,8 @@ function addSummitToRoute(id) {
         alert('Multi-activations are capped at ' + MULTI_MAX + ' summits.');
         return;
     }
-    const ids = CURRENT_IDS.slice();
-    ids.push(id);
+    const ids = ROUTE_TOKENS.slice();
+    ids.push(String(id));
     navigateToOrder(ids);
 }
 </script>
