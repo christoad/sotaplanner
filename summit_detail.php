@@ -8,6 +8,7 @@ require_once 'drive_leg_lib.php';
 require_once 'osm_trailhead_lib.php';
 require_once 'share_lib.php';
 require_once 'summit_changelog_lib.php';
+require_once 'summit_advisory_lib.php';
 session_start();
 requireLogin();
 
@@ -53,6 +54,12 @@ if (isset($_GET['nominated'])) {
 }
 if (isset($_GET['saved'])) {
     $message = "Summit updated successfully!";
+}
+if (isset($_GET['advisory'])) {
+    $message = $_GET['advisory'] === 'removed' ? 'Advisory Notice removed.' : 'Advisory Notice posted. It now shows at the top of this summit for everyone.';
+}
+if (isset($_GET['advisory_error'])) {
+    $error = (string)$_GET['advisory_error'];
 }
 if (isset($_GET['geocoded'])) {
     $message = $_GET['geocoded'];
@@ -441,6 +448,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    // Advisory Notice: post (any signed-in user) or remove (poster or God Mode)
+    if (isset($_POST['add_advisory']) || isset($_POST['remove_advisory'])) {
+        $_back = "summit_detail.php?id=" . $summit_id . "&group=" . ($current_group['id'] ?? '');
+        if (isset($_POST['add_advisory'])) {
+            $_res = advisory_add($db, $log_sota_ref, $_POST['advisory_level'] ?? '', $_POST['advisory_message'] ?? '', $_SESSION['sota_callsign']);
+            if (is_int($_res)) {
+                $_lvl = advisory_levels()[$_POST['advisory_level']]['label'];
+                logActivity($db, 'Advisory Notice posted', $log_summit_name, $log_sota_ref, $log_group_name);
+                summit_log_event($db, $summit_id, 'Advisory Notice posted', '', $_lvl . ': ' . trim($_POST['advisory_message']));
+                header("Location: " . $_back . "&advisory=posted");
+            } else {
+                header("Location: " . $_back . "&advisory_error=" . urlencode($_res) . "#advisory-form");
+            }
+        } else {
+            $_row = advisory_remove($db, $_POST['advisory_id'] ?? 0, $log_sota_ref, $_SESSION['sota_callsign'], isGodMode());
+            if ($_row) {
+                logActivity($db, 'Advisory Notice removed', $log_summit_name, $log_sota_ref, $log_group_name);
+                summit_log_event($db, $summit_id, 'Advisory Notice removed', advisory_levels()[$_row['level']]['label'] . ': ' . $_row['message'], '');
+                header("Location: " . $_back . "&advisory=removed");
+            } else {
+                header("Location: " . $_back . "&advisory_error=" . urlencode('That notice could not be removed. Only the person who posted it can remove it.'));
+            }
+        }
+        exit;
+    }
+
     // Add planned activation
     if (isset($_POST['add_planned_activation'])) {
         if ($current_group) {
@@ -659,6 +692,8 @@ $stmt = $db->prepare("
 ");
 $stmt->execute([$summit_id, $current_group['id']]);
 $notes = $stmt->fetchAll();
+
+$advisories = advisory_list($db, $summit['sota_ref'] ?? '');
 
 $trailhead_needs_validation = !empty($summit['trailhead_lat']) && empty($summit['trailhead_manual']);
 
@@ -1247,6 +1282,38 @@ if ($tl_show) {
     .cl-table tr:last-child td { border-bottom:none; }
     .cl-val { max-width:22rem; overflow-wrap:anywhere; white-space:pre-wrap; }
     .cl-empty { color:var(--ink-4); font-style:italic; }
+    /* Advisory Notices (top-of-page banners) */
+    .adv-stack { display:flex; flex-direction:column; gap:0.75rem; margin-bottom:1.5rem; }
+    .adv { display:flex; gap:1rem; align-items:flex-start; padding:1.15rem 1.35rem; border-radius:var(--r-lg);
+           border:2px solid transparent; box-shadow:var(--shadow-md); animation:advIn 0.35s ease-out both; }
+    .adv-icon { flex-shrink:0; width:40px; height:40px; display:flex; align-items:center; justify-content:center; }
+    .adv-icon svg { width:36px; height:36px; }
+    .adv-body { flex:1; min-width:0; }
+    .adv-kicker { font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:0.09em; opacity:0.9; margin-bottom:0.2rem; }
+    .adv-msg { font-size:1.2rem; font-weight:700; line-height:1.35; overflow-wrap:anywhere; }
+    .adv-meta { display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; margin-top:0.55rem; font-size:0.78rem; opacity:0.85; }
+    .adv-meta .cs { font-family:var(--font-mono); font-weight:600; }
+    .adv-remove { background:transparent; border:1px solid currentColor; color:inherit; border-radius:var(--r-sm);
+                  font:inherit; font-size:0.72rem; font-weight:600; padding:0.1rem 0.5rem; cursor:pointer; opacity:0.9; }
+    .adv-remove:hover { opacity:1; background:rgba(255,255,255,0.15); }
+    .adv-danger  { background:var(--red);    border-color:oklch(40% 0.15 22);  color:#fff; }
+    .adv-caution { background:oklch(80% 0.15 75); border-color:oklch(62% 0.14 58); color:var(--ink); }
+    .adv-tip     { background:var(--blue);   border-color:oklch(42% 0.12 240); color:#fff; }
+    @keyframes advIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:none; } }
+    @media (prefers-reduced-motion: reduce) { .adv { animation:none; } }
+    @media (max-width:600px) { .adv { padding:1rem; gap:0.75rem; } .adv-icon, .adv-icon svg { width:28px; height:28px; } .adv-msg { font-size:1.05rem; } }
+    /* Advisory Notice entry form */
+    .adv-form-card { border:1px solid var(--border); border-radius:var(--r-lg); background:var(--bg); padding:1rem 1.1rem; margin:0 0 1.25rem; }
+    .adv-levels { display:flex; gap:0.5rem; flex-wrap:wrap; margin:0.6rem 0 0.75rem; }
+    .adv-level { position:relative; cursor:pointer; }
+    .adv-level input { position:absolute; opacity:0; pointer-events:none; }
+    .adv-level span { display:inline-flex; flex-direction:column; padding:0.5rem 0.8rem; border-radius:var(--r-md); border:2px solid var(--border-2);
+                      background:var(--surface); font-size:0.85rem; font-weight:600; color:var(--ink-2); transition:all 0.12s; }
+    .adv-level span small { font-size:0.7rem; font-weight:400; color:var(--ink-3); }
+    .adv-level input:focus-visible + span { outline:2px solid var(--accent); outline-offset:2px; }
+    .adv-level.l-danger  input:checked + span { border-color:var(--red);  background:var(--red-bg);  color:var(--red); }
+    .adv-level.l-caution input:checked + span { border-color:var(--orange); background:var(--orange-bg); color:oklch(45% 0.12 58); }
+    .adv-level.l-tip     input:checked + span { border-color:var(--blue); background:var(--blue-bg); color:var(--blue); }
     /* Community Notes */
     .cn-summary { display:flex; align-items:center; justify-content:space-between; gap:1rem; cursor:pointer; list-style:none; }
     .cn-summary::-webkit-details-marker { display:none; }
@@ -1384,6 +1451,39 @@ if ($tl_show) {
 </nav>
 
 <div class="page">
+
+  <?php if (!empty($advisories)):
+      $adv_icons = [
+          'danger'  => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="7" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+          'caution' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+          'tip'     => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+      ];
+      $adv_levels = advisory_levels();
+  ?>
+  <!-- ADVISORY NOTICES -->
+  <div class="adv-stack" id="advisory-notices">
+    <?php foreach ($advisories as $adv):
+        $can_remove = isGodMode() || strcasecmp($adv['created_by'], $_SESSION['sota_callsign'] ?? '') === 0;
+    ?>
+    <div class="adv adv-<?= htmlspecialchars($adv['level']) ?>" role="<?= $adv['level'] === 'tip' ? 'note' : 'alert' ?>">
+      <div class="adv-icon" aria-hidden="true"><?= $adv_icons[$adv['level']] ?? $adv_icons['tip'] ?></div>
+      <div class="adv-body">
+        <div class="adv-kicker">Advisory Notice &middot; <?= htmlspecialchars($adv_levels[$adv['level']]['label'] ?? 'Notice') ?></div>
+        <div class="adv-msg"><?= nl2br(htmlspecialchars($adv['message'])) ?></div>
+        <div class="adv-meta">
+          <span>Posted by <span class="cs"><?= htmlspecialchars($adv['created_by']) ?></span> on <?= date('M j, Y', strtotime($adv['created_at'])) ?></span>
+          <?php if ($can_remove): ?>
+          <form method="POST" style="margin:0;" onsubmit="return confirm('Remove this Advisory Notice for everyone?');">
+            <input type="hidden" name="advisory_id" value="<?= (int)$adv['id'] ?>">
+            <button type="submit" name="remove_advisory" value="1" class="adv-remove">Remove</button>
+          </form>
+          <?php endif; ?>
+        </div>
+      </div>
+    </div>
+    <?php endforeach; ?>
+  </div>
+  <?php endif; ?>
 
   <!-- PAGE HEADER -->
   <div class="page-header">
@@ -1974,6 +2074,36 @@ if ($tl_show) {
   <!-- COMMUNITY NOTES -->
   <div id="community-notes" style="margin-top:1.5rem;">
     <div class="section-card">
+    <?php if (!empty($summit['sota_ref'])): ?>
+    <div class="adv-form-card" id="advisory-form">
+      <div class="cn-section-head">
+        <div class="cn-heading" style="margin:0; display:flex; align-items:center; gap:0.35rem;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          Advisory Notices
+        </div>
+        <span class="cn-sub">A banner at the top of this summit, seen by everyone who opens it</span>
+        <button type="button" class="btn btn-secondary btn-sm" id="advAddBtn" onclick="document.getElementById('advAddForm').style.display='block'; this.style.display='none'; document.getElementById('advMsg').focus();">+ Post an Advisory Notice</button>
+      </div>
+      <form method="POST" id="advAddForm" style="display:none; margin-top:0.25rem;">
+        <div class="adv-levels" role="radiogroup" aria-label="Notice level">
+          <?php foreach (advisory_levels() as $lk => $lv): ?>
+          <label class="adv-level l-<?= $lk ?>">
+            <input type="radio" name="advisory_level" value="<?= $lk ?>" required <?= $lk === 'caution' ? 'checked' : '' ?>>
+            <span><?= htmlspecialchars($lv['label']) ?><small><?= htmlspecialchars($lv['hint']) ?></small></span>
+          </label>
+          <?php endforeach; ?>
+        </div>
+        <textarea class="form-textarea" id="advMsg" name="advisory_message" rows="2" required maxlength="<?= ADVISORY_MAX_LEN ?>" placeholder="e.g. Summit is on private property, do not attempt. / Poison ivy all over the trail, wear long pants." style="font-size:0.9rem; resize:vertical;"></textarea>
+        <div style="display:flex; gap:0.5rem; margin-top:0.5rem; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+          <span class="form-hint" style="margin:0;">Posted under your callsign. Only you can remove it later.</span>
+          <span style="display:flex; gap:0.5rem;">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('advAddForm').style.display='none'; document.getElementById('advAddBtn').style.display='';">Cancel</button>
+            <button type="submit" name="add_advisory" value="1" class="btn btn-primary btn-sm">Save Advisory Notice</button>
+          </span>
+        </div>
+      </form>
+    </div>
+    <?php endif; ?>
     <div class="cn-private" style="margin:0 0 1rem;">
       <div class="cn-section-head">
         <div class="cn-heading" style="margin:0; display:flex; align-items:center; gap:0.35rem;">

@@ -8,6 +8,8 @@
 
 **Keep:** `brouter-paths` (active project) and `main`. Remind Chris at session start, and remove this note once both leftovers are gone.
 
+**Advisory Notices (shipped to production 2026-11-14):** community banners at the top of `summit_detail.php` ("Advisory Notice" was chosen because "alert" and "spot" already mean something in SOTA). Any signed-in user posts one from the form at the top of the Community Notes section; levels are Do not attempt (red), Caution (amber), Tip (blue). Keyed by `sota_ref` in table `summit_advisories` (already created in the shared DB), so every dashboard sees them. Only the poster or God Mode can remove one; removal is a soft delete (`removed_at`, `removed_by`). Logic is in `summit_advisory_lib.php`. Not yet shown on the public `/s/` page, Multi-Activate or the invite page.
+
 **Public summit pages (`/s/<designator>`, shipped 2026-10-27) and a queued idea (alternate destination and return-trip pulldown on summit detail):** see `research/public-summit-pages.md` before touching `summit_share.php`, `share_lib.php` or the summit page Share button.
 
 **Google Maps API — two-key setup (completed 2026-06-01):**

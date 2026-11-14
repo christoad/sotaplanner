@@ -8,7 +8,7 @@
 //   multi_stop_exit          per route: summits where the walk down goes on to a new trailhead
 //   multi_activations.finish_address_id  where a route's last drive ends (NULL = starting address)
 //   multi_activations.breaks             rest stops placed between summits (NULL = none)
-// Also: shared_summits table (public share links for a summit page).
+// Also: shared_summits table (public share links for a summit page), summit_advisories (Advisory Notices).
 // Additive and safe to run twice. Delete this file after running.
 require_once 'config.php';
 
@@ -29,6 +29,22 @@ function step($label, $fn) {
         echo "[ERROR] $label: " . $e->getMessage() . "\n";
     }
 }
+
+// Advisory Notices: community banners pinned to a summit (summit_advisory_lib.php). Soft delete via removed_at.
+step('Create summit_advisories', function () use ($db) {
+    $db->exec("CREATE TABLE IF NOT EXISTS summit_advisories (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        sota_ref VARCHAR(20) NOT NULL,
+        level VARCHAR(10) NOT NULL,
+        message TEXT NOT NULL,
+        created_by VARCHAR(20) NOT NULL,
+        created_at DATETIME NOT NULL,
+        removed_at DATETIME NULL,
+        removed_by VARCHAR(20) NULL,
+        KEY idx_ref_active (sota_ref, removed_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    return 'ready';
+});
 
 step('Create aws_server_readings', function () use ($db) {
     $db->exec("CREATE TABLE IF NOT EXISTS aws_server_readings (
