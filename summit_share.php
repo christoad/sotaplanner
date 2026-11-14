@@ -9,6 +9,7 @@
 require_once 'config.php';
 require_once 'share_lib.php';
 require_once 'weather_lib.php';
+require_once 'summit_advisory_lib.php';
 session_start();
 
 $db = getDbConnection();
@@ -147,6 +148,7 @@ $hike_down_min = $hike_min - $hike_up_min;
 $travel_ph = max(1, (int)round(($hike_min + $act_min) * 0.22)); // placeholder width only
 
 $ref = $summit['sota_ref'] ?? '';
+$advisories = advisory_list($db, $ref); // community Advisory Notices, shown to everyone (signed in or not)
 $assoc_code = explode('/', $ref)[0];
 $is_usa = (bool)preg_match('/^(W[0-9]|K[HL])/i', $assoc_code);
 $lat = (float)$summit['latitude'];
@@ -311,6 +313,7 @@ $jsflags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
       .stat-grid .stat-cell:last-child { grid-column: 1 / -1; }
       .save-banner .btn-primary { width: 100%; }
     }
+<?= advisory_banner_css() ?>
   </style>
 </head>
 <body>
@@ -337,6 +340,8 @@ $jsflags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
 </nav>
 
 <div class="page">
+
+  <?= advisory_render_banners($advisories, $db, $callsign) ?>
 
   <?php if ($viewer_existing): ?>
     <div class="save-banner">
