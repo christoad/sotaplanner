@@ -6,7 +6,7 @@
 
 require_once __DIR__ . '/share_lib.php'; // shareMakeSlug(), get_sota_cache_summit()
 
-const ADVISORY_MAX_LEN = 400;
+const ADVISORY_MAX_LEN = 500;
 
 /** Levels in display order (most serious first). Keys are what the database stores. */
 function advisory_levels() {
@@ -110,7 +110,7 @@ function advisory_dms($deg, $min, $sec, $hemi) {
  * 117.1234W) and degrees/minutes/seconds (34°13'28"N 117°7'24"W). Web addresses (https://...
  * or www....) open in a new tab. Everything else is escaped.
  */
-function advisory_message_html($db, $message, $callsign = null) {
+function advisory_message_html($db, $message, $callsign = null, &$pins = null, $level = 'tip') {
     $message = (string)$message;
     $deg = '\\s?[°º]?\\s?';
     $dmsPart = '(\\d{1,3})\\s?[°º]\\s?(\\d{1,2}(?:\\.\\d+)?)\\s?[\'′’]\\s?(?:(\\d{1,2}(?:\\.\\d+)?)\\s?(?:["″”]|\'\'|′′)\\s?)?';
@@ -161,6 +161,21 @@ function advisory_message_html($db, $message, $callsign = null) {
                 $q = round($lat, 6) . ',' . round($lng, 6);
                 $link = '<a class="adv-link" href="https://www.google.com/maps/search/?api=1&amp;query=' . $q
                       . '" target="_blank" rel="noopener" title="Open in Google Maps">';
+                // Map pins: when the caller collects them, number each distinct point (Pin 1, Pin 2...)
+                // across every notice on the page and put a matching badge in front of the coordinates.
+                if (is_array($pins)) {
+                    $n = null;
+                    foreach ($pins as $i => $p) {
+                        if (abs($p['lat'] - $lat) < 0.00001 && abs($p['lng'] - $lng) < 0.00001) { $n = $i + 1; break; }
+                    }
+                    if ($n === null) { $pins[] = ['lat' => round($lat, 6), 'lng' => round($lng, 6), 'level' => $level]; $n = count($pins); }
+                    $plv = $pins[$n - 1]['level']; // a point repeated in a later notice keeps its first colour
+                    $out .= nl2br(htmlspecialchars(substr($message, $pos, $at - $pos)));
+                    $pos = $at;
+                    $out .= '<button type="button" class="adv-pin l-' . htmlspecialchars($plv) . '" onclick="advPinFocus(' . $n . ')" title="Show Pin ' . $n . ' on the map">'
+                          . '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7z" fill="currentColor"/><circle cx="12" cy="9" r="2.6" fill="#fff"/></svg>'
+                          . 'Pin ' . $n . '</button>';
+                }
             }
         }
         $out .= nl2br(htmlspecialchars(substr($message, $pos, $at - $pos)));
@@ -183,6 +198,13 @@ function advisory_banner_css() {
     .adv-msg { font-size:1.2rem; font-weight:700; line-height:1.35; overflow-wrap:anywhere; }
     .adv-msg a.adv-link { color:inherit; text-decoration:underline; text-decoration-thickness:2px; text-underline-offset:3px; }
     .adv-msg a.adv-link:hover { text-decoration-thickness:3px; opacity:0.9; }
+    .adv-pin { display:inline-flex; align-items:center; gap:0.2rem; vertical-align:0.1em; margin-right:0.35rem; padding:0.05rem 0.45rem 0.05rem 0.3rem;
+               background:#fff; color:var(--pin); border:1.5px solid var(--pin); border-radius:100px; font:inherit; font-size:0.72rem; font-weight:700;
+               letter-spacing:0.02em; line-height:1.4; cursor:pointer; white-space:nowrap; box-shadow:0 1px 2px rgba(0,0,0,0.15); }
+    .adv-pin svg { width:12px; height:12px; }
+    .adv-pin:hover { background:var(--pin); color:#fff; }
+    .adv-pin:hover svg circle { fill:var(--pin); }
+    .adv-pin.l-danger { --pin:#C03030; } .adv-pin.l-caution { --pin:#B5650F; } .adv-pin.l-tip { --pin:#2B5CA0; }
     .adv-meta { margin-top:0.55rem; font-size:0.78rem; opacity:0.85; }
     .adv-meta .cs { font-family:var(--font-mono); font-weight:600; }
     .adv-danger  { background:var(--red);    border-color:oklch(40% 0.15 22);  color:#fff; }
@@ -195,7 +217,7 @@ CSS;
 }
 
 /** Banner stack for the top of a page (read only, removal lives with the entry form). '' when there are none. */
-function advisory_render_banners($advisories, $db = null, $callsign = null) {
+function advisory_render_banners($advisories, $db = null, $callsign = null, &$pins = null) {
     if (empty($advisories)) return '';
     $levels = advisory_levels();
     $out = '<div class="adv-stack" id="advisory-notices">';
@@ -205,7 +227,7 @@ function advisory_render_banners($advisories, $db = null, $callsign = null) {
               . '<div class="adv-icon" aria-hidden="true">' . advisory_icon($lvl) . '</div>'
               . '<div class="adv-body">'
               . '<div class="adv-kicker">Advisory Notice &middot; ' . htmlspecialchars($levels[$lvl]['label']) . '</div>'
-              . '<div class="adv-msg">' . ($db ? advisory_message_html($db, $a['message'], $callsign) : nl2br(htmlspecialchars($a['message']))) . '</div>'
+              . '<div class="adv-msg">' . ($db ? advisory_message_html($db, $a['message'], $callsign, $pins, $lvl) : nl2br(htmlspecialchars($a['message']))) . '</div>'
               . '<div class="adv-meta">Posted by <span class="cs">' . htmlspecialchars($a['created_by']) . '</span> on '
               . date('M j, Y', strtotime($a['created_at'])) . '</div>'
               . '</div></div>';

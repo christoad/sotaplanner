@@ -1310,6 +1310,13 @@ if ($tl_show) {
     .adv-edit { padding:0.25rem 0.75rem 0.75rem; background:var(--surface); border:1px solid var(--border); border-left-width:4px; border-radius:var(--r-md); }
     .adv-edit.l-danger { border-left-color:var(--red); } .adv-edit.l-caution { border-left-color:var(--orange); } .adv-edit.l-tip { border-left-color:var(--blue); }
     .adv-item-meta { font-size:0.74rem; color:var(--ink-3); margin-top:2px; }
+    .adv-map-pin { background:none; border:none; filter:drop-shadow(0 2px 3px rgba(0,0,0,0.35)); }
+    .adv-pin-ctl { display:inline-flex; align-items:center; gap:0.35rem; background:#fff; border:2px solid rgba(0,0,0,0.2); border-radius:var(--r-sm);
+                   padding:0.3rem 0.6rem; font-family:var(--font-sans); font-size:0.78rem; font-weight:600; color:var(--ink); cursor:pointer; }
+    .adv-pin-ctl:hover { background:var(--bg-2); }
+    .adv-count { font-size:0.74rem; color:var(--ink-3); text-align:right; margin-top:0.25rem; font-variant-numeric:tabular-nums; }
+    .adv-count.low { color:oklch(45% 0.12 58); font-weight:600; }
+    .adv-count.none { color:var(--red); font-weight:600; }
     .adv-form-card { border:1px solid var(--border); border-radius:var(--r-lg); background:var(--bg); padding:1rem 1.1rem; margin:0 0 1.25rem; }
     .adv-levels { display:flex; gap:0.5rem; flex-wrap:wrap; margin:0.6rem 0 0.75rem; }
     .adv-level { position:relative; cursor:pointer; }
@@ -1460,7 +1467,8 @@ if ($tl_show) {
 <div class="page">
 
   <!-- ADVISORY NOTICES (read only; Remove is in the Advisory Notices section below) -->
-  <?= advisory_render_banners($advisories, $db, $_SESSION['sota_callsign'] ?? null) ?>
+  <?php $adv_pins = []; // coordinates found in the notices, numbered Pin 1, Pin 2... and drawn on the map ?>
+  <?= advisory_render_banners($advisories, $db, $_SESSION['sota_callsign'] ?? null, $adv_pins) ?>
 
   <!-- PAGE HEADER -->
   <div class="page-header">
@@ -2070,7 +2078,7 @@ if ($tl_show) {
           </label>
           <?php endforeach; ?>
         </div>
-        <textarea class="form-textarea" id="advMsg" name="advisory_message" rows="2" required maxlength="<?= ADVISORY_MAX_LEN ?>" placeholder="e.g. Summit is on private property, do not attempt. / Poison ivy all over the trail, wear long pants." style="font-size:0.9rem; resize:vertical;"></textarea>
+        <textarea class="form-textarea adv-msg-input" id="advMsg" name="advisory_message" rows="2" required maxlength="<?= ADVISORY_MAX_LEN ?>" placeholder="e.g. Summit is on private property, do not attempt. / Poison ivy all over the trail, wear long pants." style="font-size:0.9rem; resize:vertical;"></textarea>
         <div style="display:flex; gap:0.5rem; margin-top:0.5rem; justify-content:space-between; align-items:center; flex-wrap:wrap;">
           <span class="form-hint" style="margin:0;">Posted under your callsign. Only you can remove it later. Summit references (W6/CT-012), GPS coordinates and web addresses become links.</span>
           <span style="display:flex; gap:0.5rem;">
@@ -2079,6 +2087,27 @@ if ($tl_show) {
           </span>
         </div>
       </form>
+      <script>
+      // Live "characters left" line under every Advisory Notice text box (new notice and Edit)
+      document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('textarea.adv-msg-input').forEach(function (t) {
+          const max = parseInt(t.getAttribute('maxlength'), 10) || <?= ADVISORY_MAX_LEN ?>;
+          const c = document.createElement('div');
+          c.className = 'adv-count';
+          c.setAttribute('aria-live', 'polite');
+          t.insertAdjacentElement('afterend', c);
+          const upd = function () {
+            const left = max - t.value.length;
+            c.textContent = left + (left === 1 ? ' character left' : ' characters left') + ' (of ' + max + ')';
+            c.classList.toggle('low', left <= 50 && left > 0);
+            c.classList.toggle('none', left <= 0);
+          };
+          t.addEventListener('input', upd);
+          if (t.form) t.form.addEventListener('reset', function () { setTimeout(upd, 0); });
+          upd();
+        });
+      });
+      </script>
       <?php if (!empty($advisories)): ?>
       <script>
       // Swap a notice in the list for its edit form (and back)
@@ -2120,7 +2149,7 @@ if ($tl_show) {
             </label>
             <?php endforeach; ?>
           </div>
-          <textarea class="form-textarea" name="advisory_message" rows="2" required maxlength="<?= ADVISORY_MAX_LEN ?>" style="font-size:0.9rem; resize:vertical;"><?= htmlspecialchars($adv['message']) ?></textarea>
+          <textarea class="form-textarea adv-msg-input" name="advisory_message" rows="2" required maxlength="<?= ADVISORY_MAX_LEN ?>" style="font-size:0.9rem; resize:vertical;"><?= htmlspecialchars($adv['message']) ?></textarea>
           <div style="display:flex; gap:0.5rem; margin-top:0.5rem; justify-content:flex-end;">
             <button type="button" class="btn btn-ghost btn-sm" onclick="advEdit(<?= (int)$adv['id'] ?>, false)">Cancel</button>
             <button type="submit" name="edit_advisory" value="1" class="btn btn-primary btn-sm">Save Changes</button>
@@ -2627,6 +2656,59 @@ const trailLat = <?= $summit['trailhead_lat'] ? (float)$summit['trailhead_lat'] 
 const trailLng = <?= $summit['trailhead_lng'] ? (float)$summit['trailhead_lng'] : 'null' ?>;
 
 const map = L.map('summit-map').setView([sumLat, sumLng], 13);
+
+// ── Advisory Notice pins: red numbered pins for coordinates found in the notices ──
+const advPins = <?= json_encode($adv_pins ?? []) ?>;
+const advPinMarkers = [];
+if (advPins.length) {
+  // Same colours as the banners: Do not attempt red, Caution amber (dark number), Tip blue
+  const advPinStyle = { danger: { fill: '#C03030', text: '#fff', label: 'Do not attempt' },
+                        caution: { fill: '#F2A93B', text: '#1C1B19', label: 'Caution' },
+                        tip: { fill: '#2B5CA0', text: '#fff', label: 'Tip' } };
+  advPins.forEach(function (p, i) {
+    const n = i + 1;
+    const st = advPinStyle[p.level] || advPinStyle.tip;
+    const icon = L.divIcon({
+      className: 'adv-map-pin',
+      html: '<svg width="30" height="40" viewBox="0 0 30 40"><path d="M15 1C7.3 1 1 7.2 1 14.9 1 25.3 15 39 15 39s14-13.7 14-24.1C29 7.2 22.7 1 15 1z" fill="' + st.fill + '" stroke="#fff" stroke-width="2"/>'
+          + '<text x="15" y="19.5" text-anchor="middle" font-family="DM Sans, system-ui, sans-serif" font-size="13" font-weight="700" fill="' + st.text + '">' + n + '</text></svg>',
+      iconSize: [30, 40], iconAnchor: [15, 39], popupAnchor: [0, -34]
+    });
+    const q = p.lat + ',' + p.lng;
+    const m = L.marker([p.lat, p.lng], { icon: icon, zIndexOffset: 1000, title: 'Pin ' + n })
+      .addTo(map)
+      .bindTooltip('Pin ' + n + ' · ' + st.label, { direction: 'top', offset: [0, -36] })
+      .bindPopup('<strong>Pin ' + n + '</strong> &middot; ' + st.label + ' (Advisory Notice)<br><span style="font-family:var(--font-mono);font-size:0.8rem;">' + q + '</span>'
+          + '<br><a href="https://www.google.com/maps/search/?api=1&query=' + q + '" target="_blank" rel="noopener">Open in Google Maps &#8599;</a>');
+    advPinMarkers.push(m);
+  });
+  // Map button: zoom out to show the summit and every advisory pin together
+  const AdvPinCtl = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd: function () {
+      const b = L.DomUtil.create('button', 'adv-pin-ctl');
+      b.type = 'button';
+      b.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7z" fill="#4A4844"/><circle cx="12" cy="9" r="2.6" fill="#fff"/></svg> Advisory pins (' + advPins.length + ')';
+      b.title = 'Zoom to show the summit and all Advisory Notice pins';
+      L.DomEvent.disableClickPropagation(b);
+      L.DomEvent.on(b, 'click', advPinsFit);
+      return b;
+    }
+  });
+  map.addControl(new AdvPinCtl());
+}
+function advPinsFit() {
+  const pts = advPins.map(function (p) { return [p.lat, p.lng]; });
+  pts.push([sumLat, sumLng]);
+  map.fitBounds(L.latLngBounds(pts), { padding: [50, 50], maxZoom: 15 });
+}
+// Banner badge click: scroll to the map, centre on that pin and open its popup
+function advPinFocus(n) {
+  const m = advPinMarkers[n - 1];
+  if (!m) return;
+  document.getElementById('summit-map').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(function () { map.setView(m.getLatLng(), Math.max(map.getZoom(), 14)); m.openPopup(); }, 350);
+}
 
 const baseLayers = {
   street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>', maxZoom: 19 }),
