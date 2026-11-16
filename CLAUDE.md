@@ -1,4 +1,4 @@
-# SOTA Planner — Project Guide for Claude
+# SOTA Planner: Project Guide for Claude
 
 ## Roadmap (single list, created 2026-11-15)
 
@@ -28,7 +28,7 @@ The one place to see what's planned. Keep it short: one line per item, details l
 - Drive-up summit status from the public Google My Maps layer. Notes: "Remaining data pre-population idea".
 - Email "invited, not signed in" users (needs a way to get their email first). Notes: "email invited, not signed in users".
 
-## Pending Work — Ask Chris at Session Start
+## Pending Work: Ask Chris at Session Start
 
 **Open branches (cleanup finished 2026-11-15):** only `main` and `brouter-paths` (active project, worktree `.claude/worktrees/brouter-paths`) exist; `dev` and the old merged branches are gone from GitHub and the Mac.
 
