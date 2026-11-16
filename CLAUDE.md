@@ -1,5 +1,33 @@
 # SOTA Planner — Project Guide for Claude
 
+## Roadmap (single list, created 2026-11-15)
+
+The one place to see what's planned. Keep it short: one line per item, details live in the notes under "Pending Work" below (or the memory file named). When something ships, starts, gets blocked or is dropped, move or delete its line here in the same session. When Chris asks "what's on the roadmap?", answer from this list.
+
+**In progress**
+- BRouter hiking path checker (branch `brouter-paths`). Testing phase: comparison runs, then cache table, hike time and gap filling. Notes: "BRouter" sections below.
+
+**Waiting on someone else**
+- RFI mapping from KM6AM's Summit RFI data. Waiting on his OK to pull his data (he was traveling to Korea). Notes: "integrate KM6AM's Summit RFI mapping".
+- Summit to Summit (S2S) line-of-sight tool. Needs Gabriel AJ6X's agreement on data use and credit (his license: attribution, noncommercial), plus a microwave frequency list from Chris's contacts. Notes: "S2S (summit-to-summit) line-of-sight mode".
+- Post spots and alerts to SOTAwatch. Waiting on VK3ARR to grant write access. Notes: "Track 3" and "SOTAwatch Write API".
+- Submit GPX tracks to SOTA Maps from SOTAplanner. Waiting on VK3ARR / SOTA's Maps overhaul. Notes: "GPX upload API" and "SOTA Maps overhaul".
+- Smarter GPX crons driven by SOTA's summit CSV. Waiting on Josh WU7H's file. Notes: "SOTA Maps overhaul and summit CSV".
+
+**Ready to start (nothing blocking)**
+- GPX editor modeled on GPX.Studio and Gaia GPS. First step: research those tools. Notes: "In-site GPX editor".
+- Site-wide search bar. Scope to agree with Chris first. Notes: "Queued projects (added 2026-10-28)".
+- Accessibility and cookie notice check (find out what's required before adding anything). Same notes.
+- Return trip and alternate destination pulldown on the summit page. Notes: `research/public-summit-pages.md`.
+- Visual polish, in order: dashboard hover effects, Community Growth chart animation, scroll reveals on About and Changelog, login hero gradient. Notes: "Visual sophistication backlog".
+- Map of GPX library coverage. Notes: memory `project_gpx_coverage_map`.
+
+**Ideas, not scheduled**
+- Cloudflare CDN in front of DreamHost (live DNS change, needs Chris's go-ahead). Notes: "set up Cloudflare CDN".
+- Mapterhorn terrain tiles (elevation, activation zones, hillshade). Notes: "Mapterhorn terrain tiles".
+- Drive-up summit status from the public Google My Maps layer. Notes: "Remaining data pre-population idea".
+- Email "invited, not signed in" users (needs a way to get their email first). Notes: "email invited, not signed in users".
+
 ## Pending Work — Ask Chris at Session Start
 
 **Open branches (cleanup finished 2026-11-15):** only `main` and `brouter-paths` (active project, worktree `.claude/worktrees/brouter-paths`) exist; `dev` and the old merged branches are gone from GitHub and the Mac.
