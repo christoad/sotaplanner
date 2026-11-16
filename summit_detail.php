@@ -8,6 +8,7 @@ require_once 'drive_leg_lib.php';
 require_once 'osm_trailhead_lib.php';
 require_once 'share_lib.php';
 require_once 'summit_changelog_lib.php';
+require_once 'summit_advisory_lib.php';
 session_start();
 requireLogin();
 
@@ -53,6 +54,13 @@ if (isset($_GET['nominated'])) {
 }
 if (isset($_GET['saved'])) {
     $message = "Summit updated successfully!";
+}
+if (isset($_GET['advisory'])) {
+    $message = ['removed' => 'Advisory Notice removed.', 'edited' => 'Advisory Notice updated.'][$_GET['advisory']]
+        ?? 'Advisory Notice posted. It now shows at the top of this summit for everyone.';
+}
+if (isset($_GET['advisory_error'])) {
+    $error = (string)$_GET['advisory_error'];
 }
 if (isset($_GET['geocoded'])) {
     $message = $_GET['geocoded'];
@@ -441,6 +449,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    // Advisory Notice: post (any signed-in user), edit or remove (poster or God Mode)
+    if (isset($_POST['add_advisory']) || isset($_POST['remove_advisory']) || isset($_POST['edit_advisory'])) {
+        $_back = "summit_detail.php?id=" . $summit_id . "&group=" . ($current_group['id'] ?? '');
+        if (isset($_POST['edit_advisory'])) {
+            $_res = advisory_update($db, $_POST['advisory_id'] ?? 0, $log_sota_ref, $_POST['advisory_level'] ?? '', $_POST['advisory_message'] ?? '', $_SESSION['sota_callsign'], isGodMode());
+            if (is_array($_res)) {
+                $_lv = advisory_levels();
+                logActivity($db, 'Advisory Notice edited', $log_summit_name, $log_sota_ref, $log_group_name);
+                summit_log_event($db, $summit_id, 'Advisory Notice edited',
+                    ($_lv[$_res['level']]['label'] ?? 'Notice') . ': ' . $_res['message'],
+                    $_lv[$_POST['advisory_level']]['label'] . ': ' . trim($_POST['advisory_message']));
+                header("Location: " . $_back . "&advisory=edited");
+            } else {
+                header("Location: " . $_back . "&advisory_error=" . urlencode($_res) . "#advisory-form");
+            }
+        } elseif (isset($_POST['add_advisory'])) {
+            $_res = advisory_add($db, $log_sota_ref, $_POST['advisory_level'] ?? '', $_POST['advisory_message'] ?? '', $_SESSION['sota_callsign']);
+            if (is_int($_res)) {
+                $_lvl = advisory_levels()[$_POST['advisory_level']]['label'];
+                logActivity($db, 'Advisory Notice posted', $log_summit_name, $log_sota_ref, $log_group_name);
+                summit_log_event($db, $summit_id, 'Advisory Notice posted', '', $_lvl . ': ' . trim($_POST['advisory_message']));
+                header("Location: " . $_back . "&advisory=posted");
+            } else {
+                header("Location: " . $_back . "&advisory_error=" . urlencode($_res) . "#advisory-form");
+            }
+        } else {
+            $_row = advisory_remove($db, $_POST['advisory_id'] ?? 0, $log_sota_ref, $_SESSION['sota_callsign'], isGodMode());
+            if ($_row) {
+                logActivity($db, 'Advisory Notice removed', $log_summit_name, $log_sota_ref, $log_group_name);
+                summit_log_event($db, $summit_id, 'Advisory Notice removed', advisory_levels()[$_row['level']]['label'] . ': ' . $_row['message'], '');
+                header("Location: " . $_back . "&advisory=removed");
+            } else {
+                header("Location: " . $_back . "&advisory_error=" . urlencode('That notice could not be removed. Only the person who posted it can remove it.'));
+            }
+        }
+        exit;
+    }
+
     // Add planned activation
     if (isset($_POST['add_planned_activation'])) {
         if ($current_group) {
@@ -659,6 +705,8 @@ $stmt = $db->prepare("
 ");
 $stmt->execute([$summit_id, $current_group['id']]);
 $notes = $stmt->fetchAll();
+
+$advisories = advisory_list($db, $summit['sota_ref'] ?? '');
 
 $trailhead_needs_validation = !empty($summit['trailhead_lat']) && empty($summit['trailhead_manual']);
 
@@ -1247,6 +1295,39 @@ if ($tl_show) {
     .cl-table tr:last-child td { border-bottom:none; }
     .cl-val { max-width:22rem; overflow-wrap:anywhere; white-space:pre-wrap; }
     .cl-empty { color:var(--ink-4); font-style:italic; }
+    /* Advisory Notices (top-of-page banners) */
+<?= advisory_banner_css() ?>
+
+    /* Advisory Notice entry form and list (Remove buttons live here, not on the banners) */
+    .adv-list { display:flex; flex-direction:column; gap:0.5rem; margin-top:0.75rem; }
+    .adv-item { display:flex; align-items:flex-start; gap:0.75rem; padding:0.6rem 0.75rem; background:var(--surface);
+                border:1px solid var(--border); border-left-width:4px; border-radius:var(--r-md); }
+    .adv-item.l-danger { border-left-color:var(--red); } .adv-item.l-caution { border-left-color:var(--orange); } .adv-item.l-tip { border-left-color:var(--blue); }
+    .adv-item-body { flex:1; min-width:0; font-size:0.85rem; color:var(--ink); overflow-wrap:anywhere; }
+    .adv-item-lvl { font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; margin-right:0.35rem; }
+    .adv-item.l-danger .adv-item-lvl { color:var(--red); } .adv-item.l-caution .adv-item-lvl { color:oklch(45% 0.12 58); } .adv-item.l-tip .adv-item-lvl { color:var(--blue); }
+    .adv-item-actions { display:flex; gap:0.35rem; flex-shrink:0; }
+    .adv-edit { padding:0.25rem 0.75rem 0.75rem; background:var(--surface); border:1px solid var(--border); border-left-width:4px; border-radius:var(--r-md); }
+    .adv-edit.l-danger { border-left-color:var(--red); } .adv-edit.l-caution { border-left-color:var(--orange); } .adv-edit.l-tip { border-left-color:var(--blue); }
+    .adv-item-meta { font-size:0.74rem; color:var(--ink-3); margin-top:2px; }
+    .adv-map-pin { background:none; border:none; filter:drop-shadow(0 2px 3px rgba(0,0,0,0.35)); }
+    .adv-pin-ctl { display:inline-flex; align-items:center; gap:0.35rem; background:#fff; border:2px solid rgba(0,0,0,0.2); border-radius:var(--r-sm);
+                   padding:0.3rem 0.6rem; font-family:var(--font-sans); font-size:0.78rem; font-weight:600; color:var(--ink); cursor:pointer; }
+    .adv-pin-ctl:hover { background:var(--bg-2); }
+    .adv-count { font-size:0.74rem; color:var(--ink-3); text-align:right; margin-top:0.25rem; font-variant-numeric:tabular-nums; }
+    .adv-count.low { color:oklch(45% 0.12 58); font-weight:600; }
+    .adv-count.none { color:var(--red); font-weight:600; }
+    .adv-form-card { border:1px solid var(--border); border-radius:var(--r-lg); background:var(--bg); padding:1rem 1.1rem; margin:0 0 1.25rem; }
+    .adv-levels { display:flex; gap:0.5rem; flex-wrap:wrap; margin:0.6rem 0 0.75rem; }
+    .adv-level { position:relative; cursor:pointer; }
+    .adv-level input { position:absolute; opacity:0; pointer-events:none; }
+    .adv-level span { display:inline-flex; flex-direction:column; padding:0.5rem 0.8rem; border-radius:var(--r-md); border:2px solid var(--border-2);
+                      background:var(--surface); font-size:0.85rem; font-weight:600; color:var(--ink-2); transition:all 0.12s; }
+    .adv-level span small { font-size:0.7rem; font-weight:400; color:var(--ink-3); }
+    .adv-level input:focus-visible + span { outline:2px solid var(--accent); outline-offset:2px; }
+    .adv-level.l-danger  input:checked + span { border-color:var(--red);  background:var(--red-bg);  color:var(--red); }
+    .adv-level.l-caution input:checked + span { border-color:var(--orange); background:var(--orange-bg); color:oklch(45% 0.12 58); }
+    .adv-level.l-tip     input:checked + span { border-color:var(--blue); background:var(--blue-bg); color:var(--blue); }
     /* Community Notes */
     .cn-summary { display:flex; align-items:center; justify-content:space-between; gap:1rem; cursor:pointer; list-style:none; }
     .cn-summary::-webkit-details-marker { display:none; }
@@ -1384,6 +1465,10 @@ if ($tl_show) {
 </nav>
 
 <div class="page">
+
+  <!-- ADVISORY NOTICES (read only; Remove is in the Advisory Notices section below) -->
+  <?php $adv_pins = []; // coordinates found in the notices, numbered Pin 1, Pin 2... and drawn on the map ?>
+  <?= advisory_render_banners($advisories, $db, $_SESSION['sota_callsign'] ?? null, $adv_pins) ?>
 
   <!-- PAGE HEADER -->
   <div class="page-header">
@@ -1974,6 +2059,108 @@ if ($tl_show) {
   <!-- COMMUNITY NOTES -->
   <div id="community-notes" style="margin-top:1.5rem;">
     <div class="section-card">
+    <?php if (!empty($summit['sota_ref'])): ?>
+    <div class="adv-form-card" id="advisory-form">
+      <div class="cn-section-head">
+        <div class="cn-heading" style="margin:0; display:flex; align-items:center; gap:0.35rem;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          Advisory Notices
+        </div>
+        <span class="cn-sub">A banner at the top of this summit, seen by everyone who opens it</span>
+        <button type="button" class="btn btn-secondary btn-sm" id="advAddBtn" onclick="document.getElementById('advAddForm').style.display='block'; this.style.display='none'; document.getElementById('advMsg').focus();">+ Post an Advisory Notice</button>
+      </div>
+      <form method="POST" id="advAddForm" style="display:none; margin-top:0.25rem;">
+        <div class="adv-levels" role="radiogroup" aria-label="Notice level">
+          <?php foreach (advisory_levels() as $lk => $lv): ?>
+          <label class="adv-level l-<?= $lk ?>">
+            <input type="radio" name="advisory_level" value="<?= $lk ?>" required <?= $lk === 'caution' ? 'checked' : '' ?>>
+            <span><?= htmlspecialchars($lv['label']) ?><small><?= htmlspecialchars($lv['hint']) ?></small></span>
+          </label>
+          <?php endforeach; ?>
+        </div>
+        <textarea class="form-textarea adv-msg-input" id="advMsg" name="advisory_message" rows="2" required maxlength="<?= ADVISORY_MAX_LEN ?>" placeholder="e.g. Summit is on private property, do not attempt. / Poison ivy all over the trail, wear long pants." style="font-size:0.9rem; resize:vertical;"></textarea>
+        <div style="display:flex; gap:0.5rem; margin-top:0.5rem; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+          <span class="form-hint" style="margin:0;">Posted under your callsign. Only you can remove it later. Summit references (W6/CT-012), GPS coordinates and web addresses become links.</span>
+          <span style="display:flex; gap:0.5rem;">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('advAddForm').style.display='none'; document.getElementById('advAddBtn').style.display='';">Cancel</button>
+            <button type="submit" name="add_advisory" value="1" class="btn btn-primary btn-sm">Save Advisory Notice</button>
+          </span>
+        </div>
+      </form>
+      <script>
+      // Live "characters left" line under every Advisory Notice text box (new notice and Edit)
+      document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('textarea.adv-msg-input').forEach(function (t) {
+          const max = parseInt(t.getAttribute('maxlength'), 10) || <?= ADVISORY_MAX_LEN ?>;
+          const c = document.createElement('div');
+          c.className = 'adv-count';
+          c.setAttribute('aria-live', 'polite');
+          t.insertAdjacentElement('afterend', c);
+          const upd = function () {
+            const left = max - t.value.length;
+            c.textContent = left + (left === 1 ? ' character left' : ' characters left') + ' (of ' + max + ')';
+            c.classList.toggle('low', left <= 50 && left > 0);
+            c.classList.toggle('none', left <= 0);
+          };
+          t.addEventListener('input', upd);
+          if (t.form) t.form.addEventListener('reset', function () { setTimeout(upd, 0); });
+          upd();
+        });
+      });
+      </script>
+      <?php if (!empty($advisories)): ?>
+      <script>
+      // Swap a notice in the list for its edit form (and back)
+      function advEdit(id, open) {
+        const f = document.getElementById('advEdit' + id);
+        f.style.display = open ? 'block' : 'none';
+        f.previousElementSibling.style.display = open ? 'none' : '';
+        if (open) { const t = f.querySelector('textarea'); t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
+        else f.reset();
+      }
+      </script>
+      <div class="adv-list">
+        <?php foreach ($advisories as $adv):
+            $can_remove = isGodMode() || strcasecmp($adv['created_by'], $_SESSION['sota_callsign'] ?? '') === 0;
+        ?>
+        <div class="adv-item l-<?= htmlspecialchars($adv['level']) ?>">
+          <div class="adv-item-body">
+            <span class="adv-item-lvl"><?= htmlspecialchars(advisory_levels()[$adv['level']]['label'] ?? 'Notice') ?></span><?= advisory_message_html($db, $adv['message'], $_SESSION['sota_callsign'] ?? null) ?>
+            <div class="adv-item-meta">Posted by <span style="font-family:var(--font-mono); font-weight:600;"><?= htmlspecialchars($adv['created_by']) ?></span> on <?= date('M j, Y', strtotime($adv['created_at'])) ?></div>
+          </div>
+          <?php if ($can_remove): ?>
+          <div class="adv-item-actions">
+            <button type="button" class="btn btn-secondary btn-sm" style="height:24px; padding:0 8px; font-size:0.72rem;" onclick="advEdit(<?= (int)$adv['id'] ?>, true)">Edit</button>
+            <form method="POST" style="margin:0;" onsubmit="return confirm('Remove this Advisory Notice for everyone?');">
+              <input type="hidden" name="advisory_id" value="<?= (int)$adv['id'] ?>">
+              <button type="submit" name="remove_advisory" value="1" class="btn btn-danger btn-sm" style="height:24px; padding:0 8px; font-size:0.72rem;">Remove</button>
+            </form>
+          </div>
+          <?php endif; ?>
+        </div>
+        <?php if ($can_remove): ?>
+        <form method="POST" class="adv-edit l-<?= htmlspecialchars($adv['level']) ?>" id="advEdit<?= (int)$adv['id'] ?>" style="display:none;">
+          <input type="hidden" name="advisory_id" value="<?= (int)$adv['id'] ?>">
+          <div class="adv-levels" role="radiogroup" aria-label="Notice level">
+            <?php foreach (advisory_levels() as $lk => $lv): ?>
+            <label class="adv-level l-<?= $lk ?>">
+              <input type="radio" name="advisory_level" value="<?= $lk ?>" required <?= $lk === $adv['level'] ? 'checked' : '' ?>>
+              <span><?= htmlspecialchars($lv['label']) ?><small><?= htmlspecialchars($lv['hint']) ?></small></span>
+            </label>
+            <?php endforeach; ?>
+          </div>
+          <textarea class="form-textarea adv-msg-input" name="advisory_message" rows="2" required maxlength="<?= ADVISORY_MAX_LEN ?>" style="font-size:0.9rem; resize:vertical;"><?= htmlspecialchars($adv['message']) ?></textarea>
+          <div style="display:flex; gap:0.5rem; margin-top:0.5rem; justify-content:flex-end;">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="advEdit(<?= (int)$adv['id'] ?>, false)">Cancel</button>
+            <button type="submit" name="edit_advisory" value="1" class="btn btn-primary btn-sm">Save Changes</button>
+          </div>
+        </form>
+        <?php endif; ?>
+        <?php endforeach; ?>
+      </div>
+      <?php endif; ?>
+    </div>
+    <?php endif; ?>
     <div class="cn-private" style="margin:0 0 1rem;">
       <div class="cn-section-head">
         <div class="cn-heading" style="margin:0; display:flex; align-items:center; gap:0.35rem;">
@@ -2469,6 +2656,59 @@ const trailLat = <?= $summit['trailhead_lat'] ? (float)$summit['trailhead_lat'] 
 const trailLng = <?= $summit['trailhead_lng'] ? (float)$summit['trailhead_lng'] : 'null' ?>;
 
 const map = L.map('summit-map').setView([sumLat, sumLng], 13);
+
+// ── Advisory Notice pins: red numbered pins for coordinates found in the notices ──
+const advPins = <?= json_encode($adv_pins ?? []) ?>;
+const advPinMarkers = [];
+if (advPins.length) {
+  // Same colours as the banners: Do not attempt red, Caution amber (dark number), Tip blue
+  const advPinStyle = { danger: { fill: '#C03030', text: '#fff', label: 'Do not attempt' },
+                        caution: { fill: '#F2A93B', text: '#1C1B19', label: 'Caution' },
+                        tip: { fill: '#2B5CA0', text: '#fff', label: 'Tip' } };
+  advPins.forEach(function (p, i) {
+    const n = i + 1;
+    const st = advPinStyle[p.level] || advPinStyle.tip;
+    const icon = L.divIcon({
+      className: 'adv-map-pin',
+      html: '<svg width="30" height="40" viewBox="0 0 30 40"><path d="M15 1C7.3 1 1 7.2 1 14.9 1 25.3 15 39 15 39s14-13.7 14-24.1C29 7.2 22.7 1 15 1z" fill="' + st.fill + '" stroke="#fff" stroke-width="2"/>'
+          + '<text x="15" y="19.5" text-anchor="middle" font-family="DM Sans, system-ui, sans-serif" font-size="13" font-weight="700" fill="' + st.text + '">' + n + '</text></svg>',
+      iconSize: [30, 40], iconAnchor: [15, 39], popupAnchor: [0, -34]
+    });
+    const q = p.lat + ',' + p.lng;
+    const m = L.marker([p.lat, p.lng], { icon: icon, zIndexOffset: 1000, title: 'Pin ' + n })
+      .addTo(map)
+      .bindTooltip('Pin ' + n + ' · ' + st.label, { direction: 'top', offset: [0, -36] })
+      .bindPopup('<strong>Pin ' + n + '</strong> &middot; ' + st.label + ' (Advisory Notice)<br><span style="font-family:var(--font-mono);font-size:0.8rem;">' + q + '</span>'
+          + '<br><a href="https://www.google.com/maps/search/?api=1&query=' + q + '" target="_blank" rel="noopener">Open in Google Maps &#8599;</a>');
+    advPinMarkers.push(m);
+  });
+  // Map button: zoom out to show the summit and every advisory pin together
+  const AdvPinCtl = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd: function () {
+      const b = L.DomUtil.create('button', 'adv-pin-ctl');
+      b.type = 'button';
+      b.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7z" fill="#4A4844"/><circle cx="12" cy="9" r="2.6" fill="#fff"/></svg> Advisory pins (' + advPins.length + ')';
+      b.title = 'Zoom to show the summit and all Advisory Notice pins';
+      L.DomEvent.disableClickPropagation(b);
+      L.DomEvent.on(b, 'click', advPinsFit);
+      return b;
+    }
+  });
+  map.addControl(new AdvPinCtl());
+}
+function advPinsFit() {
+  const pts = advPins.map(function (p) { return [p.lat, p.lng]; });
+  pts.push([sumLat, sumLng]);
+  map.fitBounds(L.latLngBounds(pts), { padding: [50, 50], maxZoom: 15 });
+}
+// Banner badge click: scroll to the map, centre on that pin and open its popup
+function advPinFocus(n) {
+  const m = advPinMarkers[n - 1];
+  if (!m) return;
+  document.getElementById('summit-map').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(function () { map.setView(m.getLatLng(), Math.max(map.getZoom(), 14)); m.openPopup(); }, 350);
+}
 
 const baseLayers = {
   street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>', maxZoom: 19 }),

@@ -238,6 +238,21 @@ try {
             margin-bottom: 1.5rem;
         }
 
+        .safety-note {
+            width: 100%;
+            max-width: 380px;
+            margin-top: 1rem;
+            padding: 0.9rem 1.1rem;
+            background: #fff8ec;
+            border: 1px solid #ecd9b0;
+            border-radius: 12px;
+            font-size: 0.78rem;
+            line-height: 1.5;
+            color: #5a4a2a;
+            text-align: center;
+        }
+        .safety-note strong { display: block; margin-bottom: 0.25rem; font-size: 0.8rem; color: #3f3219; }
+
         .sota-btn {
             display: flex;
             align-items: center;
@@ -453,6 +468,11 @@ try {
             </button>
             <p class="coming-soon-note">OAuth client registration pending with SOTA team</p>
         <?php endif; ?>
+    </div>
+
+    <div class="safety-note" role="note">
+        <strong>Safety first</strong>
+        Mountaineering and hiking are inherently dangerous. Only hike within your physical abilities. Verify every route with multiple sources before you go, and check current conditions, weather and closures. Always tell someone you trust where you are headed and when you expect to be back.
     </div>
 
     <footer>

@@ -1164,6 +1164,27 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
     .data-table th .sort-icon { opacity: 0.4; margin-left: 3px; }
     .data-table th.sorted .sort-icon { opacity: 1; }
     .data-table th.text-right { text-align: right; }
+    /* Summit search box in the header row (and a phone-only copy above the list) */
+    .th-summit-wrap { display: flex; align-items: center; gap: var(--sp-3); }
+    .dash-search { position: relative; display: inline-flex; align-items: center; cursor: text; }
+    .dash-search svg { position: absolute; left: 9px; color: var(--ink-3); pointer-events: none; }
+    .dash-search-input {
+      height: 28px; width: 210px; padding: 0 var(--sp-2) 0 28px;
+      border: 1px solid var(--border-2); border-radius: 100px; background: var(--surface);
+      font-family: var(--font-sans); font-size: 0.8rem; font-weight: 400; color: var(--ink);
+      text-transform: none; letter-spacing: normal; outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .dash-search-input::placeholder { color: var(--ink-4); }
+    .dash-search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+    .dash-search-input.has-value { border-color: var(--accent); background: var(--accent-bg); }
+    .dash-search-mobile { display: none; margin-bottom: var(--sp-3); width: 100%; }
+    .dash-search-mobile .dash-search-input { width: 100%; height: 38px; font-size: 0.9rem; padding-left: 32px; }
+    .dash-search-mobile svg { left: 12px; }
+    .dash-search-empty { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; padding: var(--sp-4); margin-bottom: var(--sp-3);
+      background: var(--surface); border: 1px dashed var(--border-2); border-radius: var(--r-lg); color: var(--ink-2); font-size: 0.875rem; }
+    .dash-search-empty[hidden] { display: none; }
+    .data-table tbody tr.search-hide { display: none !important; }
+    .data-table tbody tr.multi-nested-row.search-show { display: table-row; }
     .data-table tbody tr {
       border-bottom: 1px solid var(--border);
       transition: background 0.1s; cursor: pointer;
@@ -1413,6 +1434,9 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
          route's members stayed visible no matter what the caret toggle did.
          This more specific selector (class + :not) restores the hide. */
       .data-table tbody tr.multi-nested-row:not(.is-open) { display: none !important; }
+      /* A search match inside a collapsed route still shows (more specific than the rule above) */
+      .data-table tbody tr.multi-nested-row.search-show:not(.search-hide) { display: grid !important; }
+      .dash-search-mobile { display: flex; }
       .data-table td { padding: 0; border: none; }
       .td-main    { grid-column: 1; grid-row: 1; }
       .td-time    { grid-column: 2; grid-row: 1; text-align: right; align-self: center; }
@@ -1851,6 +1875,15 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
             <?php endif; ?>
         </div>
     <?php else: ?>
+        <!-- Phone-only search (the table header row is hidden on small screens); kept in sync with #dashSearch -->
+        <div class="dash-search dash-search-mobile">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="search" class="dash-search-input" id="dashSearchMobile" placeholder="Search summits by name or reference" aria-label="Search summits by name or reference" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="dash-search-empty" id="dashSearchEmpty" hidden>
+            No summits on this dashboard match "<span id="dashSearchTerm"></span>".
+            <button type="button" class="btn btn-ghost btn-sm" onclick="dashSearchSet('')">Clear search</button>
+        </div>
         <div class="table-wrap">
             <table class="data-table" id="dashboard-table">
                 <thead>
@@ -1858,8 +1891,14 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
                         <th class="td-select" onclick="event.stopPropagation()">
                             <input type="checkbox" id="select-all-rows" onclick="event.stopPropagation()" onchange="toggleSelectAllRows(this.checked)">
                         </th>
-                        <th class="<?= $sort_by === 'name' ? 'sorted' : '' ?>" onclick="sortTable('name')">
-                            Summit <span class="sort-icon"><?= $sort_by === 'name' ? ($sort_order === 'ASC' ? '↑' : '↓') : '↕' ?></span>
+                        <th class="th-summit <?= $sort_by === 'name' ? 'sorted' : '' ?>" onclick="sortTable('name')">
+                            <span class="th-summit-wrap">
+                                <span>Summit <span class="sort-icon"><?= $sort_by === 'name' ? ($sort_order === 'ASC' ? '↑' : '↓') : '↕' ?></span></span>
+                                <span class="dash-search" onclick="event.stopPropagation()">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                    <input type="search" class="dash-search-input" id="dashSearch" placeholder="Search name or reference" aria-label="Search summits by name or reference" autocomplete="off" spellcheck="false">
+                                </span>
+                            </span>
                         </th>
                         <th class="<?= $sort_by === 'points' ? 'sorted' : '' ?> td-hide-mobile" onclick="sortTable('points')">
                             Pts <span class="sort-icon"><?= $sort_by === 'points' ? ($sort_order === 'ASC' ? '↑' : '↓') : '↕' ?></span>
@@ -2233,6 +2272,7 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
     function toggleSelectAllRows(checked) {
         if (actionMode === 'multi') return;
         document.querySelectorAll('.row-select').forEach(cb => {
+            if (cb.closest('tr').classList.contains('search-hide')) return; // never select summits the search has hidden
             cb.checked = checked;
             const id = parseInt(cb.dataset.id, 10);
             if (checked) selectedIds.add(id); else selectedIds.delete(id);
@@ -2300,6 +2340,71 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
         }
         window.location = 'summit_detail.php?id=' + summitId + '&group=' + groupId;
     }
+
+    // ── Summit search (header box + phone box): filters the list by name or SOTA reference ──
+    // Matches anywhere in the name or reference; punctuation is ignored, so "w6ct259" finds W6/CT-259.
+    // Remembered for this browser tab (filters and sorting reload the page) per dashboard.
+    const DASH_SEARCH_KEY = 'dashSearch_<?= (int)($current_group['id'] ?? 0) ?>';
+    function dashSearchNorm(s) { return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+    function dashSearchCompact(s) { return dashSearchNorm(s).replace(/[^a-z0-9]/g, ''); }
+    function dashSearchApply(q) {
+        const table = document.getElementById('dashboard-table');
+        if (!table) return;
+        const qn = dashSearchNorm(q).trim(), qc = dashSearchCompact(q);
+        const active = qn !== '';
+        const matches = function (tr) {
+            if (!active) return true;
+            const name = tr.querySelector('.summit-name');
+            const ref = tr.classList.contains('multi-summary-row') ? null : tr.querySelector('.summit-ref'); // route rows show "N summits" there
+            const n = name ? name.textContent : '', r = ref ? ref.textContent : '';
+            return dashSearchNorm(n).includes(qn) || dashSearchNorm(r).includes(qn)
+                || (qc.length >= 2 && (dashSearchCompact(r).includes(qc) || dashSearchCompact(n).includes(qc)));
+        };
+        let shown = 0;
+        table.querySelectorAll('tbody tr[data-summit-id]:not([data-multi-group])').forEach(function (tr) {
+            const ok = matches(tr);
+            tr.classList.toggle('search-hide', !ok);
+            if (ok) shown++;
+        });
+        table.querySelectorAll('tbody tr.multi-summary-row').forEach(function (sum) {
+            const id = sum.dataset.multiId;
+            const labelOk = active && matches(sum);
+            let memberHit = false;
+            table.querySelectorAll('tbody tr.multi-nested-row[data-multi-group="' + id + '"]').forEach(function (m) {
+                const ok = active && matches(m);
+                if (ok) memberHit = true;
+                m.classList.toggle('search-show', ok);                         // reveal matches even in a collapsed route
+                m.classList.toggle('search-hide', active && !ok && !labelOk);  // route name matched: leave its members as they were
+            });
+            const ok = !active || labelOk || memberHit;
+            sum.classList.toggle('search-hide', !ok);
+            if (ok) shown++;
+        });
+        const empty = document.getElementById('dashSearchEmpty');
+        if (empty) {
+            empty.hidden = !(active && shown === 0);
+            document.getElementById('dashSearchTerm').textContent = q.trim();
+        }
+        document.querySelectorAll('.dash-search-input').forEach(function (i) { i.classList.toggle('has-value', active); });
+    }
+    function dashSearchSet(q) {
+        document.querySelectorAll('.dash-search-input').forEach(function (i) { if (i.value !== q) i.value = q; });
+        try { q ? sessionStorage.setItem(DASH_SEARCH_KEY, q) : sessionStorage.removeItem(DASH_SEARCH_KEY); } catch (e) {}
+        dashSearchApply(q);
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+        const inputs = document.querySelectorAll('.dash-search-input');
+        inputs.forEach(function (i) {
+            i.addEventListener('input', function () { dashSearchSet(i.value); });
+            i.addEventListener('keydown', function (e) {
+                e.stopPropagation();
+                if (e.key === 'Escape') { dashSearchSet(''); i.blur(); }
+            });
+        });
+        let saved = '';
+        try { saved = sessionStorage.getItem(DASH_SEARCH_KEY) || ''; } catch (e) {}
+        if (saved) dashSearchSet(saved);
+    });
 
     function toggleMultiNested(multiId) {
         const rows = document.querySelectorAll('.multi-nested-row[data-multi-group="' + multiId + '"]');
