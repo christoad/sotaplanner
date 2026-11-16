@@ -249,7 +249,7 @@ try {
             font-size: 0.78rem;
             line-height: 1.5;
             color: #5a4a2a;
-            text-align: left;
+            text-align: center;
         }
         .safety-note strong { display: block; margin-bottom: 0.25rem; font-size: 0.8rem; color: #3f3219; }
 
@@ -472,7 +472,7 @@ try {
 
     <div class="safety-note" role="note">
         <strong>Safety first</strong>
-        Mountaineering and hiking are inherently dangerous. SOTAplanner is a planning aid, not a guarantee that a route is safe or even passable. Verify every route with multiple sources before you go, and check current conditions, weather and closures. Always tell someone you trust where you are headed and when you expect to be back.
+        Mountaineering and hiking are inherently dangerous. Only hike within your physical abilities. Verify every route with multiple sources before you go, and check current conditions, weather and closures. Always tell someone you trust where you are headed and when you expect to be back.
     </div>
 
     <footer>
