@@ -90,7 +90,7 @@ td{padding:0.35rem 0.6rem;border-top:1px solid var(--border);white-space:nowrap}
 <?php if (!$d || !$h): ?>
   <div class="now">Forecast is not available right now. Please try again in a few minutes.</div>
 <?php else:
-  $cur = $w['current'] ?? null;
+  $cur = $w ? weather_now($w) : null;
   if ($cur):
     [$cl, $ci] = weather_wmo($cur['weather_code']); ?>
   <div class="now">
