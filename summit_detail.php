@@ -1193,19 +1193,25 @@ if ($tl_show) {
       border: 1px solid var(--border-2); border-radius: var(--r-sm); background: var(--surface);
       margin-bottom: 0.35rem; padding: 0 0.2rem;
     }
-    .rfi-key { display: flex; gap: 2px; }
+    .rfi-key { display: flex; gap: 2px; cursor: help; }
     .rfi-key > div { flex: 1; text-align: center; font-size: 0.6rem; color: var(--ink-3); }
     .rfi-key .rfi-sw { width: 100%; }
     .rfi-sw { display: flex; height: 8px; border-radius: 2px; overflow: hidden; border: 1px solid rgba(28,27,25,0.08); margin-bottom: 1px; }
     .rfi-sw i { flex: 1; }
     .rfi-legend-credit { margin-top: 0.25rem; color: var(--ink-4); font-size: 0.6rem; text-align: right; }
     .rfi-legend-credit a { color: var(--ink-3); }
-    .rfi-more { display: none; margin-top: 0.4rem; padding-top: 0.35rem; border-top: 1px solid var(--border); }
-    .rfi-legend.open { width: 220px; }
+    /* Details float above the legend so the legend never resizes and the band menu stays put.
+       Shown by hovering the "i" or the color key (desktop), or tapping the "i" (phones). */
+    .rfi-legend { position: relative; }
+    .rfi-more {
+      display: none; position: absolute; left: 0; bottom: calc(100% + 6px); width: 220px;
+      background: rgba(255,255,255,0.97); border: 1px solid var(--border); border-radius: var(--r-md);
+      box-shadow: var(--shadow-md); padding: 0.5rem 0.55rem; pointer-events: none;
+    }
     .rfi-legend.open .rfi-more { display: block; }
     @media (hover: hover) {
-      .rfi-legend:hover { width: 220px; }
-      .rfi-legend:hover .rfi-more { display: block; }
+      .rfi-legend:has(.rfi-legend-info:hover) .rfi-more,
+      .rfi-legend:has(.rfi-key:hover) .rfi-more { display: block; }
     }
     .rfi-legend-row { display: flex; gap: 0.4rem; align-items: flex-start; margin-bottom: 0.3rem; }
     .rfi-legend-row .rfi-sw { flex: 0 0 26px; margin-top: 2px; }
