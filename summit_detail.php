@@ -871,6 +871,7 @@ if ($tl_show) {
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="rfi_layer.js?v=<?= @filemtime(__DIR__ . '/rfi_layer.js') ?>"></script>
   <style>
     :root {
       --bg:         #F7F6F3;
@@ -1058,10 +1059,18 @@ if ($tl_show) {
 
     /* 4-stat grid */
     .stat-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; margin-bottom: 1.25rem; }
-    .stat-cell { background: var(--surface); padding: 1rem 1.25rem; }
-    .stat-cell-label { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); margin-bottom: 5px; }
-    .stat-cell-val   { font-size: 1.1rem; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.2; }
-    .stat-cell-sub   { font-size: 0.72rem; color: var(--ink-3); margin-top: 3px; }
+    .stat-cell { background: var(--surface); padding: 0.6rem 0.9rem; }
+    .stat-cell-label { font-size: 0.66rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); margin-bottom: 2px; min-height: 14px; }
+    .stat-cell-val   { font-size: 1.35rem; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.15; letter-spacing: -0.01em; }
+    .stat-cell-sub   { font-size: 0.72rem; color: var(--ink-3); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .stat-cell-icon  { background: none; border: none; padding: 0; cursor: pointer; color: var(--ink-4); line-height: 1; flex-shrink: 0; opacity: 0.6; display: inline-flex; }
+    .stat-cell-icon:hover { opacity: 1; color: var(--ink-2); }
+    .travel-recalc-btn {
+      margin-top: 0.3rem; background: var(--accent); color: #fff; border: none; border-radius: var(--r-sm);
+      padding: 0.18rem 0.55rem; font-size: 0.68rem; font-weight: 600; cursor: pointer;
+      font-family: var(--font-sans); white-space: nowrap;
+    }
+    .travel-recalc-btn:hover { background: var(--accent-2); }
 
     /* Time bar */
     .time-bar { height: 44px; border-radius: var(--r-md); overflow: hidden; display: flex; gap: 2px; margin-bottom: 6px; }
@@ -1162,6 +1171,64 @@ if ($tl_show) {
     .map-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; align-items: center; }
     .carrier-btn { height: 28px; padding: 0 0.625rem; font-size: 0.75rem; font-weight: 600; border-radius: var(--r-sm); border: 1.5px solid; cursor: pointer; transition: all 0.12s; font-family: var(--font-sans); }
     .map-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+
+    /* RFI layer (data: KM6AM Summit RFI) */
+    .rfi-btn { display: inline-flex; align-items: center; gap: 0.35rem; }
+    .rfi-btn .rfi-dot { width: 8px; height: 8px; border-radius: 50%; background: #e2492a; flex-shrink: 0; }
+    .rfi-legend {
+      background: rgba(255,255,255,0.95); border: 1px solid var(--border); border-radius: var(--r-md);
+      box-shadow: var(--shadow-sm); padding: 0.4rem 0.5rem; font-family: var(--font-sans);
+      font-size: 0.68rem; color: var(--ink-2); line-height: 1.3; width: 150px;
+    }
+    .rfi-legend-head { display: flex; align-items: center; gap: 0.3rem; margin-bottom: 0.3rem; }
+    .rfi-legend-title { font-weight: 600; color: var(--ink); font-size: 0.72rem; }
+    .rfi-legend-info {
+      margin-left: auto; width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--border-2);
+      background: var(--surface); color: var(--ink-3); font: 600 0.62rem/14px var(--font-sans); text-align: center;
+      cursor: pointer; padding: 0; flex-shrink: 0;
+    }
+    .rfi-legend.open .rfi-legend-info { background: var(--ink); border-color: var(--ink); color: #fff; }
+    .rfi-legend select {
+      width: 100%; height: 22px; font-family: var(--font-sans); font-size: 0.68rem; color: var(--ink);
+      border: 1px solid var(--border-2); border-radius: var(--r-sm); background: var(--surface);
+      margin-bottom: 0.35rem; padding: 0 0.2rem;
+    }
+    .rfi-key { display: flex; gap: 2px; }
+    .rfi-key > div { flex: 1; text-align: center; font-size: 0.6rem; color: var(--ink-3); }
+    .rfi-key .rfi-sw { width: 100%; }
+    .rfi-sw { display: flex; height: 8px; border-radius: 2px; overflow: hidden; border: 1px solid rgba(28,27,25,0.08); margin-bottom: 1px; }
+    .rfi-sw i { flex: 1; }
+    .rfi-legend-credit { margin-top: 0.25rem; color: var(--ink-4); font-size: 0.6rem; text-align: right; }
+    .rfi-legend-credit a { color: var(--ink-3); }
+    .rfi-more { display: none; margin-top: 0.4rem; padding-top: 0.35rem; border-top: 1px solid var(--border); }
+    .rfi-legend.open { width: 220px; }
+    .rfi-legend.open .rfi-more { display: block; }
+    @media (hover: hover) {
+      .rfi-legend:hover { width: 220px; }
+      .rfi-legend:hover .rfi-more { display: block; }
+    }
+    .rfi-legend-row { display: flex; gap: 0.4rem; align-items: flex-start; margin-bottom: 0.3rem; }
+    .rfi-legend-row .rfi-sw { flex: 0 0 26px; margin-top: 2px; }
+    .rfi-legend-row b { font-weight: 600; color: var(--ink); font-size: 0.64rem; letter-spacing: 0.04em; }
+    .rfi-more-foot { color: var(--ink-3); font-size: 0.62rem; }
+    .rfi-badge-icon { background: none; border: none; }
+    .rfi-badge {
+      position: absolute; left: 0; bottom: 0; transform: translateX(-50%);
+      background: var(--surface); border: 1.5px solid; border-radius: var(--r-md);
+      box-shadow: var(--shadow-md); padding: 0.3rem 0.5rem; font-family: var(--font-sans);
+      font-size: 0.72rem; line-height: 1.3; color: var(--ink-2); width: max-content; max-width: 230px;
+      cursor: pointer; white-space: normal;
+    }
+    .rfi-badge::after {
+      content: ''; position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%) rotate(45deg);
+      width: 9px; height: 9px; background: var(--surface); border-right: 1.5px solid; border-bottom: 1.5px solid; border-color: inherit;
+    }
+    .rfi-badge-head { display: flex; align-items: center; gap: 0.35rem; font-weight: 600; color: var(--ink); }
+    .rfi-badge-chip { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.05em; color: #fff; border-radius: 3px; padding: 0.05rem 0.3rem; }
+    .rfi-badge-link { margin-left: auto; color: var(--ink-3); font-weight: 500; font-size: 0.68rem; white-space: nowrap; }
+    .rfi-badge.rfi-none { cursor: default; }
+    #rfi-note { font-size: 0.75rem; color: var(--ink-3); margin: -0.5rem 0 1rem; line-height: 1.5; }
+    #rfi-note a { color: var(--ink-2); }
 
     /* Map expand button, styled like a Leaflet control so it's visible on any map tile */
     .btn-map-expand {
@@ -1607,17 +1674,22 @@ if ($tl_show) {
       ?>
       <div class="stat-grid-4">
         <div class="stat-cell">
-          <div class="stat-cell-label">Travel (RT)</div>
+          <div class="stat-cell-label" style="display:flex;align-items:center;gap:0.3rem;">
+            Travel (RT)
+            <?php if ($drive_rt && $selected_address): ?>
+            <button type="submit" name="calculate_drive_time" class="stat-cell-icon" id="travel-recalc-icon"
+                    title="Recalculate travel time" aria-label="Recalculate travel time"<?= $travel_stale ? ' style="display:none;"' : '' ?>>
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M10.2 5.2A4.3 4.3 0 1 0 9.4 8.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M10.6 2.2v3.1H7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <?php endif; ?>
+          </div>
           <?php if ($drive_rt): ?>
             <div class="stat-cell-val"><?= floor($drive_rt/60) ?>h <?= $drive_rt%60 ?>m</div>
             <div class="stat-cell-sub"><?= $selected_address ? htmlspecialchars($selected_address['label'] ?: 'from base') : 'round-trip' ?></div>
-            <div class="stat-cell-sub" style="margin-top:0.2rem; color:var(--ink-4);" title="Estimate for a typical Saturday morning. Roads and trailhead access roads can close for fire, snow or construction, so check conditions with the land manager before you leave.">Check road closures before you go</div>
             <?php if ($selected_address): ?>
-            <button type="submit" name="calculate_drive_time"
-                    title="<?= $travel_stale ? 'The starting point changed since this was calculated' : 'Recalculate travel time' ?>"
-                    style="margin-top:0.35rem; background:none; color:<?= $travel_stale ? 'var(--accent)' : 'var(--ink-4)' ?>; border:1px solid <?= $travel_stale ? 'var(--accent-border)' : 'var(--border)' ?>; border-radius:var(--r-sm); padding:0.15rem 0.5rem; font-size:0.68rem; font-weight:<?= $travel_stale ? '600' : '500' ?>; cursor:pointer; font-family:var(--font-sans); white-space:nowrap;">
-                Recalculate
-            </button>
+            <!-- Shown when the start or starting point changed since this was calculated (also switched on by JS right after the starting point is moved on the map) -->
+            <button type="submit" name="calculate_drive_time" id="travel-recalc-btn" class="travel-recalc-btn"
+                    title="The starting point changed since this was calculated"<?= $travel_stale ? '' : ' style="display:none;"' ?>>Recalculate</button>
             <?php endif; ?>
           <?php elseif ($selected_address): ?>
             <div class="stat-cell-val" style="color:var(--ink-3); font-size:0.875rem;">—</div>
@@ -1739,6 +1811,8 @@ if ($tl_show) {
           <button type="button" id="btn-tmobile" class="carrier-btn" style="border-color:#E91E8C; color:#E91E8C; background:#fff;" onclick="toggleCarrier('tmobile')">T-Mo</button>
           <button type="button" id="btn-verizon" class="carrier-btn" style="border-color:#CD040B; color:#CD040B; background:#fff;" onclick="toggleCarrier('verizon')">VZW</button>
           <button type="button" id="btn-att"     class="carrier-btn" style="border-color:#00A8E0; color:#00A8E0; background:#fff;" onclick="toggleCarrier('att')">AT&amp;T</button>
+          <span class="map-divider rfi-ctl" style="display:none;"></span>
+          <button type="button" id="btn-rfi" class="btn btn-sm btn-secondary rfi-btn rfi-ctl" style="display:none;" onclick="toggleRfi()" title="Radio interference estimate from nearby transmitters (KM6AM Summit RFI)"><span class="rfi-dot"></span>RFI</button>
           <?php endif; ?>
           <?php if (!empty($summit['sota_ref'])): ?>
             <span class="map-divider"></span>
@@ -1769,6 +1843,9 @@ if ($tl_show) {
         <canvas id="elev-canvas"></canvas>
         <div class="elev-note" id="elev-note">Hover for elevation details</div>
       </div>
+      <?php endif; ?>
+      <?php if ($is_usa_summit && !empty($summit['sota_ref'])): ?>
+      <div id="rfi-note" style="display:none;"></div>
       <?php endif; ?>
       <?php if (!empty($summit['sota_ref'])): ?>
       <div id="az-methodology" style="font-size:0.75rem; color:var(--ink-3); margin-bottom:1rem; line-height:1.5;"></div>
@@ -2878,13 +2955,24 @@ document.getElementById('ctx-set-trailhead').addEventListener('click', function(
   fd.append('trailhead_lng', lng);
   fetch('summit_detail.php?id=<?= $summit_id ?>', { method: 'POST', body: fd })
     .then(r => r.json())
-    .then(d => showMapToast(d.ok ? '✓ Starting point saved, no other save needed' : 'Error saving starting point'))
+    .then(d => {
+      showMapToast(d.ok ? '✓ Starting point saved, no other save needed' : 'Error saving starting point');
+      if (d.ok) showTravelRecalc();   // travel time was to the old starting point
+    })
     .catch(() => showMapToast('Error saving starting point'));
 
   // Moving the pin counts as confirming, dismiss the validation banner
   const banner = document.getElementById('trailhead-validate-banner');
   if (banner) banner.remove();
 });
+
+// Swap the small refresh icon for the prominent Recalculate button in the Travel tile
+function showTravelRecalc() {
+  const btn = document.getElementById('travel-recalc-btn');
+  const icon = document.getElementById('travel-recalc-icon');
+  if (btn) btn.style.display = '';
+  if (icon) icon.style.display = 'none';
+}
 
 function confirmTrailhead() {
   const lat = document.getElementById('trailhead-lat-hidden').value;
@@ -2938,6 +3026,167 @@ function toggleCarrier(name) {
     btn.style.background = carrierColors[name]; btn.style.color = '#fff';
   }
 }
+
+<?php if ($is_usa_summit && !empty($summit['sota_ref'])): ?>
+// ── RFI layer: data from KM6AM's Summit RFI project (km6am.com/summitRFI), used with his permission ──
+// Heat map = his precomputed national field grid (lower 48). Badge = his report card for this summit.
+const rfi = { data: null, index: null, layer: null, badge: null, legend: null, on: false, sel: 0 };
+const rfiMetric = <?= $user_units === 'metric' ? 'true' : 'false' ?>;
+const RFI_REPO = 'https://github.com/km6am/sota-rf';   // KM6AM asked to be credited; credits link to his repo
+const RFI_RISK = {
+  HIGH:     { bg: '#C03030', fg: '#fff' },
+  MODERATE: { bg: '#F39A35', fg: '#1C1B19' },
+  LOW:      { bg: '#3F9E4A', fg: '#fff' },
+  CLEAR:    { bg: '#8C8A86', fg: '#fff' }
+};
+const RFI_LAYER_NAMES = { 'total': 'All bands', 'HF': 'HF (40m to 10m)', '6m–70cm': '6m to 70cm', 'Above 70cm': 'Above 70cm (23cm and up)' };
+function rfiEsc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function rfiPower(w) { return w >= 1e6 ? (w / 1e6).toFixed(w >= 1e7 ? 0 : 1) + ' MW' : w >= 1e3 ? Math.round(w / 1e3) + ' kW' : Math.round(w) + ' W'; }
+function rfiDist(m) { return rfiMetric ? (m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.round(m) + ' m') : (m >= 1609 ? (m / 1609.34).toFixed(1) + ' mi' : Math.round(m * 3.28084) + ' ft'); }
+function rfiBands(s) {
+  const parts = [];
+  if (s.high.length) parts.push('High: ' + s.high.join(', '));
+  if (s.moderate.length) parts.push('Moderate: ' + s.moderate.join(', '));
+  if (parts.length) return parts.join(' · ');
+  return s.risk === 'CLEAR' ? 'Clear on all ham bands' : 'Low on all ham bands';
+}
+
+fetch('rfi_summit.php?ref=' + encodeURIComponent(<?= json_encode($summit['sota_ref']) ?>) + '&lat=' + sumLat + '&lon=' + sumLng, { credentials: 'same-origin' })
+  .then(r => r.json())
+  .then(d => {
+    if (!d || d.error || (!d.covered && !d.summit)) return;   // outside his coverage (Alaska, Hawaii)
+    rfi.data = d;
+    document.querySelectorAll('.rfi-ctl').forEach(el => { el.style.display = ''; });
+    // The dot on the button shows this summit's risk at a glance
+    const dot = document.querySelector('#btn-rfi .rfi-dot');
+    if (dot) dot.style.background = d.summit && RFI_RISK[d.summit.risk] ? RFI_RISK[d.summit.risk].bg : '#B8B5B0';
+  })
+  .catch(() => {});
+
+function rfiMakeBadge() {
+  const s = rfi.data.summit;
+  let html, title;
+  if (s) {
+    const c = RFI_RISK[s.risk] || RFI_RISK.CLEAR;
+    html = '<div class="rfi-badge" style="border-color:' + c.bg + ';">'
+      + '<div class="rfi-badge-head"><span class="rfi-badge-chip" style="background:' + c.bg + ';color:' + c.fg + ';">' + rfiEsc(s.risk || '?') + '</span>RFI'
+      + (s.report_url ? '<span class="rfi-badge-link">Full report &#8599;</span>' : '') + '</div>'
+      + '<div>' + rfiEsc(rfiBands(s)) + '</div></div>';
+    title = s.report_url ? "Open KM6AM's full RFI report for this summit" : '';
+  } else {
+    html = '<div class="rfi-badge rfi-none" style="border-color:#B8B5B0;"><div class="rfi-badge-head">RFI</div><div>No transmitters mapped near this summit</div></div>';
+    title = '';
+  }
+  const m = L.marker([sumLat, sumLng], {
+    icon: L.divIcon({ className: 'rfi-badge-icon', html: html, iconSize: [0, 0], iconAnchor: [0, 14] }),
+    zIndexOffset: 900, keyboard: false, title: title, interactive: !!(s && s.report_url)
+  });
+  if (s && s.report_url) m.on('click', () => window.open(s.report_url, '_blank', 'noopener'));
+  return m;
+}
+
+function rfiMakeLegend() {
+  const R = RfiLayer.RAMP, BASE = '#ECEEF0';
+  const sw = cols => '<span class="rfi-sw">' + cols.map(c => '<i style="background:' + c + ';opacity:' + (c === BASE ? 1 : 0.75) + ';"></i>').join('') + '</span>';
+  const tiers = [
+    ['CLEAR', 'under 0.05 V/m', 'Even a cheap HT is fine', [BASE]],
+    ['LOW', '0.05 to 0.15', 'Cheap HT degraded; a weak S5 is still copyable', [R[0]]],
+    ['MODERATE', '0.15 to 1.5', 'A cheap HT (Baofeng, Quansheng) loses a weak S5', [R[1], R[2]]],
+    ['HIGH', '1.5 and up', 'Even a good radio loses a weak S5, worse with every step', [R[3], R[4], R[5]]]
+  ];
+  const short = { CLEAR: 'Clear', LOW: 'Low', MODERATE: 'Mod.', HIGH: 'High' };
+  const Ctl = L.Control.extend({
+    options: { position: 'bottomleft' },
+    onAdd: function () {
+      const div = L.DomUtil.create('div', 'rfi-legend');
+      // Compact: title, band group, four-step key, credit. Details on hover (desktop) or the "i" (phones).
+      let h = '<div class="rfi-legend-head"><span class="rfi-legend-title">RFI estimate</span>'
+        + '<button type="button" class="rfi-legend-info" aria-label="What the colors mean" aria-expanded="false" title="What the colors mean">i</button></div>';
+      if (rfi.layer) {
+        h += '<select id="rfi-layer-sel" aria-label="Band group">'
+          + rfi.data.grid.layers.map((n, i) => '<option value="' + i + '"' + (i === rfi.sel ? ' selected' : '') + '>' + rfiEsc(RFI_LAYER_NAMES[n] || n) + '</option>').join('')
+          + '</select>';
+      } else {
+        h += '<div style="margin-bottom:0.3rem;color:var(--ink-3);">Heat map not available here right now.</div>';
+      }
+      h += '<div class="rfi-key">' + tiers.map(t => '<div>' + sw(t[3]) + short[t[0]] + '</div>').join('') + '</div>';
+      h += '<div class="rfi-more">';
+      tiers.forEach(t => {
+        h += '<div class="rfi-legend-row">' + sw(t[3]) + '<span><b>' + t[0] + '</b> <span style="color:var(--ink-3);">' + t[1] + '</span><br>' + t[2] + '</span></div>';
+      });
+      h += '<div class="rfi-more-foot">Estimated field strength 2 m above ground from registered transmitters. Federal transmitters are not in these records.</div></div>';
+      h += '<div class="rfi-legend-credit">Data: <a href="' + RFI_REPO + '" target="_blank" rel="noopener">KM6AM</a></div>';
+      div.innerHTML = h;
+      L.DomEvent.disableClickPropagation(div);
+      L.DomEvent.disableScrollPropagation(div);
+      const info = div.querySelector('.rfi-legend-info');
+      info.addEventListener('click', () => {
+        const open = div.classList.toggle('open');
+        info.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+      const sel = div.querySelector('#rfi-layer-sel');
+      if (sel) sel.addEventListener('change', () => { rfi.sel = parseInt(sel.value, 10) || 0; if (rfi.layer) rfi.layer.redraw(); });
+      return div;
+    }
+  });
+  return new Ctl();
+}
+
+function rfiNoteHtml() {
+  const d = rfi.data, s = d.summit;
+  let h = '<strong>Radio interference (RFI):</strong> ';
+  if (s) {
+    h += 'report card rates this summit <strong>' + rfiEsc(s.risk) + '</strong> (' + rfiEsc(rfiBands(s)) + '). ';
+    if (s.sources) h += s.sources + ' transmitter' + (s.sources === 1 ? '' : 's') + ' in range, ' + rfiPower(s.total_erp_w) + ' total. ';
+    if (s.top.length) {
+      h += 'Strongest: ' + s.top.map(t => {
+        const f = t.freqs.replace(/\s*\(\d+\)\s*$/, '');
+        return rfiEsc(t.owner) + ' (' + rfiPower(t.erp_w) + (f ? ', ' + rfiEsc(f) + ' MHz' : '') + ', ' + rfiDist(t.dist_m) + ' away)';
+      }).join('; ') + '. ';
+    }
+    if (s.report_url) h += '<a href="' + rfiEsc(s.report_url) + '" target="_blank" rel="noopener">Full report &#8599;</a> ';
+  } else {
+    h += 'no transmitters are mapped near this summit. ';
+  }
+  h += '<br>Estimates from registered transmitter power (FCC, NOAA Weather Radio) with terrain shadowing, not measurements.'
+    + ' Federal transmitters (Forest Service, FAA, military and other agencies) are licensed outside the FCC and are not included, so a site with federal equipment can be worse than shown.'
+    + (d.data_date ? ' Data as of ' + rfiEsc(d.data_date) + '.' : '')
+    + ' Source: <a href="' + RFI_REPO + '" target="_blank" rel="noopener">Summit RFI by KM6AM</a>, used with permission.';
+  return h;
+}
+
+function toggleRfi() {
+  if (!rfi.data) return;
+  const btn = document.getElementById('btn-rfi');
+  const note = document.getElementById('rfi-note');
+  if (rfi.on) {
+    if (rfi.layer) map.removeLayer(rfi.layer);
+    if (rfi.badge) map.removeLayer(rfi.badge);
+    if (rfi.legend) map.removeControl(rfi.legend);
+    if (note) note.style.display = 'none';
+    btn.classList.remove('btn-map-active'); btn.classList.add('btn-secondary');
+    rfi.on = false;
+    return;
+  }
+  if (!rfi.layer && rfi.data.grid && rfi.data.covered && window.RfiLayer && 'DecompressionStream' in window) {
+    if (!map.getPane('rfiPane')) {
+      map.createPane('rfiPane');
+      map.getPane('rfiPane').style.zIndex = 250;          // above the base map, below tracks and pins
+      map.getPane('rfiPane').style.pointerEvents = 'none';
+    }
+    rfi.index = RfiLayer.prepIndex(rfi.data.grid);
+    rfi.layer = RfiLayer.layer({ index: rfi.index, layer: () => rfi.sel, alpha: 0.55, pane: 'rfiPane' });
+  }
+  if (rfi.layer) rfi.layer.addTo(map);
+  if (!rfi.badge) rfi.badge = rfiMakeBadge();
+  rfi.badge.addTo(map);
+  if (!rfi.legend) rfi.legend = rfiMakeLegend();
+  map.addControl(rfi.legend);
+  if (note) { note.innerHTML = rfiNoteHtml(); note.style.display = ''; }
+  btn.classList.remove('btn-secondary'); btn.classList.add('btn-map-active');
+  rfi.on = true;
+}
+<?php endif; ?>
 
 function initActivationZone(poly, source) {
   let coords;
