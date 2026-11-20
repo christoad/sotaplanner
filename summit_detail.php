@@ -1164,7 +1164,7 @@ if ($tl_show) {
     .gpx-loading-sub {
       font-size: 0.75rem; color: var(--ink-3);
     }
-    #summit-map { height: 280px; border-radius: var(--r-lg); border: 1px solid var(--border); overflow: hidden; margin-bottom: 0.75rem; }
+    #summit-map { height: 380px; border-radius: var(--r-lg); border: 1px solid var(--border); overflow: hidden; margin-bottom: 0.75rem; }
     .track-key { display: flex; gap: 1.1rem; flex-wrap: wrap; margin: 0; font-size: 0.76rem; color: var(--ink-3); }
     .track-key > span { display: inline-flex; align-items: center; gap: 6px; }
     .track-key-swatch { display: inline-block; width: 16px; height: 4px; border-radius: 2px; }
@@ -1193,6 +1193,21 @@ if ($tl_show) {
       border: 1px solid var(--border-2); border-radius: var(--r-sm); background: var(--surface);
       margin-bottom: 0.35rem; padding: 0 0.2rem;
     }
+    /* While the RFI heat map draws: the same animated logo as the map's route-search overlay, in a small
+       card at the top of the map (no dimming). Negative delays start the loop mid-way so the mountain and
+       rings show at once even for a quick redraw. */
+    .rfi-loading-card {
+      position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 1001;
+      display: none; align-items: center; gap: 0.45rem; pointer-events: none;
+      background: #fff; border-radius: var(--r-lg); box-shadow: var(--shadow-md);
+      padding: 0.3rem 0.75rem 0.3rem 0.4rem; font-size: 0.78rem; font-weight: 500; color: var(--ink-2); white-space: nowrap;
+    }
+    .rfi-loading-card.show { display: flex; }
+    .rfi-loading-card .gpx-loading-svg { width: 30px; height: 30px; }
+    .rfi-loading-card .gpx-logo-path  { animation-delay: -1s; }
+    .rfi-loading-card .gpx-logo-dot,
+    .rfi-loading-card .gpx-logo-ring1 { animation-delay: 0.2s; }
+    .rfi-loading-card .gpx-logo-ring2 { animation-delay: 0.5s; }
     .rfi-key { display: flex; gap: 2px; cursor: help; }
     .rfi-key > div { flex: 1; text-align: center; font-size: 0.6rem; color: var(--ink-3); }
     .rfi-key .rfi-sw { width: 100%; }
@@ -1483,6 +1498,7 @@ if ($tl_show) {
 
     /* Mobile */
     @media (max-width: 768px) {
+      #summit-map { height: 320px; }
       .page { padding: 1rem; }
       .topbar { padding: 0 1rem; }
       .topbar-nav { display: none; }
@@ -1786,6 +1802,11 @@ if ($tl_show) {
       <?php endif; ?>
 
       <!-- Map -->
+      <?php
+        // US summits get the cell coverage buttons and the RFI layer
+        $assoc_code = explode('/', $summit['sota_ref'] ?? '')[0];
+        $is_usa_summit = (bool)preg_match('/^(W[0-9]|K[HL])/i', $assoc_code);
+      ?>
       <div class="map-wrap" id="map-wrap">
         <div class="gpx-loading-overlay" id="gpx-loading-overlay">
           <div class="gpx-loading-card">
@@ -1804,14 +1825,22 @@ if ($tl_show) {
           </div>
         </div>
         <div id="summit-map"></div>
+        <?php if ($is_usa_summit): ?>
+        <div class="rfi-loading-card" id="rfi-loading-card" role="status" aria-live="polite">
+          <svg class="gpx-loading-svg" viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <circle cx="55" cy="55" r="50" fill="none" stroke="#1c1b19" stroke-width="1.5" opacity="0.2"/>
+            <path class="gpx-logo-path" d="M26,79.5l17-30,7,8,12-20,22,42" fill="none" stroke="#1c1b19" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle class="gpx-logo-ring2" cx="62" cy="35.5" r="15" fill="none" stroke-width="0.8"/>
+            <circle class="gpx-logo-ring1" cx="62" cy="35.5" r="9"  fill="none" stroke-width="1.2"/>
+            <circle class="gpx-logo-dot"   cx="62" cy="35.5" r="3.5"/>
+          </svg>
+          Drawing RFI heat map
+        </div>
+        <?php endif; ?>
         <div class="map-buttons">
           <button type="button" id="btn-base-street"    class="btn btn-sm btn-map-active"  onclick="switchBase('street')">Street</button>
           <button type="button" id="btn-base-topo"      class="btn btn-sm btn-secondary"  onclick="switchBase('topo')">Topo</button>
           <button type="button" id="btn-base-satellite" class="btn btn-sm btn-secondary"  onclick="switchBase('satellite')">Satellite</button>
-          <?php
-            $assoc_code = explode('/', $summit['sota_ref'] ?? '')[0];
-            $is_usa_summit = (bool)preg_match('/^(W[0-9]|K[HL])/i', $assoc_code);
-          ?>
           <?php if ($is_usa_summit): ?>
           <span class="map-divider"></span>
           <button type="button" id="btn-tmobile" class="carrier-btn" style="border-color:#E91E8C; color:#E91E8C; background:#fff;" onclick="toggleCarrier('tmobile')">T-Mo</button>
@@ -1969,11 +1998,22 @@ if ($tl_show) {
     <!-- ═══ RIGHT SIDEBAR ═══ -->
     <div>
       <!-- Weather -->
-      <div class="card" id="wxRow" style="display:none; margin-bottom:1rem; flex-direction:column; gap:0.2rem;">
+      <!-- Shown from the start with placeholders the same size as the real content, so nothing below
+           it moves when the forecast arrives (or if it fails) -->
+      <div class="card" id="wxRow" style="display:flex; margin-bottom:1rem; flex-direction:column; gap:0.2rem;">
         <div style="font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3); margin-bottom:0.5rem;">Weather at Summit &middot; <?= number_format(convertElevation($summit['elevation_ft'] ?? 0, $user_units)) . ' ' . getElevationUnit($user_units) ?></div>
-        <div class="info-val" id="wxNow" style="font-size:0.95rem; text-align:center;"></div>
-        <div id="wxWind" style="font-size:0.72rem; color:var(--ink-3); text-align:center;"></div>
-        <div id="wxDays" style="display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:0.4rem; margin-top:0.6rem;"></div>
+        <div class="info-val" id="wxNow" style="font-size:0.95rem; text-align:center; color:var(--ink-4); font-weight:500;">Loading forecast…</div>
+        <div id="wxWind" style="font-size:0.72rem; color:var(--ink-3); text-align:center;">&nbsp;</div>
+        <div id="wxDays" style="display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:0.4rem; margin-top:0.6rem;">
+          <?php for ($wx_i = 0; $wx_i < 3; $wx_i++): ?>
+          <div aria-hidden="true" style="display:flex; flex-direction:column; align-items:center; gap:0.15rem; padding:0.45rem 0.25rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--r-md); color:var(--ink-4);">
+            <span style="font-size:0.68rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">&nbsp;</span>
+            <span style="font-size:1.1rem; line-height:1.2;">&nbsp;</span>
+            <span style="font-size:0.74rem; font-weight:500;">&ndash;</span>
+            <span style="font-size:0.68rem;">&nbsp;</span>
+          </div>
+          <?php endfor; ?>
+        </div>
         <a id="wxMore" href="#" target="_blank" rel="noopener" style="font-size:0.74rem; font-weight:500; text-align:center; margin-top:0.4rem;">Full forecast and hourly detail &rarr;</a>
         <div style="font-size:0.55rem; color:var(--ink-4); text-align:right; margin-top:0.15rem;"><?= weather_credit_html() ?></div>
       </div>
@@ -3036,7 +3076,7 @@ function toggleCarrier(name) {
 <?php if ($is_usa_summit && !empty($summit['sota_ref'])): ?>
 // ── RFI layer: data from KM6AM's Summit RFI project (km6am.com/summitRFI), used with his permission ──
 // Heat map = his precomputed national field grid (lower 48). Badge = his report card for this summit.
-const rfi = { data: null, index: null, layer: null, badge: null, legend: null, on: false, sel: 0 };
+const rfi = { data: null, index: null, layer: null, badge: null, legend: null, on: false, sel: 0, loading: false };
 const rfiMetric = <?= $user_units === 'metric' ? 'true' : 'false' ?>;
 const RFI_REPO = 'https://github.com/km6am/sota-rf';   // KM6AM asked to be credited; credits link to his repo
 const RFI_RISK = {
@@ -3131,7 +3171,10 @@ function rfiMakeLegend() {
         info.setAttribute('aria-expanded', open ? 'true' : 'false');
       });
       const sel = div.querySelector('#rfi-layer-sel');
-      if (sel) sel.addEventListener('change', () => { rfi.sel = parseInt(sel.value, 10) || 0; if (rfi.layer) rfi.layer.redraw(); });
+      if (sel) sel.addEventListener('change', () => {
+        rfi.sel = parseInt(sel.value, 10) || 0;
+        if (rfi.layer) rfiAfterPaint(() => rfi.layer.redraw());
+      });
       return div;
     }
   });
@@ -3161,6 +3204,31 @@ function rfiNoteHtml() {
   return h;
 }
 
+// Loading card on while heat map tiles are loading and drawing (first time on, and after a band change).
+// It stays up at least RFI_SPIN_MIN ms so a quick redraw still shows it instead of a flicker.
+const RFI_SPIN_MIN = 600;
+function rfiSetLoading(on) {
+  clearTimeout(rfi.spinTimer);
+  if (!on && rfi.spinSince) {
+    const left = RFI_SPIN_MIN - (Date.now() - rfi.spinSince);
+    if (left > 0) { rfi.spinTimer = setTimeout(() => rfiSetLoading(false), left); return; }
+  }
+  if (on && !rfi.loading) rfi.spinSince = Date.now();
+  if (!on) rfi.spinSince = 0;
+  rfi.loading = on;
+  const card = document.getElementById('rfi-loading-card');
+  if (card) card.classList.toggle('show', on);
+}
+// Show the spinner, let the browser paint it, then run the heavy work
+function rfiAfterPaint(fn) {
+  rfiSetLoading(true);
+  requestAnimationFrame(() => setTimeout(() => {
+    fn();
+    // If nothing needed loading (no 'load' event will come), don't leave the spinner turning
+    if (!rfi.layer || !rfi.layer.isLoading()) rfiSetLoading(false);
+  }, 0));
+}
+
 function toggleRfi() {
   if (!rfi.data) return;
   const btn = document.getElementById('btn-rfi');
@@ -3170,6 +3238,7 @@ function toggleRfi() {
     if (rfi.badge) map.removeLayer(rfi.badge);
     if (rfi.legend) map.removeControl(rfi.legend);
     if (note) note.style.display = 'none';
+    rfiSetLoading(false);
     btn.classList.remove('btn-map-active'); btn.classList.add('btn-secondary');
     rfi.on = false;
     return;
@@ -3182,8 +3251,11 @@ function toggleRfi() {
     }
     rfi.index = RfiLayer.prepIndex(rfi.data.grid);
     rfi.layer = RfiLayer.layer({ index: rfi.index, layer: () => rfi.sel, alpha: 0.55, pane: 'rfiPane' });
+    // Leaflet fires 'loading' when tiles start and 'load' once every visible tile is done (failed ones too)
+    rfi.layer.on('loading', () => rfiSetLoading(true));
+    rfi.layer.on('load', () => rfiSetLoading(false));
   }
-  if (rfi.layer) rfi.layer.addTo(map);
+  if (rfi.layer) { const lyr = rfi.layer; rfiAfterPaint(() => { if (rfi.on) lyr.addTo(map); }); }
   if (!rfi.badge) rfi.badge = rfiMakeBadge();
   rfi.badge.addTo(map);
   if (!rfi.legend) rfi.legend = rfiMakeLegend();
@@ -3698,12 +3770,21 @@ function shareSummit(btn) {
     lat: q.get('lat'), lon: q.get('lon'), elev_m: q.get('elev_m'),
     name: <?= json_encode($summit['name'] ?? '') ?>, ref: <?= json_encode($summit['sota_ref'] ?? '') ?>
   });
+  document.getElementById('wxMore').href = fcUrl;
+  // The card is already on screen at full size; if the forecast fails, say so in place rather than hiding it
+  function wxUnavailable() {
+    var el = document.getElementById('wxNow');
+    el.textContent = 'Forecast unavailable right now';
+  }
   fetch('summit_weather.php?' + q).then(function (r) { return r.json(); }).then(function (d) {
-    if (!d || d.error || !d.now) return;
+    if (!d || d.error || !d.now) { wxUnavailable(); return; }
     var n = d.now;
-    document.getElementById('wxNow').textContent = n.icon + ' ' + n.temp + ', ' + n.label;
+    var nowEl = document.getElementById('wxNow');
+    nowEl.style.color = ''; nowEl.style.fontWeight = '';
+    nowEl.textContent = n.icon + ' ' + n.temp + ', ' + n.label;
     document.getElementById('wxWind').textContent = 'Feels ' + n.feels + ' · Wind ' + n.wind + ', gusts ' + n.gust;
-    document.getElementById('wxDays').innerHTML = d.days.slice(1).map(function (x) {
+    // Keep the placeholder tiles (and the card's height) if no daily rows came back
+    if (d.days && d.days.length > 1) document.getElementById('wxDays').innerHTML = d.days.slice(1).map(function (x) {
       return '<a href="' + fcUrl + '" target="_blank" rel="noopener" title="' + x.label + ', max wind ' + x.wind + ', gusts ' + x.gust + '" style="display:flex; flex-direction:column; align-items:center; gap:0.15rem; padding:0.45rem 0.25rem; text-decoration:none; color:inherit; background:var(--bg); border:1px solid var(--border); border-radius:var(--r-md);">'
         + '<span style="font-size:0.68rem; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.05em;">' + x.day + '</span>'
         + '<span style="font-size:1.1rem; line-height:1.2;">' + x.icon + '</span>'
@@ -3711,9 +3792,7 @@ function shareSummit(btn) {
         + '<span style="font-size:0.68rem; color:var(--ink-3);">💨 ' + x.wind + '</span>'
         + '</a>';
     }).join('');
-    document.getElementById('wxMore').href = fcUrl;
-    document.getElementById('wxRow').style.display = 'flex';
-  }).catch(function () {});
+  }).catch(wxUnavailable);
 })();
 </script>
 <script>

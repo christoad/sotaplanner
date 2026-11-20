@@ -116,7 +116,13 @@
         var lons = new Float64Array(N), rows = new Float64Array(N);
         for (var i = 0; i < N; i++) { lons[i] = colOf(lonAt((i + 0.5) / dpr), s); rows[i] = rowOf(latAt((i + 0.5) / dpr), s); }
         var r0 = Math.floor(rows[0]), r1 = Math.floor(rows[N - 1]) + 1, c0 = Math.floor(lons[0]), c1 = Math.floor(lons[N - 1]) + 1;
+        // Draw each tile in its own task (setTimeout), not straight in the promise chain: with blocks
+        // already cached, every tile would otherwise draw before the browser paints anything, so the
+        // page froze and a loading spinner never showed.
         mosaic(ix, opts.layer(), k, r0, r1, c0, c1).then(function (res) {
+          setTimeout(function () { paint(res); }, 0);
+        }, function (err) { done(err, cv); });
+        function paint(res) {
           var m = res.a, w = res.w;
           var g = cv.getContext('2d'), img = g.createImageData(N, N), px = img.data;
           for (var y = 0; y < N; y++) {
@@ -130,7 +136,7 @@
           }
           g.putImageData(img, 0, 0);
           done(null, cv);
-        }, function (err) { done(err, cv); });
+        }
         return cv;
       }
     });
