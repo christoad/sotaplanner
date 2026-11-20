@@ -3,7 +3,7 @@
  * import_sotamaps_gpx.php
  *
  * Handles two actions via ?action=:
- *   list  , fetch available tracks for a summit from api-db.sota.org.uk
+ *   list  , fetch available tracks for a summit from api-db2.sota.org.uk
  *   import, download a specific track, synthesize GPX, analyze, and save
  */
 
@@ -55,7 +55,8 @@ if (!$summit) {
 // Build API URL preserving the slash between association and summit code
 function smp_api_url(string $sota_ref): string {
     $parts = explode('/', $sota_ref, 2);
-    return 'https://api-db.sota.org.uk/smp/gpx/summit/'
+    // SOTA moved this lookup from api-db to api-db2 with the Maps overhaul (Nov 2026); same response format
+    return 'https://api-db2.sota.org.uk/smp/gpx/summit/'
          . rawurlencode($parts[0]) . '/' . rawurlencode($parts[1] ?? '');
 }
 
