@@ -1,11 +1,9 @@
 <?php
-// JSON for the RFI layer on summit_detail.php: does KM6AM's national grid cover this summit,
-// and what does his Summit RFI report card say about it? (Data: KM6AM, km6am.com/summitRFI)
+// JSON for the RFI layer on summit_detail.php and the public /s/ page: does KM6AM's national grid
+// cover this summit, and what does his Summit RFI report card say about it? (Data: KM6AM, km6am.com/summitRFI)
 require_once 'config.php';
 require_once 'rfi_lib.php';
-session_start();
-requireLogin();
-session_write_close();
+rfi_allow_request();
 header('Content-Type: application/json');
 
 $ref = strtoupper(trim($_GET['ref'] ?? ''));

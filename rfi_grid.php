@@ -3,9 +3,7 @@
 // Each block is fetched from his server once per grid version and served from our cache after that.
 require_once 'config.php';
 require_once 'rfi_lib.php';
-session_start();
-requireLogin();
-session_write_close();
+rfi_allow_request();
 
 $layer = (int)($_GET['l'] ?? -1);
 $k     = (int)($_GET['k'] ?? -1);

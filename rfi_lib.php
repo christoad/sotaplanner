@@ -27,6 +27,26 @@ function rfi_cache_dir() {
     return $dir;
 }
 
+// Who may use rfi_summit.php and rfi_grid.php: signed-in users, plus signed-out visitors of the public
+// /s/ summit pages, but only from our own pages (the browser marks those requests same-origin), so other
+// sites can't hotlink KM6AM's data through our relay. Not a lock (a script can fake the headers), just
+// a fence. Search engines don't run the page's fetches, and nothing loads until RFI is pressed anyway.
+// Starts and closes the session; exits with 403 when not allowed.
+function rfi_allow_request() {
+    session_start();
+    $signed_in = isset($_SESSION['sota_callsign']);
+    session_write_close();
+    if ($signed_in) return;
+    $site = $_SERVER['HTTP_SEC_FETCH_SITE'] ?? '';
+    if ($site === 'same-origin') return;
+    if ($site === '') {   // older browsers without Sec-Fetch headers: fall back to the Referer
+        $ref_host = parse_url($_SERVER['HTTP_REFERER'] ?? '', PHP_URL_HOST);
+        if ($ref_host && strcasecmp($ref_host, $_SERVER['HTTP_HOST'] ?? '') === 0) return;
+    }
+    http_response_code(403);
+    exit;
+}
+
 function rfi_http_get($url, $if_modified_since = null, $timeout = 20) {
     $ch = curl_init($url);
     $headers = [];
