@@ -1535,6 +1535,17 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
       transition: filter 0.1s, transform 0.1s;
     }
     .lmap-badge:hover { filter: brightness(1.12); transform: scale(1.06); }
+    /* Pin picked while selecting on the map (Multi-Activate or delete) */
+    .lmap-badge.lmap-selected {
+      border-color: #fff; transform: scale(1.12);
+      box-shadow: 0 0 0 3px var(--ink), 0 3px 10px rgba(0,0,0,0.4);
+    }
+    .map-select-hint {
+      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+      z-index: 1000; pointer-events: none; white-space: nowrap;
+      background: var(--ink); color: #fff; font-size: 0.78rem; font-weight: 500;
+      padding: 0.35rem 0.8rem; border-radius: 100px; box-shadow: var(--shadow-md);
+    }
     .lmap-green  { background: oklch(48% 0.13 155); color: #fff; }
     .lmap-orange { background: oklch(56% 0.14 50);  color: #fff; }
     .lmap-blue   { background: oklch(48% 0.12 240); color: #fff; }
@@ -1860,6 +1871,7 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
             </svg>
             <div class="map-loading-text">Loading map…</div>
         </div>
+        <div id="map-select-hint" class="map-select-hint" style="display:none"></div>
         <div id="dash-map"></div>
     </div>
 
@@ -2290,6 +2302,8 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
     }
 
     function updateActionUI() {
+        // Keep the map pins in step with the selection (map script loads later in the page)
+        if (typeof syncDashMapSelection === 'function') syncDashMapSelection();
         const info = document.getElementById('bulk-select-info');
         const trashBtn = document.getElementById('btn-trash');
         const multiBtn = document.getElementById('btn-multi');
@@ -2766,6 +2780,7 @@ const DASH_SUMMITS = <?= $map_json ?>;
 const DASH_FROM = <?= $from_pin_json ?>;
 
 let dashMap = null;
+const dashMarkers = {}; // summit id -> { marker, baseOpacity }
 let dashBaseLayers = null;
 let activeDashBase = 'light';
 try { activeDashBase = localStorage.getItem('sota_dash_base') || 'light'; } catch(e) {}
@@ -2853,10 +2868,16 @@ function initDashMap() {
             { direction: 'top', offset: [0, -6], className: 'dash-tip', sticky: false }
         );
 
+        dashMarkers[s.id] = { marker: marker, baseOpacity: s.badge === 'gray' ? 0.45 : 1 };
+
+        // While Multi-Activate (or delete) selection is on, a pin click selects the
+        // summit instead of opening it, same as clicking its row in the list.
         marker.on('click', function() {
+            if (selectMode) { dashMapToggleSelect(s.id); return; }
             window.location = s.url;
         });
     });
+    syncDashMapSelection();
 
     // Pin for the active "From" location
     if (DASH_FROM) {
@@ -2919,6 +2940,37 @@ function initDashMap() {
     // Hide loading overlay once tiles start appearing
     dashMap.once('load', removeDashLoading);
     setTimeout(removeDashLoading, 1800); // fallback
+}
+
+// Select or unselect a summit from its map pin. Goes through toggleRowSelect()
+// so the list checkboxes, the 11-summit cap and the floating bar all stay in step.
+function dashMapToggleSelect(id) {
+    const want = !selectedIds.has(id);
+    const cb = document.querySelector('.row-select[data-id="' + id + '"]');
+    if (cb) cb.checked = want;
+    toggleRowSelect(id, want);
+}
+
+// Ring the selected pins and show a "click pins" hint while selecting.
+function syncDashMapSelection() {
+    const hint = document.getElementById('map-select-hint');
+    if (hint) {
+        hint.style.display = selectMode ? '' : 'none';
+        hint.textContent = (actionMode === 'trash')
+            ? 'Click summit pins to select them for deletion'
+            : 'Click summit pins to add them to your route, then click Multi-Activate';
+    }
+    if (!dashMap) return;
+    dashMap.getContainer().classList.toggle('dash-selecting', selectMode);
+    Object.keys(dashMarkers).forEach(function(id) {
+        const m = dashMarkers[id];
+        const on = selectMode && selectedIds.has(parseInt(id, 10));
+        const el = m.marker.getElement();
+        const badge = el ? el.querySelector('.lmap-badge') : null;
+        if (badge) badge.classList.toggle('lmap-selected', on);
+        m.marker.setOpacity(on ? 1 : m.baseOpacity);
+        m.marker.setZIndexOffset(on ? 1000 : 0);
+    });
 }
 
 function switchDashBase(name) {

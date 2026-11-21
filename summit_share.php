@@ -179,6 +179,11 @@ $jsflags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <?php if ($is_usa && $ref): ?>
+  <script src="rfi_layer.js?v=<?= @filemtime(__DIR__ . '/rfi_layer.js') ?>"></script>
+  <script src="rfi_ui.js?v=<?= @filemtime(__DIR__ . '/rfi_ui.js') ?>"></script>
+  <link rel="stylesheet" href="rfi_ui.css?v=<?= @filemtime(__DIR__ . '/rfi_ui.css') ?>">
+  <?php endif; ?>
   <style>
     :root {
       --bg: #F7F6F3; --bg-2: #EFEDE8; --bg-3: #E5E2DA;
@@ -492,6 +497,10 @@ $jsflags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
             <button type="button" id="btn-tmobile" class="carrier-btn" style="border-color:#E91E8C; color:#E91E8C; background:#fff;" onclick="toggleCarrier('tmobile')">T-Mo</button>
             <button type="button" id="btn-verizon" class="carrier-btn" style="border-color:#CD040B; color:#CD040B; background:#fff;" onclick="toggleCarrier('verizon')">VZW</button>
             <button type="button" id="btn-att" class="carrier-btn" style="border-color:#00A8E0; color:#00A8E0; background:#fff;" onclick="toggleCarrier('att')">AT&amp;T</button>
+            <?php if ($ref): ?>
+            <span class="map-divider rfi-ctl" style="display:none;"></span>
+            <button type="button" id="btn-rfi" class="btn btn-sm btn-secondary rfi-btn rfi-ctl" style="display:none;" onclick="toggleRfi()" title="Radio interference estimate from nearby transmitters (KM6AM Summit RFI)"><span class="rfi-dot"></span>RFI</button>
+            <?php endif; ?>
           <?php endif; ?>
           <?php if ($ref): ?>
             <span class="map-divider"></span>
@@ -508,6 +517,9 @@ $jsflags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
         <canvas id="elev-canvas"></canvas>
         <div class="elev-note" id="elev-note">Hover for elevation details</div>
       </div>
+      <?php endif; ?>
+      <?php if ($is_usa && $ref): ?>
+      <div id="rfi-note" style="display:none;"></div>
       <?php endif; ?>
       <div id="az-methodology" style="font-size:0.75rem; color:var(--ink-3); margin-bottom:1rem; line-height:1.5;"></div>
     </div>
@@ -757,6 +769,11 @@ if (trailLat !== null && trailLng !== null) {
   L.circleMarker([trailLat, trailLng], { radius: 6, color: '#2D8653', fillColor: '#2D8653', fillOpacity: 0.9, weight: 2 })
     .bindPopup('Starting Point').addTo(map);
 }
+
+<?php if ($is_usa && $ref): ?>
+// RFI layer from KM6AM's Summit RFI (same code as the summit page, rfi_ui.js)
+RfiUi.init({ map: map, ref: SUMMIT_REF, lat: sumLat, lon: sumLng });
+<?php endif; ?>
 
 const tileOpts = { opacity: 0.5, maxNativeZoom: 13, maxZoom: 20, crossOrigin: true, attribution: 'FCC Form 477' };
 const carrierLayers = {

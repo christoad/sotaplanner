@@ -871,6 +871,9 @@ if ($tl_show) {
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="rfi_layer.js?v=<?= @filemtime(__DIR__ . '/rfi_layer.js') ?>"></script>
+  <script src="rfi_ui.js?v=<?= @filemtime(__DIR__ . '/rfi_ui.js') ?>"></script>
+  <link rel="stylesheet" href="rfi_ui.css?v=<?= @filemtime(__DIR__ . '/rfi_ui.css') ?>">
   <style>
     :root {
       --bg:         #F7F6F3;
@@ -1058,10 +1061,18 @@ if ($tl_show) {
 
     /* 4-stat grid */
     .stat-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; margin-bottom: 1.25rem; }
-    .stat-cell { background: var(--surface); padding: 1rem 1.25rem; }
-    .stat-cell-label { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); margin-bottom: 5px; }
-    .stat-cell-val   { font-size: 1.1rem; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.2; }
-    .stat-cell-sub   { font-size: 0.72rem; color: var(--ink-3); margin-top: 3px; }
+    .stat-cell { background: var(--surface); padding: 0.6rem 0.9rem; }
+    .stat-cell-label { font-size: 0.66rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); margin-bottom: 2px; min-height: 14px; }
+    .stat-cell-val   { font-size: 1.35rem; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.15; letter-spacing: -0.01em; }
+    .stat-cell-sub   { font-size: 0.72rem; color: var(--ink-3); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .stat-cell-icon  { background: none; border: none; padding: 0; cursor: pointer; color: var(--ink-4); line-height: 1; flex-shrink: 0; opacity: 0.6; display: inline-flex; }
+    .stat-cell-icon:hover { opacity: 1; color: var(--ink-2); }
+    .travel-recalc-btn {
+      margin-top: 0.3rem; background: var(--accent); color: #fff; border: none; border-radius: var(--r-sm);
+      padding: 0.18rem 0.55rem; font-size: 0.68rem; font-weight: 600; cursor: pointer;
+      font-family: var(--font-sans); white-space: nowrap;
+    }
+    .travel-recalc-btn:hover { background: var(--accent-2); }
 
     /* Time bar */
     .time-bar { height: 44px; border-radius: var(--r-md); overflow: hidden; display: flex; gap: 2px; margin-bottom: 6px; }
@@ -1155,7 +1166,7 @@ if ($tl_show) {
     .gpx-loading-sub {
       font-size: 0.75rem; color: var(--ink-3);
     }
-    #summit-map { height: 280px; border-radius: var(--r-lg); border: 1px solid var(--border); overflow: hidden; margin-bottom: 0.75rem; }
+    #summit-map { height: 380px; border-radius: var(--r-lg); border: 1px solid var(--border); overflow: hidden; margin-bottom: 0.75rem; }
     .track-key { display: flex; gap: 1.1rem; flex-wrap: wrap; margin: 0; font-size: 0.76rem; color: var(--ink-3); }
     .track-key > span { display: inline-flex; align-items: center; gap: 6px; }
     .track-key-swatch { display: inline-block; width: 16px; height: 4px; border-radius: 2px; }
@@ -1410,6 +1421,7 @@ if ($tl_show) {
 
     /* Mobile */
     @media (max-width: 768px) {
+      #summit-map { height: 320px; }
       .page { padding: 1rem; }
       .topbar { padding: 0 1rem; }
       .topbar-nav { display: none; }
@@ -1607,17 +1619,22 @@ if ($tl_show) {
       ?>
       <div class="stat-grid-4">
         <div class="stat-cell">
-          <div class="stat-cell-label">Travel (RT)</div>
+          <div class="stat-cell-label" style="display:flex;align-items:center;gap:0.3rem;">
+            Travel (RT)
+            <?php if ($drive_rt && $selected_address): ?>
+            <button type="submit" name="calculate_drive_time" class="stat-cell-icon" id="travel-recalc-icon"
+                    title="Recalculate travel time" aria-label="Recalculate travel time"<?= $travel_stale ? ' style="display:none;"' : '' ?>>
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M10.2 5.2A4.3 4.3 0 1 0 9.4 8.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M10.6 2.2v3.1H7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <?php endif; ?>
+          </div>
           <?php if ($drive_rt): ?>
             <div class="stat-cell-val"><?= floor($drive_rt/60) ?>h <?= $drive_rt%60 ?>m</div>
             <div class="stat-cell-sub"><?= $selected_address ? htmlspecialchars($selected_address['label'] ?: 'from base') : 'round-trip' ?></div>
-            <div class="stat-cell-sub" style="margin-top:0.2rem; color:var(--ink-4);" title="Estimate for a typical Saturday morning. Roads and trailhead access roads can close for fire, snow or construction, so check conditions with the land manager before you leave.">Check road closures before you go</div>
             <?php if ($selected_address): ?>
-            <button type="submit" name="calculate_drive_time"
-                    title="<?= $travel_stale ? 'The starting point changed since this was calculated' : 'Recalculate travel time' ?>"
-                    style="margin-top:0.35rem; background:none; color:<?= $travel_stale ? 'var(--accent)' : 'var(--ink-4)' ?>; border:1px solid <?= $travel_stale ? 'var(--accent-border)' : 'var(--border)' ?>; border-radius:var(--r-sm); padding:0.15rem 0.5rem; font-size:0.68rem; font-weight:<?= $travel_stale ? '600' : '500' ?>; cursor:pointer; font-family:var(--font-sans); white-space:nowrap;">
-                Recalculate
-            </button>
+            <!-- Shown when the start or starting point changed since this was calculated (also switched on by JS right after the starting point is moved on the map) -->
+            <button type="submit" name="calculate_drive_time" id="travel-recalc-btn" class="travel-recalc-btn"
+                    title="The starting point changed since this was calculated"<?= $travel_stale ? '' : ' style="display:none;"' ?>>Recalculate</button>
             <?php endif; ?>
           <?php elseif ($selected_address): ?>
             <div class="stat-cell-val" style="color:var(--ink-3); font-size:0.875rem;">—</div>
@@ -1708,6 +1725,11 @@ if ($tl_show) {
       <?php endif; ?>
 
       <!-- Map -->
+      <?php
+        // US summits get the cell coverage buttons and the RFI layer
+        $assoc_code = explode('/', $summit['sota_ref'] ?? '')[0];
+        $is_usa_summit = (bool)preg_match('/^(W[0-9]|K[HL])/i', $assoc_code);
+      ?>
       <div class="map-wrap" id="map-wrap">
         <div class="gpx-loading-overlay" id="gpx-loading-overlay">
           <div class="gpx-loading-card">
@@ -1730,15 +1752,13 @@ if ($tl_show) {
           <button type="button" id="btn-base-street"    class="btn btn-sm btn-map-active"  onclick="switchBase('street')">Street</button>
           <button type="button" id="btn-base-topo"      class="btn btn-sm btn-secondary"  onclick="switchBase('topo')">Topo</button>
           <button type="button" id="btn-base-satellite" class="btn btn-sm btn-secondary"  onclick="switchBase('satellite')">Satellite</button>
-          <?php
-            $assoc_code = explode('/', $summit['sota_ref'] ?? '')[0];
-            $is_usa_summit = (bool)preg_match('/^(W[0-9]|K[HL])/i', $assoc_code);
-          ?>
           <?php if ($is_usa_summit): ?>
           <span class="map-divider"></span>
           <button type="button" id="btn-tmobile" class="carrier-btn" style="border-color:#E91E8C; color:#E91E8C; background:#fff;" onclick="toggleCarrier('tmobile')">T-Mo</button>
           <button type="button" id="btn-verizon" class="carrier-btn" style="border-color:#CD040B; color:#CD040B; background:#fff;" onclick="toggleCarrier('verizon')">VZW</button>
           <button type="button" id="btn-att"     class="carrier-btn" style="border-color:#00A8E0; color:#00A8E0; background:#fff;" onclick="toggleCarrier('att')">AT&amp;T</button>
+          <span class="map-divider rfi-ctl" style="display:none;"></span>
+          <button type="button" id="btn-rfi" class="btn btn-sm btn-secondary rfi-btn rfi-ctl" style="display:none;" onclick="toggleRfi()" title="Radio interference estimate from nearby transmitters (KM6AM Summit RFI)"><span class="rfi-dot"></span>RFI</button>
           <?php endif; ?>
           <?php if (!empty($summit['sota_ref'])): ?>
             <span class="map-divider"></span>
@@ -1769,6 +1789,9 @@ if ($tl_show) {
         <canvas id="elev-canvas"></canvas>
         <div class="elev-note" id="elev-note">Hover for elevation details</div>
       </div>
+      <?php endif; ?>
+      <?php if ($is_usa_summit && !empty($summit['sota_ref'])): ?>
+      <div id="rfi-note" style="display:none;"></div>
       <?php endif; ?>
       <?php if (!empty($summit['sota_ref'])): ?>
       <div id="az-methodology" style="font-size:0.75rem; color:var(--ink-3); margin-bottom:1rem; line-height:1.5;"></div>
@@ -1886,11 +1909,22 @@ if ($tl_show) {
     <!-- ═══ RIGHT SIDEBAR ═══ -->
     <div>
       <!-- Weather -->
-      <div class="card" id="wxRow" style="display:none; margin-bottom:1rem; flex-direction:column; gap:0.2rem;">
+      <!-- Shown from the start with placeholders the same size as the real content, so nothing below
+           it moves when the forecast arrives (or if it fails) -->
+      <div class="card" id="wxRow" style="display:flex; margin-bottom:1rem; flex-direction:column; gap:0.2rem;">
         <div style="font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3); margin-bottom:0.5rem;">Weather at Summit &middot; <?= number_format(convertElevation($summit['elevation_ft'] ?? 0, $user_units)) . ' ' . getElevationUnit($user_units) ?></div>
-        <div class="info-val" id="wxNow" style="font-size:0.95rem; text-align:center;"></div>
-        <div id="wxWind" style="font-size:0.72rem; color:var(--ink-3); text-align:center;"></div>
-        <div id="wxDays" style="display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:0.4rem; margin-top:0.6rem;"></div>
+        <div class="info-val" id="wxNow" style="font-size:0.95rem; text-align:center; color:var(--ink-4); font-weight:500;">Loading forecast…</div>
+        <div id="wxWind" style="font-size:0.72rem; color:var(--ink-3); text-align:center;">&nbsp;</div>
+        <div id="wxDays" style="display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:0.4rem; margin-top:0.6rem;">
+          <?php for ($wx_i = 0; $wx_i < 3; $wx_i++): ?>
+          <div aria-hidden="true" style="display:flex; flex-direction:column; align-items:center; gap:0.15rem; padding:0.45rem 0.25rem; background:var(--bg); border:1px solid var(--border); border-radius:var(--r-md); color:var(--ink-4);">
+            <span style="font-size:0.68rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">&nbsp;</span>
+            <span style="font-size:1.1rem; line-height:1.2;">&nbsp;</span>
+            <span style="font-size:0.74rem; font-weight:500;">&ndash;</span>
+            <span style="font-size:0.68rem;">&nbsp;</span>
+          </div>
+          <?php endfor; ?>
+        </div>
         <a id="wxMore" href="#" target="_blank" rel="noopener" style="font-size:0.74rem; font-weight:500; text-align:center; margin-top:0.4rem;">Full forecast and hourly detail &rarr;</a>
         <div style="font-size:0.55rem; color:var(--ink-4); text-align:right; margin-top:0.15rem;"><?= weather_credit_html() ?></div>
       </div>
@@ -2878,13 +2912,24 @@ document.getElementById('ctx-set-trailhead').addEventListener('click', function(
   fd.append('trailhead_lng', lng);
   fetch('summit_detail.php?id=<?= $summit_id ?>', { method: 'POST', body: fd })
     .then(r => r.json())
-    .then(d => showMapToast(d.ok ? '✓ Starting point saved, no other save needed' : 'Error saving starting point'))
+    .then(d => {
+      showMapToast(d.ok ? '✓ Starting point saved, no other save needed' : 'Error saving starting point');
+      if (d.ok) showTravelRecalc();   // travel time was to the old starting point
+    })
     .catch(() => showMapToast('Error saving starting point'));
 
   // Moving the pin counts as confirming, dismiss the validation banner
   const banner = document.getElementById('trailhead-validate-banner');
   if (banner) banner.remove();
 });
+
+// Swap the small refresh icon for the prominent Recalculate button in the Travel tile
+function showTravelRecalc() {
+  const btn = document.getElementById('travel-recalc-btn');
+  const icon = document.getElementById('travel-recalc-icon');
+  if (btn) btn.style.display = '';
+  if (icon) icon.style.display = 'none';
+}
 
 function confirmTrailhead() {
   const lat = document.getElementById('trailhead-lat-hidden').value;
@@ -2938,6 +2983,11 @@ function toggleCarrier(name) {
     btn.style.background = carrierColors[name]; btn.style.color = '#fff';
   }
 }
+
+<?php if ($is_usa_summit && !empty($summit['sota_ref'])): ?>
+// RFI layer from KM6AM's Summit RFI (code shared with the public /s/ page in rfi_ui.js)
+RfiUi.init({ map: map, ref: <?= json_encode($summit['sota_ref']) ?>, lat: sumLat, lon: sumLng });
+<?php endif; ?>
 
 function initActivationZone(poly, source) {
   let coords;
@@ -3443,12 +3493,21 @@ function shareSummit(btn) {
     lat: q.get('lat'), lon: q.get('lon'), elev_m: q.get('elev_m'),
     name: <?= json_encode($summit['name'] ?? '') ?>, ref: <?= json_encode($summit['sota_ref'] ?? '') ?>
   });
+  document.getElementById('wxMore').href = fcUrl;
+  // The card is already on screen at full size; if the forecast fails, say so in place rather than hiding it
+  function wxUnavailable() {
+    var el = document.getElementById('wxNow');
+    el.textContent = 'Forecast unavailable right now';
+  }
   fetch('summit_weather.php?' + q).then(function (r) { return r.json(); }).then(function (d) {
-    if (!d || d.error || !d.now) return;
+    if (!d || d.error || !d.now) { wxUnavailable(); return; }
     var n = d.now;
-    document.getElementById('wxNow').textContent = n.icon + ' ' + n.temp + ', ' + n.label;
+    var nowEl = document.getElementById('wxNow');
+    nowEl.style.color = ''; nowEl.style.fontWeight = '';
+    nowEl.textContent = n.icon + ' ' + n.temp + ', ' + n.label;
     document.getElementById('wxWind').textContent = 'Feels ' + n.feels + ' · Wind ' + n.wind + ', gusts ' + n.gust;
-    document.getElementById('wxDays').innerHTML = d.days.slice(1).map(function (x) {
+    // Keep the placeholder tiles (and the card's height) if no daily rows came back
+    if (d.days && d.days.length > 1) document.getElementById('wxDays').innerHTML = d.days.slice(1).map(function (x) {
       return '<a href="' + fcUrl + '" target="_blank" rel="noopener" title="' + x.label + ', max wind ' + x.wind + ', gusts ' + x.gust + '" style="display:flex; flex-direction:column; align-items:center; gap:0.15rem; padding:0.45rem 0.25rem; text-decoration:none; color:inherit; background:var(--bg); border:1px solid var(--border); border-radius:var(--r-md);">'
         + '<span style="font-size:0.68rem; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:0.05em;">' + x.day + '</span>'
         + '<span style="font-size:1.1rem; line-height:1.2;">' + x.icon + '</span>'
@@ -3456,9 +3515,7 @@ function shareSummit(btn) {
         + '<span style="font-size:0.68rem; color:var(--ink-3);">💨 ' + x.wind + '</span>'
         + '</a>';
     }).join('');
-    document.getElementById('wxMore').href = fcUrl;
-    document.getElementById('wxRow').style.display = 'flex';
-  }).catch(function () {});
+  }).catch(wxUnavailable);
 })();
 </script>
 <script>

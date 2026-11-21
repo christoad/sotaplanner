@@ -1111,6 +1111,30 @@ a:hover { text-decoration: underline; }
   .page-header { flex-direction: column; }
   .map-wrap { height: 300px; }
 }
+
+/* Map right-click menu: copy the coordinates of that spot (same as the summit detail page) */
+#map-ctx-menu {
+  position: fixed; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  box-shadow: var(--shadow-md); z-index: 3000;
+  overflow: hidden; display: none; min-width: 175px;
+}
+#map-ctx-menu button {
+  display: block; width: 100%; padding: 0.55rem 1rem;
+  text-align: left; background: none; border: none; cursor: pointer;
+  color: var(--ink-2); font-family: var(--font-mono); font-size: 0.78rem; letter-spacing: 0.01em;
+  transition: background 0.1s;
+}
+#map-ctx-menu button:hover { background: var(--bg-2); }
+#map-ctx-menu .ctx-hint { display: block; font-family: var(--font-sans); font-size: 0.7rem; color: var(--ink-3); margin-top: 1px; }
+#coords-toast {
+  position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%) translateY(8px);
+  background: var(--ink); color: #fff; font-size: 0.82rem; font-weight: 500;
+  padding: 0.5rem 1rem; border-radius: var(--r-md); pointer-events: none;
+  opacity: 0; transition: opacity 0.18s, transform 0.18s; z-index: 9999;
+  white-space: nowrap;
+}
+#coords-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 </style>
 </head>
 <body>
@@ -2304,6 +2328,23 @@ async function initMap() {
         L.popup().setLatLng(e.latlng).setContent(popupHtml).openOn(map);
     });
 
+    // Right-click anywhere: small menu with that spot's coordinates; click them to copy (as on summit detail)
+    map.on('contextmenu', function(e) {
+        e.originalEvent.preventDefault();
+        const menu = document.getElementById('map-ctx-menu');
+        const btn = document.getElementById('ctx-copy-coords');
+        if (!menu || !btn) return;
+        const coords = parseFloat(e.latlng.lat.toFixed(6)) + ', ' + parseFloat(e.latlng.lng.toFixed(6));
+        btn.dataset.coords = coords;
+        btn.innerHTML = coords + '<span class="ctx-hint">Click to copy</span>';
+        // Keep the menu inside the window
+        const menuW = 200, menuH = 56;
+        menu.style.left = Math.min(e.originalEvent.clientX + 4, window.innerWidth - menuW - 8) + 'px';
+        menu.style.top  = Math.min(e.originalEvent.clientY + 4, window.innerHeight - menuH - 8) + 'px';
+        menu.style.display = 'block';
+    });
+    map.on('movestart zoomstart', hideMapCtxMenu);
+
     if (bounds.length > 0) {
         map.fitBounds(bounds, { padding: [40, 40] });
         wholeRouteBounds = L.latLngBounds(bounds);
@@ -2731,7 +2772,33 @@ function addSummitToRoute(id) {
     ids.push(String(id));
     navigateToOrder(ids);
 }
+
+// ── Map right-click menu (see the 'contextmenu' handler in initMap) ──
+function hideMapCtxMenu() {
+    const menu = document.getElementById('map-ctx-menu');
+    if (menu) menu.style.display = 'none';
+}
+let _coordsToastTimer = null;
+// One page-wide handler (the menu markup sits below this script): copy if the coordinates were clicked, then close
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest && e.target.closest('#ctx-copy-coords');
+    if (btn && btn.dataset.coords && navigator.clipboard) {
+        navigator.clipboard.writeText(btn.dataset.coords).then(function () {
+            const toast = document.getElementById('coords-toast');
+            toast.classList.add('show');
+            clearTimeout(_coordsToastTimer);
+            _coordsToastTimer = setTimeout(() => toast.classList.remove('show'), 2000);
+        });
+    }
+    hideMapCtxMenu();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') hideMapCtxMenu(); });
 </script>
+
+<div id="map-ctx-menu" role="menu">
+    <button type="button" id="ctx-copy-coords" role="menuitem"></button>
+</div>
+<div id="coords-toast" role="status">Copied to clipboard</div>
 
 </body>
 </html>

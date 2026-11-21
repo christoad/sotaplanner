@@ -61,7 +61,8 @@ $global = $global_stmt->fetch(PDO::FETCH_ASSOC);
 if (!$global) {
     // ── Fetch from SOTAmaps ───────────────────────────────────────────────────
     $parts   = explode('/', $sota_ref, 2);
-    $api_url = 'https://api-db.sota.org.uk/smp/gpx/summit/'
+    // SOTA moved this lookup from api-db to api-db2 with the Maps overhaul (Nov 2026); same response format
+    $api_url = 'https://api-db2.sota.org.uk/smp/gpx/summit/'
              . rawurlencode($parts[0]) . '/' . rawurlencode($parts[1] ?? '');
 
     $ctx = stream_context_create(['http' => [

@@ -1,0 +1,120 @@
+/* RFI layer on the summit maps (summit_detail.php and the public /s/ page).
+   Data: Summit RFI by KM6AM (https://github.com/km6am/sota-rf), used with his permission.
+   Expects the Alpine Precision CSS variables from the page. */
+.rfi-btn { display: inline-flex; align-items: center; gap: 0.35rem; }
+.rfi-btn .rfi-dot { width: 8px; height: 8px; border-radius: 50%; background: #e2492a; flex-shrink: 0; }
+.rfi-legend {
+  position: relative;
+  background: rgba(255,255,255,0.95); border: 1px solid var(--border); border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm); padding: 0.4rem 0.5rem; font-family: var(--font-sans);
+  font-size: 0.68rem; color: var(--ink-2); line-height: 1.3; width: 150px;
+}
+.rfi-legend-head { display: flex; align-items: center; gap: 0.3rem; margin-bottom: 0.3rem; }
+.rfi-legend-title { font-weight: 600; color: var(--ink); font-size: 0.72rem; }
+.rfi-legend-info {
+  margin-left: auto; width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--border-2);
+  background: var(--surface); color: var(--ink-3); font: 600 0.62rem/14px var(--font-sans); text-align: center;
+  cursor: pointer; padding: 0; flex-shrink: 0;
+}
+.rfi-legend.open .rfi-legend-info { background: var(--ink); border-color: var(--ink); color: #fff; }
+.rfi-legend select {
+  width: 100%; height: 22px; font-family: var(--font-sans); font-size: 0.68rem; color: var(--ink);
+  border: 1px solid var(--border-2); border-radius: var(--r-sm); background: var(--surface);
+  margin-bottom: 0.35rem; padding: 0 0.2rem;
+}
+.rfi-key { display: flex; gap: 2px; cursor: help; }
+.rfi-key > div { flex: 1; text-align: center; font-size: 0.6rem; color: var(--ink-3); }
+.rfi-key .rfi-sw { width: 100%; }
+.rfi-sw { display: flex; height: 8px; border-radius: 2px; overflow: hidden; border: 1px solid rgba(28,27,25,0.08); margin-bottom: 1px; }
+.rfi-sw i { flex: 1; }
+.rfi-legend-credit { margin-top: 0.25rem; color: var(--ink-4); font-size: 0.6rem; text-align: right; }
+.rfi-legend-credit a { color: var(--ink-3); }
+/* Details float above the legend so the legend never resizes and the band menu stays put.
+   Shown by hovering the "i" or the color key (desktop), or tapping the "i" (phones). */
+.rfi-more {
+  display: none; position: absolute; left: 0; bottom: calc(100% + 6px); width: 220px;
+  background: rgba(255,255,255,0.97); border: 1px solid var(--border); border-radius: var(--r-md);
+  box-shadow: var(--shadow-md); padding: 0.5rem 0.55rem; pointer-events: none;
+}
+.rfi-legend.open .rfi-more { display: block; }
+@media (hover: hover) {
+  .rfi-legend:has(.rfi-legend-info:hover) .rfi-more,
+  .rfi-legend:has(.rfi-key:hover) .rfi-more { display: block; }
+}
+.rfi-legend-row { display: flex; gap: 0.4rem; align-items: flex-start; margin-bottom: 0.3rem; }
+.rfi-legend-row .rfi-sw { flex: 0 0 26px; margin-top: 2px; }
+.rfi-legend-row b { font-weight: 600; color: var(--ink); font-size: 0.64rem; letter-spacing: 0.04em; }
+.rfi-more-foot { color: var(--ink-3); font-size: 0.62rem; }
+
+.rfi-badge-icon { background: none; border: none; }
+.rfi-badge {
+  position: absolute; left: 0; bottom: 0; transform: translateX(-50%);
+  background: var(--surface); border: 1.5px solid; border-radius: var(--r-md);
+  box-shadow: var(--shadow-md); padding: 0.3rem 0.5rem; font-family: var(--font-sans);
+  font-size: 0.72rem; line-height: 1.3; color: var(--ink-2); width: max-content; max-width: 230px;
+  cursor: pointer; white-space: normal;
+}
+.rfi-badge::after {
+  content: ''; position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%) rotate(45deg);
+  width: 9px; height: 9px; background: var(--surface); border-right: 1.5px solid; border-bottom: 1.5px solid; border-color: inherit;
+}
+.rfi-badge-head { display: flex; align-items: center; gap: 0.35rem; font-weight: 600; color: var(--ink); }
+.rfi-badge-chip { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.05em; color: #fff; border-radius: 3px; padding: 0.05rem 0.3rem; }
+.rfi-badge-link { margin-left: auto; color: var(--ink-3); font-weight: 500; font-size: 0.68rem; white-space: nowrap; }
+.rfi-badge.rfi-none { cursor: default; }
+
+#rfi-note { font-size: 0.75rem; color: var(--ink-3); margin: -0.5rem 0 1rem; line-height: 1.5; }
+#rfi-note a { color: var(--ink-2); }
+
+/* While the heat map draws: the site's animated summit logo in a small card at the top of the map
+   (no dimming). Negative delays start the loop mid-way so the mountain and rings show at once even
+   for a quick redraw. The card sits inside the map's wrapper, which must be position: relative. */
+.rfi-loading-card {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 1001;
+  display: none; align-items: center; gap: 0.45rem; pointer-events: none;
+  background: #fff; border-radius: var(--r-lg); box-shadow: var(--shadow-md);
+  padding: 0.3rem 0.75rem 0.3rem 0.4rem; font-size: 0.78rem; font-weight: 500; color: var(--ink-2); white-space: nowrap;
+}
+.rfi-loading-card.show { display: flex; }
+.rfi-loading-card svg { width: 30px; height: 30px; overflow: visible; }
+.rfi-loading-card .rfi-logo-path {
+  stroke-dasharray: 116; stroke-dashoffset: 116;
+  animation: rfi-path-draw 3s ease-in-out -1s infinite;
+}
+.rfi-loading-card .rfi-logo-dot {
+  fill: var(--red); transform-box: fill-box; transform-origin: center; opacity: 0;
+  animation: rfi-dot-pop 3s ease-in-out 0.2s infinite;
+}
+.rfi-loading-card .rfi-logo-ring1,
+.rfi-loading-card .rfi-logo-ring2 {
+  stroke: var(--red); transform-box: fill-box; transform-origin: center; opacity: 0;
+  animation: rfi-ring-pulse 3s ease-out 0.2s infinite;
+}
+.rfi-loading-card .rfi-logo-ring2 { animation-delay: 0.5s; }
+@keyframes rfi-path-draw {
+  0%   { stroke-dashoffset: 116; opacity: 0; }
+  7%   { stroke-dashoffset: 116; opacity: 1; }
+  62%  { stroke-dashoffset: 0;   opacity: 1; }
+  80%  { stroke-dashoffset: 0;   opacity: 1; }
+  94%  { stroke-dashoffset: 0;   opacity: 0; }
+  100% { stroke-dashoffset: 116; opacity: 0; }
+}
+@keyframes rfi-dot-pop {
+  0%   { transform: scale(0);   opacity: 0; }
+  15%  { transform: scale(1.4); opacity: 1; }
+  30%  { transform: scale(1);   opacity: 1; }
+  72%  { transform: scale(1);   opacity: 1; }
+  90%  { transform: scale(0.4); opacity: 0; }
+  100% { transform: scale(0);   opacity: 0; }
+}
+@keyframes rfi-ring-pulse {
+  0%   { transform: scale(0.5); opacity: 0; }
+  10%  { opacity: 0.5; }
+  68%  { transform: scale(2.4); opacity: 0; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rfi-loading-card .rfi-logo-path { animation: none; stroke-dashoffset: 0; }
+  .rfi-loading-card .rfi-logo-dot { animation: none; opacity: 1; }
+  .rfi-loading-card .rfi-logo-ring1, .rfi-loading-card .rfi-logo-ring2 { animation: none; }
+}

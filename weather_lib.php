@@ -94,10 +94,41 @@ function weather_height($m, $units) {
     return $units === 'metric' ? number_format(round($m, -1)) . ' m' : number_format(round($m * 3.28084, -2)) . ' ft';
 }
 
+// Conditions for this moment, read from the hourly forecast at the summit's local clock time.
+// Open-Meteo's 'current' block is frozen when we fetch it and the cache keeps it up to 3 hours;
+// on a sunny morning summits warm 5 to 8 C in that time, so the snapshot read far too cold.
+function weather_now($w) {
+    $cur = $w['current'] ?? null;
+    $h = $w['hourly'] ?? null;
+    if (!$h || empty($h['time'])) return $cur;
+    $local = time() + (int)($w['utc_offset_seconds'] ?? 0);
+    $k = array_search(gmdate('Y-m-d\TH:00', $local), $h['time'], true);
+    if ($k === false) return $cur;
+    $n = isset($h['time'][$k + 1]) ? $k + 1 : $k;
+    $f = (int)gmdate('i', $local) / 60;
+    $mix = function ($key) use ($h, $k, $n, $f) {
+        $a = $h[$key][$k] ?? null;
+        $b = $h[$key][$n] ?? null;
+        if ($a === null || $b === null) return $a ?? $b;
+        return $a + ($b - $a) * $f;
+    };
+    $now = [
+        'temperature_2m'       => $mix('temperature_2m'),
+        'apparent_temperature' => $mix('apparent_temperature'),
+        'wind_speed_10m'       => $mix('wind_speed_10m'),
+        'wind_gusts_10m'       => $mix('wind_gusts_10m'),
+        'weather_code'         => $h['weather_code'][$f < 0.5 ? $k : $n] ?? ($cur['weather_code'] ?? 0),
+    ];
+    foreach ($now as $key => $v) {
+        if ($v === null) $now[$key] = $cur[$key] ?? 0;
+    }
+    return $now;
+}
+
 // Short 5-day-style outlook and current conditions for the compact summit detail display
 function weather_compact($w, $units) {
     if (!$w) return null;
-    $cur = $w['current'] ?? null;
+    $cur = weather_now($w);
     $out = ['now' => null, 'days' => []];
     if ($cur) {
         [$label, $icon] = weather_wmo($cur['weather_code']);
