@@ -1,0 +1,6 @@
+[Unit]
+Description=Write BRouter server status for SOTAplanner
+[Service]
+Type=oneshot
+Nice=10
+ExecStart=/usr/local/bin/brouter_status.py

@@ -171,6 +171,21 @@ if (isset($_GET['ajax'])) {
             }
             echo json_encode($d ? ['ok' => true, 'd' => $d] : ['ok' => false, 'error' => 'No saved result for that summit in this run']);
 
+        } elseif ($act === 'server') {
+            // Live status of the BRouter box (status.json, rewritten every 15 s there) plus which summit is being searched now, in any run
+            $st = null; $err = null;
+            if (defined('BROUTER_URL') && defined('BROUTER_API_KEY')) {
+                $ch = curl_init(preg_replace('#/brouter/?$#', '', BROUTER_URL) . '/status.json');
+                curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => ['X-Api-Key: ' . BROUTER_API_KEY], CURLOPT_CONNECTTIMEOUT => 4, CURLOPT_TIMEOUT => 6]);
+                $body = curl_exec($ch); $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+                $st = $code === 200 ? json_decode((string)$body, true) : null;
+                if (!$st) $err = $body === false ? 'could not connect' : 'HTTP ' . $code;
+            } else { $err = 'BROUTER_URL / BROUTER_API_KEY are not set'; }
+            $w = json_decode((string)$db->query("SELECT setting_value FROM app_settings WHERE setting_key = 'trail_disc_working'")->fetchColumn(), true);
+            $working = $w ? ['run' => (int)$w['run'], 'ref' => $w['ref'], 'secs' => time() - (int)$w['started'], 'done' => !empty($w['done'])] : null;
+            if ($st) $st['age_s'] = time() - (int)$st['updated'];
+            echo json_encode(['ok' => (bool)$st, 'status' => $st, 'error' => $err, 'working' => $working]);
+
         } elseif ($act === 'evidence') {
             // Community evidence from neighboring summits' tracks for a saved result (for tuning the confidence score)
             $st = $db->prepare("SELECT file FROM trail_disc_results WHERE run_id = ? AND sota_ref = ?");
@@ -277,6 +292,10 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
 .reasons{font-size:.72rem;color:var(--ink-3);margin-top:.2rem}
 .closed{font-size:.78rem;color:var(--orange);margin-top:.25rem}
 .closed a{color:inherit}
+.srv{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem 1.1rem;font-size:.8rem;color:var(--ink-2);padding:.65rem 1rem;margin-bottom:1rem}
+.srv b{font-weight:600;color:var(--ink)} .srv .lbl{font-size:.68rem;font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em}
+.srv .led{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:.35rem;vertical-align:0}
+.srv .warn{color:var(--red);font-weight:600}
 .pk{font-size:.74rem;color:var(--ink-3);margin-top:.15rem}
 .pk b{color:var(--blue);font-weight:600} .pk b.t{color:#15803d} .pk.none{color:var(--ink-4)}
 .mapbar{display:flex;align-items:center;gap:.5rem;font-size:.8rem;color:var(--ink-2);margin:0 0 .5rem}
@@ -295,6 +314,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
 <?php if (!$tablesReady): ?>
     <div class="msg msg-error">The trail discovery tables do not exist yet. Run db_migrate.php first.</div>
 <?php else: ?>
+    <div class="card srv" id="srv"><span class="lbl">BRouter server</span><span>checking...</span></div>
     <div class="card">
         <div class="row">
             <div><label>Test run</label>
@@ -597,6 +617,33 @@ function drawDetail(fit) {
   $('detail').innerHTML = h; $('detail').style.display = '';
   $('detail').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { const i = +tr.dataset.i; hl = hl === i ? null : i; drawDetail(false); });
 }
+
+/* ───────── live BRouter server status (every 10 s) ───────── */
+async function loadServer() {
+  const r = await api('server');
+  const el = $('srv'); if (!el) return;
+  const parts = ['<span class="lbl">BRouter server</span>'];
+  const led = c => '<span class="led" style="background:' + c + '"></span>';
+  const w = r.working, searching = w && !w.done && w.secs < 300;
+  if (!r.ok || !r.status) {
+    parts.push('<span class="warn">' + led('#dc2626') + 'Cannot read the server status (' + esc(r.error || 'no answer') + ')</span>');
+  } else {
+    const st = r.status, m1 = st.routes['1m'], h1 = st.routes['60m'];
+    const up = st.brouter === 'active';
+    const busy = m1.n > 0;
+    parts.push(up ? (busy ? led('#16a34a') + '<b>Busy</b>' : led('#94a3b8') + '<b>Idle</b>' + (st.last_route_ago_s != null ? ', last route ' + (st.last_route_ago_s < 120 ? st.last_route_ago_s + ' s' : Math.round(st.last_route_ago_s / 60) + ' min') + ' ago' : ''))
+                  : '<span class="warn">' + led('#dc2626') + 'BRouter is ' + esc(st.brouter) + '</span>');
+    if (busy) parts.push('<span><b>' + m1.n.toLocaleString() + '</b> routes in the last minute, ' + (m1.avg_s != null ? m1.avg_s + ' s each on average' : '') + '</span>');
+    parts.push('<span>Last hour: <b>' + h1.n.toLocaleString() + '</b>' + (h1.no_route ? ', ' + h1.no_route + ' with no route (normal for probes)' : '') + '</span>');
+    if (h1.limited) parts.push('<span class="warn">' + h1.limited + ' refused by the speed limit in the last hour</span>');
+    if (h1.failed) parts.push('<span class="warn">' + h1.failed + ' server errors in the last hour</span>');
+    parts.push('<span>CPU load <b>' + st.load[0] + '</b> of ' + st.cpus + ', memory <b>' + st.mem_used_pct + '%</b>, disk <b>' + st.disk_used_pct + '%</b></span>');
+    if (st.age_s > 90) parts.push('<span class="warn">status is ' + Math.round(st.age_s / 60) + ' min old</span>');
+  }
+  if (searching) parts.push('<span>Now: searching around <b>' + esc(w.ref) + '</b> (run ' + w.run + ', ' + w.secs + ' s)' + (w.run !== run ? ' <a href="?run=' + w.run + '">view run</a>' : '') + '</span>');
+  el.innerHTML = parts.join('');
+}
+if ($('srv')) { loadServer(); setInterval(loadServer, 10000); }
 
 /* ───────── running ───────── */
 async function runOne(ref) {
