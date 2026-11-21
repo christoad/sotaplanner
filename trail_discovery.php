@@ -292,6 +292,13 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
 .reasons{font-size:.72rem;color:var(--ink-3);margin-top:.2rem}
 .closed{font-size:.78rem;color:var(--orange);margin-top:.25rem}
 .closed a{color:inherit}
+.gloss{margin-top:.9rem;border-top:1px solid var(--bg-3);padding-top:.7rem;font-size:.82rem;color:var(--ink-2)}
+.gloss summary{cursor:pointer;font-weight:600;color:var(--ink);font-size:.85rem}
+.gloss h3{font-size:.72rem;font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;margin:1rem 0 .4rem}
+.gloss p{max-width:900px;margin-bottom:.4rem}
+.gloss dl{display:grid;grid-template-columns:minmax(140px,200px) 1fr;gap:.35rem 1rem;max-width:1000px}
+.gloss dt{font-weight:600;color:var(--ink)} .gloss dd{margin:0}
+@media (max-width:700px){.gloss dl{grid-template-columns:1fr}.gloss dd{margin-bottom:.4rem}}
 .srv{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem 1.1rem;font-size:.8rem;color:var(--ink-2);padding:.65rem 1rem;margin-bottom:1rem}
 .srv b{font-weight:600;color:var(--ink)} .srv .lbl{font-size:.68rem;font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em}
 .srv .led{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:.35rem;vertical-align:0}
@@ -350,7 +357,48 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
     </div>
 
     <div id="msg"></div>
-    <div class="card"><h2>Scoreboard</h2><div class="tiles" id="tiles"></div><p class="note" id="ringNote"></p></div>
+    <div class="card"><h2>Scoreboard</h2><div class="tiles" id="tiles"></div><p class="note" id="ringNote"></p>
+        <details class="gloss">
+            <summary>What the numbers mean</summary>
+            <h3>How a summit is tested</h3>
+            <p>Each test summit already has a <b>community track</b> (a real GPX recording from the SOTA Mapping Project). We search for routes without looking at it, then compare our routes with the <b>uphill part</b> of that track: from where they started to the point closest to the summit (tracks recorded top-down are flipped).</p>
+            <dl>
+                <dt>Overlap</dt><dd>How much of the community's uphill track runs along one of our routes: the share of their track points that lie within 50 m of our route line. 100% means every part of their hike is on our route. 50% means half of their hike follows our route and half goes another way (a different trail, a shortcut, or a different start). The route compared is whichever of ours fits best, judged mainly by overlap and then by how close the starts are.</dd>
+                <dt>Start off</dt><dd>The straight-line distance between where the community track starts and where that best-fitting route of ours starts. Under 400 m means we found the same parking spot or trailhead, give or take.</dd>
+                <dt>Match</dt><dd>Overlap 70% or more and the starts within 400 m: we found the route people actually use.</dd>
+                <dt>Partial</dt><dd>Not a match, but overlap of at least 40% or a start within 1 km: close, often the same trail from a different parking spot, or a different trail for part of the way.</dd>
+                <dt>Miss</dt><dd>Anything less: our routes and theirs are different hikes, or we found nothing near their route.</dd>
+                <dt>Not in top 3</dt><dd>We found the community's route, but it is not one of the three routes a user would be shown.</dd>
+            </dl>
+            <h3>Scoreboard tiles</h3>
+            <dl>
+                <dt>Shown to users</dt><dd>Share of summits where the community's route (match or partial) is among the three routes we would show. <b>With the other rule</b>: the same if we picked the three routes the other way (paved starts first, or quickest three).</dd>
+                <dt>No start found</dt><dd>Summits where no probe reached a drivable road within the search distance. These would stay in Needs Research.</dd>
+                <dt>Start off by</dt><dd>The middle value (median) of Start off across all summits.</dd>
+                <dt>Hike time error</dt><dd>On matches only: how far our uphill time is from the community track's uphill time, both worked out with the same SOTAplanner pace formula from distance and climb (median, in percent).</dd>
+                <dt>Ours much shorter</dt><dd>Summits where our quickest route is more than 20% quicker than the community's. Usually a warning sign: a private road, an unmapped gate or a route people avoid for a reason.</dd>
+                <dt>Per summit</dt><dd>Median search time and number of BRouter routing requests per summit.</dd>
+                <dt>Confidence high / medium / low</dt><dd>Summits sorted by their summit confidence (below). The small line underneath checks it: the share of those summits where one of our three shown starts (or its gate-closed parking spot) is within 400 m of where the community started.</dd>
+                <dt>Top start at parking</dt><dd>Share of summits where our best start is within 150 m of a parking lot or trailhead in the OpenStreetMap list.</dd>
+                <dt>People park at mapped lot</dt><dd>The same check for the community track's start: how often real hikers start at a mapped lot or trailhead.</dd>
+                <dt>Mapped lot we missed</dt><dd>Summits where people start at a mapped lot (within 150 m) but none of our three shown starts is within 400 m of where they start. The clearest place to improve.</dd>
+                <dt>Ring line</dt><dd>How far from the summit the winning route's start was first found. Tells us how far out the search really needs to go.</dd>
+            </dl>
+            <h3>Table and summit detail</h3>
+            <dl>
+                <dt>Ours / Community</dt><dd>Uphill time, distance and climb of our best route and of the community track.</dd>
+                <dt>Conf. (summit)</dt><dd>The chance that the three routes we show include the way people actually go. 70 and up = high (hike data could be filled in for users), 40 to 69 = medium (shown, review required), under 40 = low (stays in Needs Research).</dd>
+                <dt>Conf. (each route)</dt><dd>That route's own chance of being one people use, from: how quick it is compared with the others (the strongest signal), how many probes led to it, whether another summit's community track starts there or follows it, paved or dirt start, an off-trail finish, and a hike over 4 hours. The reasons are listed under each route.</dd>
+                <dt>Routes (p / d)</dt><dd>Number of distinct starting points found on paved (p) and dirt (d) roads.</dd>
+                <dt>Probes and rings</dt><dd>Search points placed in circles (rings) 0.75 to 12 km from the summit. Each is routed to the summit; the route is then read from the top down until it reaches a road you can drive. Green probe: found a start. Gray: stayed on trail the whole way. Red: no route.</dd>
+                <dt>Paved / dirt</dt><dd>The road type where the drive ends. Paved starts are preferred; dirt ones are kept when no paved start exists or as alternatives.</dd>
+                <dt>If the dirt road is closed</dt><dd>For a dirt start: the hike from the nearest paved road beyond it, in case a gate is shut (dashed line and square marker on the map).</dd>
+                <dt>Off trail to the summit</dt><dd>When no mapped path reaches the top, the last stretch is a straight line from the end of the path to the summit (red dashed). It is included in distance and time.</dd>
+                <dt>First seen X km out</dt><dd>The ring where a probe first led to that start.</dd>
+                <dt>Mapped parking / trailhead X m away</dt><dd>Distance from a start to the nearest parking lot or trailhead in the OpenStreetMap list (blue P and green T on the map).</dd>
+            </dl>
+        </details>
+    </div>
 
     <div class="split">
         <div>
