@@ -8,6 +8,7 @@
  */
 require_once 'config.php';
 require_once 'trail_discovery_lib.php';
+require_once 'parking_lib.php';
 session_start();
 requireLogin();
 session_write_close();
@@ -32,6 +33,29 @@ function td_test_set($db, $region = 'W6/CT') {
 function td_test_regions($db, $min = 40) {
     return $db->query("SELECT SUBSTRING_INDEX(sota_ref, '-', 1) AS region, COUNT(*) AS n FROM global_gpx_tracks
                        WHERE filename IS NOT NULL GROUP BY region HAVING n >= " . (int)$min . " ORDER BY n DESC LIMIT 150")->fetchAll(PDO::FETCH_ASSOC);
+}
+
+/**
+ * Nearest mapped parking lot or trailhead (OpenStreetMap list on the BRouter box) to each start we found,
+ * each gate-closed parking spot and the community track's start. Used for review and as a confidence signal.
+ */
+function td_parking_annotate(array &$d, array $pts) {
+    foreach ($d['candidates'] as &$c) {
+        $c['pk'] = pk_nearest($pts, $c['lat'], $c['lon'], null, 1000);
+        $c['pk_t'] = pk_nearest($pts, $c['lat'], $c['lon'], 'T', 1000);
+        if (!empty($c['closed'])) $c['closed']['pk'] = pk_nearest($pts, $c['closed']['lat'], $c['closed']['lon'], null, 1000);
+    }
+    unset($c);
+    if (!empty($d['known']['start'])) $d['known']['pk'] = pk_nearest($pts, $d['known']['start'][0], $d['known']['start'][1], null, 1000);
+}
+/** Search radius for the parking list: the run's search area plus room for routes that bend outward. */
+function td_parking_radius_m(array $d) {
+    return (int)((($d['settings']['max_km'] ?? 8) + 2) * 1000);
+}
+/** Metres from a point to the nearest mapped parking or trailhead, capped at 5000 (5000 = none within 5 km). */
+function td_parking_m(array $pts, $lat, $lon) {
+    $n = pk_nearest($pts, $lat, $lon, null, 5000);
+    return $n ? $n['d'] : 5000;
 }
 
 function td_run_settings($db, $run_id) {
@@ -77,7 +101,8 @@ if (isset($_GET['ajax'])) {
                     'seconds' => 0, 'n_paved' => 0, 'n_dirt' => 0, 'best_tier' => null, 'best_dist_m' => null, 'best_gain_m' => null,
                     'best_time_min' => null, 'best_ring_km' => null, 'confidence' => null, 'known_dist_m' => null, 'known_gain_m' => null,
                     'known_time_min' => null, 'known_start_m' => null, 'known_overlap' => null, 'known_in_chosen' => null, 'known_in_alt' => null,
-                    'known_shown_start_m' => null, 'known_alt_start_m' => null, 'verdict' => null, 'file' => null];
+                    'known_shown_start_m' => null, 'known_alt_start_m' => null, 'best_parking_m' => null, 'known_parking_m' => null,
+                    'verdict' => null, 'file' => null];
             if (!$d['ok']) {
                 $row['error'] = mb_substr($d['error'], 0, 255);
             } else {
@@ -108,6 +133,12 @@ if (isset($_GET['ajax'])) {
                     $row['known_shown_start_m'] = $known['shown_start_m'] ?? null; $row['known_alt_start_m'] = $known['alt_start_m'] ?? null;
                 }
                 $d['known'] = $known;
+                // Mapped parking near our top start and near the community start (null = list not reachable)
+                $pk = pk_near($d['summit']['lat'], $d['summit']['lon'], td_parking_radius_m($d) + 3000);
+                if ($pk['ok']) {
+                    if ($d['chosen']) { $b = $d['candidates'][$d['chosen'][0]]; $row['best_parking_m'] = td_parking_m($pk['points'], $b['lat'], $b['lon']); }
+                    if ($known) $row['known_parking_m'] = td_parking_m($pk['points'], $known['start'][0], $known['start'][1]);
+                }
                 $row['file'] = td_save_file($run, $ref, $d);
                 if (!$row['file']) $row['error'] = 'Could not write the route file to ' . td_store_dir();
             }
@@ -128,6 +159,12 @@ if (isset($_GET['ajax'])) {
             if ($d) {
                 $s = $d['summit'];
                 $d['zone'] = td_zone_rings($s['ref'], $s['lat'], $s['lon'], $s['alt_ft'] ?? null);
+                // Parking lots and trailheads around the summit (computed now, so older runs show them too)
+                $pk = pk_near($s['lat'], $s['lon'], td_parking_radius_m($d));
+                td_parking_annotate($d, $pk['points']);
+                $d['parking'] = array_map(fn($p) => [$p['k'], $p['lat'], $p['lon'], $p['name'], $p['access'], $p['fee'], $p['type']], $pk['points']);
+                $d['parking_error'] = $pk['error'];
+                $d['parking_km'] = td_parking_radius_m($d) / 1000;
             }
             echo json_encode($d ? ['ok' => true, 'd' => $d] : ['ok' => false, 'error' => 'No saved result for that summit in this run']);
 
@@ -237,6 +274,10 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
 .reasons{font-size:.72rem;color:var(--ink-3);margin-top:.2rem}
 .closed{font-size:.78rem;color:var(--orange);margin-top:.25rem}
 .closed a{color:inherit}
+.pk{font-size:.74rem;color:var(--ink-3);margin-top:.15rem}
+.pk b{color:var(--blue);font-weight:600} .pk b.t{color:#15803d} .pk.none{color:var(--ink-4)}
+.mapbar{display:flex;align-items:center;gap:.5rem;font-size:.8rem;color:var(--ink-2);margin:0 0 .5rem}
+.mapbar input{accent-color:var(--ink)}
 </style>
 </head>
 <body>
@@ -290,6 +331,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
 
     <div class="split">
         <div>
+            <label class="mapbar" style="text-transform:none;letter-spacing:0;font-weight:500"><input type="checkbox" id="pkToggle"> Show parking lots and trailheads <span id="pkCount" class="d2" style="display:inline"></span></label>
             <div id="map"></div>
             <div class="legend">
                 <span><svg width="12" height="11" viewBox="-11 -12 22 20"><path d="M 0,-11 10,7 -10,7 Z" fill="#1C1B19"/></svg>Summit</span>
@@ -299,6 +341,9 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
                 <span><i class="dot" style="background:#16a34a"></i>Probe found a start</span>
                 <span><i class="dot" style="background:#94a3b8"></i>Probe stayed on trail</span>
                 <span><i class="dot" style="background:#dc2626"></i>Probe failed</span>
+                <span><i class="sw" style="background:#1e40af"></i>Parking (P)</span>
+                <span><svg width="12" height="12" viewBox="-9 -9 18 18"><path d="M 0,-8 8,0 0,8 -8,0 Z" fill="#15803d"/></svg>Trailhead (T)</span>
+                <span>Parking and trailheads: &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" style="color:inherit">OpenStreetMap</a> contributors</span>
             </div>
             <div class="card" id="detail" style="display:none;margin-top:1rem"></div>
         </div>
@@ -362,7 +407,16 @@ function renderAll() {
       const meas = inB.filter(r => r.known_shown_start_m != null);
       const ok = meas.filter(r => +r.known_shown_start_m <= 400).length;
       return tile('Confidence ' + b, inB.length, meas.length ? Math.round(100 * ok / meas.length) + '% show where people park' : (inB.length ? 'rerun to measure' : 'no summits'));
-    }).join('');
+    }).join('') + (() => {   // mapped parking and trailheads from OpenStreetMap (measured on runs made after 2026-11-21)
+      const PK = 150;
+      const ours = rows.filter(r => r.best_parking_m != null), theirs = withKnown.filter(r => r.known_parking_m != null);
+      if (!ours.length && !theirs.length) return tile('At mapped parking', '-', 'rerun to measure');
+      const oursAt = ours.filter(r => +r.best_parking_m <= PK).length, theirsAt = theirs.filter(r => +r.known_parking_m <= PK).length;
+      const missed = theirs.filter(r => +r.known_parking_m <= PK && r.known_shown_start_m != null && +r.known_shown_start_m > 400).length;
+      return tile('Top start at parking', ours.length ? Math.round(100 * oursAt / ours.length) + '%' : '-', oursAt + ' of ' + ours.length + ' within ' + PK + ' m of a mapped lot or trailhead') +
+             tile('People park at mapped lot', theirs.length ? Math.round(100 * theirsAt / theirs.length) + '%' : '-', theirsAt + ' of ' + theirs.length + ' community starts within ' + PK + ' m') +
+             tile('Mapped lot we missed', missed, 'community parks at a mapped lot, none of our top 3 starts there');
+    })();
   // Where were the winning starts first seen? Tells us how far out we really need to search.
   const ringCounts = {};
   rows.filter(r => r.best_ring_km != null).forEach(r => { const k = (+r.best_ring_km).toString(); ringCounts[k] = (ringCounts[k] || 0) + 1; });
@@ -437,12 +491,36 @@ function dot(p, color, scale, title, label) {
   overlays.push(o); return o;
 }
 
-let cur = null, hl = null;
+let cur = null, hl = null, pkMarkers = [];
+let showPk = true;
+try { showPk = localStorage.getItem('td_show_parking') !== '0'; } catch (e) {}
 async function showDetail(ref) {
   selRef = ref; renderAll();
   const r = await api('detail&run=' + run + '&ref=' + encodeURIComponent(ref));
   if (!r.ok) { msg(esc(r.error), 'msg-error'); return; }
-  msg(''); cur = r.d; hl = null; drawDetail(true);
+  msg(r.d.parking_error ? 'Parking list: ' + esc(r.d.parking_error) : ''); cur = r.d; hl = null; drawDetail(true); drawParking();
+}
+/* Parking lots (blue P) and trailheads (green T) from the OpenStreetMap list, drawn once per summit. */
+function drawParking() {
+  pkMarkers.forEach(m => m.setMap(null)); pkMarkers = [];
+  const pts = (cur && cur.parking) || [];
+  const n = {P: 0, T: 0}; pts.forEach(p => n[p[0]] = (n[p[0]] || 0) + 1);
+  if ($('pkCount')) $('pkCount').textContent = cur ? '(' + n.P.toLocaleString() + ' parking, ' + n.T.toLocaleString() + ' trailheads within ' + cur.parking_km + ' km)' : '';
+  if (!showPk) return;
+  whenMap(() => pts.forEach(p => {
+    const t = p[0] === 'T';
+    const info = [t ? 'Trailhead' : 'Parking', p[3] || '(no name)', p[6] ? p[6].replace(/_/g, ' ') : '', p[5] ? 'fee: ' + p[5] : '', p[4] ? 'access: ' + p[4] : ''].filter(Boolean).join(', ');
+    pkMarkers.push(new google.maps.Marker({map, position:{lat:p[1], lng:p[2]}, title: info, zIndex: t ? 30 : 20,
+      label: {text: t ? 'T' : 'P', color:'#fff', fontSize: t ? '10px' : '9px', fontWeight:'700'},
+      icon: t ? {path:'M 0,-8 8,0 0,8 -8,0 Z', fillColor:'#15803d', fillOpacity:1, strokeColor:'#fff', strokeWeight:1.5, scale:1}
+              : {path:'M -6,-6 6,-6 6,6 -6,6 Z', fillColor:'#1e40af', fillOpacity:.85, strokeColor:'#fff', strokeWeight:1, scale:1}}));
+  }));
+}
+function pkLine(pk, label) {   // "Mapped parking 35 m away: Holy Jim Trailhead"
+  if (!pk) return '<div class="pk none">' + label + ': no mapped parking or trailhead within 1 km</div>';
+  const kind = pk.k === 'T' ? '<b class="t">trailhead</b>' : '<b>parking</b>';
+  return '<div class="pk">' + label + ': mapped ' + kind + ' ' + pk.d.toLocaleString() + ' m away' + (pk.name ? ' (' + esc(pk.name) + ')' : '') +
+         (pk.fee === 'yes' ? ', fee' : '') + (pk.access && !['yes', 'public', 'permissive'].includes(pk.access) ? ', access ' + esc(pk.access) : '') + '</div>';
 }
 function drawDetail(fit) {
   const d = cur, s = d.summit;
@@ -480,7 +558,8 @@ function drawDetail(fit) {
   let h = '<h2>' + esc(s.ref) + ' ' + esc(s.name) + '</h2>';
   h += '<p class="note" style="margin:0 0 .75rem">' + d.stats.calls + ' BRouter calls in ' + d.stats.seconds + ' s, ' + d.stats.probes_found + ' of ' + d.stats.probes + ' probes reached a road. Rings: ' +
        d.rings.map(r => r.km + ' km (' + r.new + ' new)').join(', ') + '.' +
-       (k ? ' Community track: ' + mi(k.dist_m) + ' mi, ' + ft(k.gain_m) + ' ft, ' + fmtT(k.time_min) + ' up. Closest of ours is #' + (k.match_i == null ? '-' : k.match_i + 1) + ' (' + k.overlap + '% overlap, start ' + (k.start_m ?? '-') + ' m away).' : ' No community track to compare.') + '</p>';
+       (k ? ' Community track: ' + mi(k.dist_m) + ' mi, ' + ft(k.gain_m) + ' ft, ' + fmtT(k.time_min) + ' up. Closest of ours is #' + (k.match_i == null ? '-' : k.match_i + 1) + ' (' + k.overlap + '% overlap, start ' + (k.start_m ?? '-') + ' m away).' : ' No community track to compare.') + '</p>' +
+       (k && 'pk' in k ? pkLine(k.pk, 'Community start') : '');
   if (d.confidence != null) h += '<p class="note" style="margin:0 0 .75rem">Summit confidence <strong class="' + confCls(d.confidence) + '">' + d.confidence + '% (' + bandOf(d.confidence) + ')</strong>: the chance the routes shown include the way people actually go. ' +
        'High: hike data could be filled in for users. Medium: shown, review required. Low: stays in Needs Research. Each route\'s Conf. is its own chance of being a route people use.</p>';
   if (!d.candidates.length) h += '<p class="note">No starting point found within the search area. This summit stays in Needs Research.</p>';
@@ -492,9 +571,11 @@ function drawDetail(fit) {
         '<td><span class="pill p-' + c.cls + '">' + c.cls + '</span> ' + (chosen ? '<span class="pill p-chosen">top 3</span> ' : '') + esc(c.road) +
         '<span class="d2"><a href="https://www.google.com/maps/search/?api=1&query=' + c.lat + ',' + c.lon + '" target="_blank" rel="noopener">' + c.lat.toFixed(5) + ', ' + c.lon.toFixed(5) + '</a>, first seen ' + c.first_ring_km + ' km out' +
         (c.summit_gap_m > 40 ? ', <strong>last ' + c.summit_gap_m + ' m to the summit off trail</strong> (included in hike)' : '') + '</span>' +
+        ('pk' in c ? pkLine(c.pk, 'Start') + (c.pk_t && (!c.pk || c.pk.k !== 'T') ? pkLine(c.pk_t, 'Nearest trailhead') : '') : '') +
         (c.cls === 'dirt' ? '<div class="closed">' + (c.closed
             ? 'If the dirt road is closed: park at the paved road (' + esc(c.closed.road) + ', <a href="https://www.google.com/maps/search/?api=1&query=' + c.closed.lat + ',' + c.closed.lon + '" target="_blank" rel="noopener">map</a>), ' +
-              mi(c.closed.dist_m) + ' mi, ' + ft(c.closed.gain_m) + ' ft, <strong>' + fmtT(c.closed.time_min) + '</strong> up (' + (c.closed.extra_min ? '+' + fmtT(c.closed.extra_min) : 'about the same') + ')'
+              mi(c.closed.dist_m) + ' mi, ' + ft(c.closed.gain_m) + ' ft, <strong>' + fmtT(c.closed.time_min) + '</strong> up (' + (c.closed.extra_min ? '+' + fmtT(c.closed.extra_min) : 'about the same') + ')' +
+              ('pk' in c.closed ? pkLine(c.closed.pk, 'That spot') : '')
             : 'If the dirt road is closed: no paved road found within the search area') + '</div>' : '') +
         '<div class="reasons">' + c.reasons.map(esc).join('; ') + '</div></td>' +
         '<td class="num">' + mi(c.dist_m) + ' mi</td><td class="num">' + ft(c.gain_m) + ' ft</td><td class="num">' + fmtT(c.time_min) + '</td>' +
@@ -545,6 +626,8 @@ if ($('runSel')) {
     if (!r.ok) { msg(esc(r.error), 'msg-error'); return; }
     location.href = '?run=' + r.id;
   };
+  $('pkToggle').checked = showPk;
+  $('pkToggle').onchange = () => { showPk = $('pkToggle').checked; try { localStorage.setItem('td_show_parking', showPk ? '1' : '0'); } catch (e) {} drawParking(); };
   loadRun();
 }
 </script>

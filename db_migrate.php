@@ -8,7 +8,7 @@
 //   multi_stop_exit          per route: summits where the walk down goes on to a new trailhead
 //   multi_activations.finish_address_id  where a route's last drive ends (NULL = starting address)
 //   multi_activations.breaks             rest stops placed between summits (NULL = none)
-//   trail_disc_runs / trail_disc_results  trail discovery test runs (God Mode)
+//   trail_disc_runs / trail_disc_results  trail discovery test runs (God Mode), plus parking distance columns
 // Also: shared_summits table (public share links for a summit page), summit_advisories (Advisory Notices).
 // Additive and safe to run twice. Delete this file after running.
 require_once 'config.php';
@@ -89,6 +89,18 @@ step('Add trail_disc_results.known_in_alt', function () use ($db) {
 step('Add trail_disc_results.known_shown_start_m and known_alt_start_m', function () use ($db) {
     $done = [];
     foreach (['known_shown_start_m' => 'known_in_alt', 'known_alt_start_m' => 'known_shown_start_m'] as $col => $after) {
+        if ($db->query("SHOW COLUMNS FROM trail_disc_results LIKE '$col'")->fetch()) { $done[] = "$col already there"; continue; }
+        $db->exec("ALTER TABLE trail_disc_results ADD COLUMN $col INT NULL DEFAULT NULL AFTER $after");
+        $done[] = "$col added";
+    }
+    return implode(', ', $done);
+});
+
+// Distance from our top start and from the community start to the nearest mapped parking lot or trailhead
+// (OpenStreetMap list on the BRouter box, parking_lib.php). 5000 = none within 5 km, NULL = not measured.
+step('Add trail_disc_results.best_parking_m and known_parking_m', function () use ($db) {
+    $done = [];
+    foreach (['best_parking_m' => 'known_alt_start_m', 'known_parking_m' => 'best_parking_m'] as $col => $after) {
         if ($db->query("SHOW COLUMNS FROM trail_disc_results LIKE '$col'")->fetch()) { $done[] = "$col already there"; continue; }
         $db->exec("ALTER TABLE trail_disc_results ADD COLUMN $col INT NULL DEFAULT NULL AFTER $after");
         $done[] = "$col added";
