@@ -1237,9 +1237,8 @@ select.form-input { cursor: pointer; }
                 <div>
                     <div style="font-weight:600; font-size:1rem; margin-bottom:0.3rem;">Hiking Path Finder (BRouter)</div>
                     <div style="font-size:0.85rem; color:var(--ink-2); line-height:1.55;">
-                        Route between two summits (cached permanently, with hike time each way), and discover walking paths for summits with
-                        no recorded track: follows mapped paths from the activation zone out to a road, trailhead or parking lot and saves each
-                        way out for review.
+                        Route between two summits (cached permanently, with hike time each way). To find routes and starting points for one
+                        summit, use Trail Discovery below.
                     </div>
                 </div>
                 <div style="display:flex; gap:var(--sp-2); flex-shrink:0;">
@@ -1256,7 +1255,7 @@ select.form-input { cursor: pointer; }
                     <div style="font-size:0.85rem; color:var(--ink-2); line-height:1.55;">
                         Searches outward from a summit in rings of probe points and finds hiking routes down to a paved road (or a dirt road
                         when no paved start exists), using only our BRouter server. Test runs score each result against the community track
-                        for W6/CT summits. Results stay private until the Four Days in May 2027 launch.
+                        for a region's summits. Use the one-summit box for any summit, with or without a track. Results stay private until the Four Days in May 2027 launch.
                     </div>
                 </div>
                 <a href="trail_discovery.php" class="btn btn-primary" style="flex-shrink:0;">Open →</a>

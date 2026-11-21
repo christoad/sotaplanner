@@ -97,6 +97,9 @@ if (isset($_GET['ajax'])) {
                           ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)")
                ->execute([json_encode(['run' => $run, 'ref' => $ref, 'started' => time()])]);
             $d = td_discover($ref, $set);
+            if (!$d['ok'] && strpos($d['error'], 'Unknown summit') === 0) {   // typo or retired summit: say so, store nothing
+                echo json_encode(['ok' => false, 'error' => $d['error'] . ' (not in the SOTA summit list)']); exit;
+            }
             $row = ['run_id' => $run, 'sota_ref' => $ref, 'status' => 'error', 'error' => null, 'calls' => 0, 'probes_found' => 0,
                     'seconds' => 0, 'n_paved' => 0, 'n_dirt' => 0, 'best_tier' => null, 'best_dist_m' => null, 'best_gain_m' => null,
                     'best_time_min' => null, 'best_ring_km' => null, 'confidence' => null, 'known_dist_m' => null, 'known_gain_m' => null,
@@ -306,7 +309,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
                 </select></div>
             <button class="btn" id="goBatch" type="button" <?= $runs ? '' : 'disabled' ?>>Run remaining test summits</button>
             <button class="btn btn-ghost" id="goPause" type="button" disabled>Pause</button>
-            <div style="margin-left:auto"><label>One summit (any)</label><input type="text" id="oneRef" placeholder="<?= tdp_h($curSet['region']) ?>-001" style="width:130px"></div>
+            <div style="margin-left:auto"><label>One summit (any)</label><input type="text" id="oneRef" value="<?= tdp_h(strtoupper(trim($_GET['ref'] ?? ''))) ?>" placeholder="<?= tdp_h($curSet['region']) ?>-001" style="width:130px"></div>
             <button class="btn btn-ghost" id="goOne" type="button" <?= $runs ? '' : 'disabled' ?>>Run it</button>
         </div>
         <div class="bar"><i id="bar"></i></div>
@@ -326,8 +329,8 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
         </details>
     </div>
 
-    <div class="card"><h2>Scoreboard</h2><div class="tiles" id="tiles"></div><p class="note" id="ringNote"></p></div>
     <div id="msg"></div>
+    <div class="card"><h2>Scoreboard</h2><div class="tiles" id="tiles"></div><p class="note" id="ringNote"></p></div>
 
     <div class="split">
         <div>
@@ -362,11 +365,19 @@ const fmtT = m => m == null ? '-' : (m < 60 ? m + ' min' : Math.floor(m / 60) + 
 const COLORS = ['#ea580c','#2563eb','#9333ea','#db2777','#0891b2','#ca8a04','#16a34a','#475569','#dc2626','#0d9488','#7c3aed','#be123c'];
 let run = +($('runSel') ? $('runSel').value : 0), rows = [], selRef = null, running = false, runSettings = null;
 
+/* Every request ends in an answer or a clear message: 5 minute limit (a summit search may take up to about 4.5),
+   and a page that is not JSON (signed out, PHP error) is reported instead of failing silently. */
 async function api(q, body) {
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 300000);
   try {
-    const opt = body ? {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)} : {};
-    return await (await fetch('?ajax=' + q, opt)).json();
-  } catch (e) { return {ok:false, error:'Request failed: ' + e.message}; }
+    const opt = body ? {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body), signal: ctl.signal} : {signal: ctl.signal};
+    const res = await fetch('?ajax=' + q, opt);
+    const text = await res.text();
+    try { return JSON.parse(text); }
+    catch (e) { return {ok:false, error:'The server sent something unexpected (HTTP ' + res.status + '). If you were signed out, reload the page. Start of the answer: ' + text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160)}; }
+  } catch (e) {
+    return {ok:false, error: e.name === 'AbortError' ? 'No answer after 5 minutes. The BRouter server may be down or very busy.' : 'Request failed: ' + e.message};
+  } finally { clearTimeout(timer); }
 }
 function msg(h, cls) { $('msg').innerHTML = h ? '<div class="msg ' + (cls || 'msg-info') + '">' + h + '</div>' : ''; }
 function confCls(c, route) { return c == null ? '' : route ? (c >= 40 ? 'c-high' : c >= 15 ? 'c-med' : 'c-low') : (c >= 70 ? 'c-high' : c >= 40 ? 'c-med' : 'c-low'); }
@@ -600,10 +611,16 @@ if ($('runSel')) {
   $('runSel').onchange = () => { location.href = '?run=' + $('runSel').value; };   // reload: each run has its own region and test set
   $('goOne').onclick = async () => {
     const ref = $('oneRef').value.trim().toUpperCase(); if (!ref) return;
-    $('goOne').disabled = true; msg('Searching around ' + esc(ref) + '. This takes 15 to 60 seconds...');
+    $('goOne').disabled = true;
+    const t0 = Date.now();
+    const tick = () => { const s = Math.round((Date.now() - t0) / 1000);
+      msg('Searching around ' + esc(ref) + ' with BRouter: ' + s + ' s so far. Usually 15 to 60 seconds' + (s > 90 ? ', this one is taking longer (busy server or a large search area)' : '') + '...'); };
+    tick(); const ticker = setInterval(tick, 1000);
     const r = await runOne(ref);
+    clearInterval(ticker);
     $('goOne').disabled = false;
     if (!r.ok) { msg(esc(r.error), 'msg-error'); return; }
+    if (r.row && r.row.status === 'error') { msg('Search failed for ' + esc(ref) + ': ' + esc(r.row.error || 'unknown error'), 'msg-error'); return; }
     msg(''); showDetail(ref);
   };
   $('goBatch').onclick = async () => {
