@@ -8,6 +8,7 @@
 //   multi_stop_exit          per route: summits where the walk down goes on to a new trailhead
 //   multi_activations.finish_address_id  where a route's last drive ends (NULL = starting address)
 //   multi_activations.breaks             rest stops placed between summits (NULL = none)
+//   trail_disc_runs / trail_disc_results  trail discovery test runs (God Mode)
 // Also: shared_summits table (public share links for a summit page), summit_advisories (Advisory Notices).
 // Additive and safe to run twice. Delete this file after running.
 require_once 'config.php';
@@ -29,6 +30,71 @@ function step($label, $fn) {
         echo "[ERROR] $label: " . $e->getMessage() . "\n";
     }
 }
+
+// Trail discovery test runs (trail_discovery_lib.php). Route shapes live in files, not here.
+step('Create trail_disc_runs', function () use ($db) {
+    $db->exec("CREATE TABLE IF NOT EXISTS trail_disc_runs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        created_by VARCHAR(20) NOT NULL,
+        settings_json TEXT NOT NULL,
+        note VARCHAR(200) NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    return 'ready';
+});
+
+step('Create trail_disc_results', function () use ($db) {
+    $db->exec("CREATE TABLE IF NOT EXISTS trail_disc_results (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        run_id INT NOT NULL,
+        sota_ref VARCHAR(20) NOT NULL,
+        status VARCHAR(10) NOT NULL DEFAULT 'ok',
+        error VARCHAR(255) NULL,
+        calls INT NOT NULL DEFAULT 0,
+        probes_found INT NOT NULL DEFAULT 0,
+        seconds DECIMAL(6,1) NOT NULL DEFAULT 0,
+        n_paved TINYINT NOT NULL DEFAULT 0,
+        n_dirt TINYINT NOT NULL DEFAULT 0,
+        best_tier VARCHAR(6) NULL,
+        best_dist_m INT NULL,
+        best_gain_m INT NULL,
+        best_time_min INT NULL,
+        best_ring_km DECIMAL(5,2) NULL,
+        confidence TINYINT NULL,
+        known_dist_m INT NULL,
+        known_gain_m INT NULL,
+        known_time_min INT NULL,
+        known_start_m INT NULL,
+        known_overlap TINYINT NULL,
+        known_in_chosen TINYINT(1) NULL,
+        verdict VARCHAR(8) NULL,
+        file VARCHAR(255) NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_run_ref (run_id, sota_ref),
+        KEY idx_ref (sota_ref)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    return 'ready';
+});
+
+// Whether the community route would be in the top 3 under the other selection rule (paved first vs quickest 3)
+step('Add trail_disc_results.known_in_alt', function () use ($db) {
+    $has = $db->query("SHOW COLUMNS FROM trail_disc_results LIKE 'known_in_alt'")->fetch();
+    if ($has) return 'already there (skipped)';
+    $db->exec("ALTER TABLE trail_disc_results ADD COLUMN known_in_alt TINYINT(1) NULL DEFAULT NULL AFTER known_in_chosen");
+    return 'added';
+});
+
+// Distance from the community track's start to the nearest start among the routes shown (and under the other rule),
+// counting a dirt route's "gate closed" parking spot. Within 400 m means users would see where people really park.
+step('Add trail_disc_results.known_shown_start_m and known_alt_start_m', function () use ($db) {
+    $done = [];
+    foreach (['known_shown_start_m' => 'known_in_alt', 'known_alt_start_m' => 'known_shown_start_m'] as $col => $after) {
+        if ($db->query("SHOW COLUMNS FROM trail_disc_results LIKE '$col'")->fetch()) { $done[] = "$col already there"; continue; }
+        $db->exec("ALTER TABLE trail_disc_results ADD COLUMN $col INT NULL DEFAULT NULL AFTER $after");
+        $done[] = "$col added";
+    }
+    return implode(', ', $done);
+});
 
 // Advisory Notices: community banners pinned to a summit (summit_advisory_lib.php). Soft delete via removed_at.
 step('Create summit_advisories', function () use ($db) {
