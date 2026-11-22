@@ -207,16 +207,17 @@ session_start();
       font-size: 0.855rem;
       color: var(--ink-2);
       line-height: 1.55;
-      display: flex;
-      align-items: baseline;
-      gap: 0.5rem;
+      position: relative;
+      padding-left: 1rem;
     }
+    .version-block li a { color: var(--accent-2); font-weight: 600; text-decoration: none; }
+    .version-block li a:hover { text-decoration: underline; }
 
-    /* ── Bullet list ── */
     .version-block li::before {
       content: "–";
       color: var(--ink-4);
-      flex-shrink: 0;
+      position: absolute;
+      left: 0;
     }
 
     /* ── Footer ── */
@@ -269,12 +270,10 @@ session_start();
             <span class="version-number">What we're working on</span>
             <span class="version-badge" style="background: var(--blue);">In progress</span>
         </div>
-        <p class="version-desc">Features currently in development. They are not live yet.</p>
+        <p class="version-desc">Not live yet.</p>
         <ul>
             <li>Activation count</li>
             <li>Summit to Summit mode with elevation plots</li>
-            <li>Weather widget on the summit detail page</li>
-            <li>Radio interference (RFI) information for summits, in partnership with KM6AM's Summit RFI project, so you can see which summits are likely to have noisy radio environments before you hike</li>
         </ul>
     </div>
 
@@ -284,24 +283,13 @@ session_start();
             <span class="version-number">November 2026 update</span>
             <span class="version-badge">Current</span>
         </div>
-        <p class="version-desc">Adding summits to your dashboard is faster when you have a list to work through.</p>
         <ul>
-            <li>New RFI layer on summit pages for summits in the US. Press the RFI button on the summit map to see a heat map of estimated radio interference from nearby transmitters, such as broadcast, paging and repeater sites, which can overload your receiver. You can view all bands or just HF, 6m to 70cm or above 70cm. A badge on the summit shows its overall risk and opens the full report card. It is also on the public summit pages you share, so your hiking partners can check it without signing in. The data comes from <a href="https://github.com/km6am/sota-rf" target="_blank" rel="noopener">Summit RFI by KM6AM</a>, used with his permission. Values are estimates from registered transmitter power, and federal transmitters are not included</li>
-            <li>You can now build a Multi-Activate route from the dashboard map. Switch to Map view, press Multi-Activate, then click the pins of the summits you want. Each selected pin gets a ring, and clicking it again removes it. Press the green Multi-Activate button to plan the route</li>
-            <li>The dashboard has a search box next to the Summit column heading (above the list on phones). Type part of a summit's name or reference, such as "bald" or "W6/CT-2", and the list narrows as you type, including summits inside a Multi-Activate route. Punctuation is optional, so "w6ct259" works too</li>
-            <li>New Advisory Notices: anyone signed in can flag something important about a summit, such as "private property, do not attempt", "poison ivy on the trail, wear cover" or "following a GPX track is highly recommended". Post one from the Community Notes section of a summit page and pick Do not attempt, Caution or Tip. It shows as a large colored banner at the top of that summit, and on its public summit page, for everyone who opens it. Summit references, GPS coordinates and web addresses in a notice become links: a summit opens its page (yours if it is on your dashboard), coordinates open Google Maps and web addresses open in a new tab. Coordinates also appear as numbered pins on the summit map (Pin 1, Pin 2...) in the same color as their notice, and tapping a Pin badge in the banner jumps to it. Notices can be up to 500 characters, with a counter showing how many are left. Only the person who posted a notice can edit or remove it</li>
-            <li>Multi-Activate routes can now include breaks. Press "+ Add Break" on the last tile, set how long it lasts with the pencil, and drag it to where it belongs in the day, for lunch, a rest or a coffee stop. Breaks show on the Outing Timeline, count toward the total time and appear in the PDF schedule</li>
-            <li>Travel times on summit pages and in Multi-Activate now come from Google's road routing, which knows about road closures, and are refreshed automatically. Multi-Activate draws the actual road route</li>
-            <li>Clearer wording when you add summits: the buttons now say "Save to Dashboard" and "Save + Add more", and a summit that still needs trail information is labeled "Needs Research" on the dashboard and the summit page. It becomes "Researched" on its own once it has a recorded route and a starting point</li>
-            <li>When you import a new route from SOTA Maps on a summit page, the starting point is now found for you in the same step. SOTA Planner picks the trailhead or parking area from OpenStreetMap closest to where the route begins, fills in the starting point if the summit does not have one yet, and works out the travel time to it</li>
-            <li>Every summit page now has a hidden Change log at the bottom. Open it to see which callsign changed what on that summit and what the old and new values were</li>
-            <li>Multi-Activate shows an elevation profile under the route map, and in the PDF, for every hike in the day, with each leg in its own color and estimated stretches dashed</li>
-            <li>Multi-Activate hikes between summits now follow recorded GPX tracks wherever the walk meets one, using estimated map trails only for the gaps, and the map draws the recorded stretches as solid lines</li>
-            <li>"Back the way we came" is now called "Track back" in Multi-Activate</li>
-            <li>Multi-Activate "Show All Summits" now shows every SOTA summit in the part of the map you are looking at, not only your dashboard, and "+ Add to Route" adds a new summit to your dashboard and the route in one click</li>
-            <li>The Multi-Activate "Zoom to Summits" button now toggles: press again to zoom back out to the whole route</li>
-            <li>The About page now has a Data Sources and Credits section thanking the projects and communities behind the summit data, routes, maps and weather in SOTA Planner, with a Credits link in the footer of every page</li>
-            <li>The summit search page has a new "Save + Add more" button, on both the Name / Reference and Search by Area tabs. It adds the summit and leaves you on the same page with the search cleared, so you can look up the next summit by name and add it, over and over, without going back to the dashboard each time</li>
+            <li>Radio interference (RFI) map for US summits. Source: <a href="https://github.com/km6am/sota-rf" target="_blank" rel="noopener">Summit RFI by KM6AM</a>, from FCC, NOAA and USGS data</li>
+            <li>Advisory Notices: warn others about a summit</li>
+            <li>Plan Multi-Activate routes from the dashboard map, with breaks and elevation profiles</li>
+            <li>Search box on the dashboard</li>
+            <li>Travel times that know about road closures</li>
+            <li>Change log on every summit page</li>
         </ul>
     </div>
 
@@ -310,29 +298,13 @@ session_start();
         <div class="version-header">
             <span class="version-number">October 2026 update</span>
         </div>
-        <p class="version-desc">Driving routes now appear on the summit map, and the offline PDF for Multi-Activate routes shows the same maps you see on the site.</p>
         <ul>
-            <li>The Multi-Activate PDF now includes the weather forecast for each summit: today's conditions, an hour-by-hour table for your planned time on the summit, and the next three days, so you have it offline</li>
-            <li>Shared Multi-Activate routes now match the summit pages: a Share button that confirms "Link copied!", a "Save this route" button, and a Login button that brings you back to the route</li>
-            <li>The summit page now has a Community Notes section: articles and links other activators have posted on SOTA are listed as headlines you can open to read or follow to the original site, with a button to post your own on SOTA. Your private notes now show right on the page, visible to you and the members of your dashboards</li>
-            <li>Every SOTA summit now has its own public page you can send to anyone, no login needed. Tap Share on a summit to copy a readable link like sotaplanner.com/s/w6-ct-012-waterman-mtn (the summit reference alone works too). The page shows the map and route, elevation profile, activation zone, cell coverage, weather with a full forecast, upcoming activations, last activation, community notes and a GPX download, and visitors can change the planned summit time to see how it fits their day. Anyone who likes a summit can save it to their own dashboard with their SOTA login, no signup required, and it arrives with its trail research and is highlighted on their dashboard. Also new: Create Invite now opens the invitation form for you, and the Add Summits button gently pulses on dashboards with fewer than 3 summits</li>
-            <li>Click any day in the summit weather to open a full 16-day forecast for the summit's elevation, with hour-by-hour detail: rain chance, wind and wind direction, cloud cover, visibility, lightning risk, freezing level, and sunrise and sunset</li>
-            <li>SOTAwatch alerts on the summit page now appear within about a minute of being posted, without slowing the page down, and are shown in your own local time</li>
-            <li>Summits now show a weather forecast for the summit's elevation: a small row on the summit page, and a full Summit Forecast on the activation invitation covering the hike (temperature, wind, precipitation, freezing level and thunderstorm warnings)</li>
-            <li>Summits that only have a number for a name now appear as "Summit 1234" on the activation invitation</li>
-            <li>The area search on the Nominate page now uses your own miles or kilometers setting, and creating another dashboard no longer resets that setting</li>
-            <li>Planned activations on the summit page now have an Add to Calendar button, and the invitation page now says which callsign planned the activation</li>
-            <li>The dashboard map now shows a pin for your selected starting address</li>
-            <li>Travel times now update automatically when you switch your starting address, and are remembered for each address so switching back is instant</li>
-            <li>The starting address menu on your dashboard now ends with "+ Add another", which takes you straight to that dashboard's Starting Addresses section so you can add a new one</li>
-            <li>Searching for a summit by name, reference or area on the Nominate page is now much faster</li>
-            <li>A new thumbs-up button next to "Post an Alert to SOTAwatch" lets you vote for posting alerts and spots from SOTAplanner, so we know how much people want it</li>
-            <li>The dashboard's column headers now stay pinned at the top as you scroll a long list of summits</li>
-            <li>A summit only shows as Ready once it has hike data and a travel time, so summits activated by your crew no longer look ready before they have been researched</li>
-            <li>Total time is no longer shown when the travel time is missing, so it never leaves out the drive</li>
-            <li>The map on each summit page now shows the driving route from your starting address to the starting point, without changing the zoom, which stays focused on the hike and summit</li>
-            <li>The route overview map in the PDF now follows the real driving roads for each leg, with your hiking trails, activation zones and numbered stops drawn on top, just like the Multi-Activate page</li>
-            <li>Each summit page in the PDF now has a topographic map with the hike trail (when one is available), the activation zone, and clearly marked Summit and Start points</li>
+            <li>A public page for every SOTA summit, ready to share</li>
+            <li>Summit weather with a 16-day forecast</li>
+            <li>Community Notes on summit pages</li>
+            <li>Weather and topo maps in the Multi-Activate PDF</li>
+            <li>Driving route on the summit map</li>
+            <li>Add to Calendar for planned activations</li>
         </ul>
     </div>
 
@@ -341,13 +313,9 @@ session_start();
             <span class="version-number">v1.9.7</span>
             <span class="version-date">September 2026</span>
         </div>
-        <p class="version-desc">Share a Multi-Activate route with anyone, and starting addresses that reliably produce travel times.</p>
         <ul>
-            <li>Saved Multi-Activate routes can now be shared: a "Share" button copies the route's link, and anyone who opens it sees a read-only view of the route (your starting address and other summits stay private)</li>
-            <li>People viewing a shared route can click "Save this route" to copy its summits and route into one of their dashboards, or into a brand-new one. New users are walked through signing in and setting up a dashboard first</li>
-            <li>Starting addresses are now checked with Google Maps when you add them. If Google can't find the location you'll be asked to try a street address, cross streets with a city, or a zip code, and when it can you'll see exactly which address it matched</li>
-            <li>Travel times now use the exact map location saved with your starting address, so an address that worked once keeps working. This fixes starting locations entered as a business name (like a coffee shop) that produced no travel times</li>
-            <li>If travel times can't be calculated for some summits, those summits now show a blank instead of an old time left over from a different starting address, and the message explains how to fix the address</li>
+            <li>Share Multi-Activate routes, and save routes others share</li>
+            <li>Starting addresses checked with Google Maps</li>
         </ul>
     </div>
 
@@ -356,9 +324,8 @@ session_start();
             <span class="version-number">v1.9.6</span>
             <span class="version-date">September 2026</span>
         </div>
-        <p class="version-desc">Grab GPS coordinates straight from the Multi-Activate map.</p>
         <ul>
-            <li>Click anywhere on the Multi-Activate route map to see that spot's GPS coordinates, with a Copy button so you can paste them into another mapping app</li>
+            <li>Copy GPS coordinates from the Multi-Activate map</li>
         </ul>
     </div>
 
@@ -367,183 +334,96 @@ session_start();
             <span class="version-number">v1.9.5</span>
             <span class="version-date">September 2026</span>
         </div>
-        <p class="version-desc">A new tool for planning multi-summit activations in one trip, winter bonus points, more precise activation zones, a smarter nomination search, and easier dashboard cleanup.</p>
         <ul>
-            <li>Multi-Activate routes can now be downloaded as a printable offline PDF with a summit list, schedule with clock times, turn-by-turn driving directions between stops, and a reference map for each summit, handy for trips with no cell signal</li>
-            <li>When selecting summits for a multi-activation route, the selection counter and Multi-Activate button now hover just below the filters and follow you as you scroll down a long summit list</li>
-            <li>The summit detail page now has a small copy button next to the SOTA reference for quickly copying it to your clipboard</li>
-            <li>The dashboard now remembers whether you've expanded or collapsed each multi-activation route, so it stays that way the next time you visit</li>
-            <li>Multi-Activate's route map now draws each leg of driving in its own color, so outbound and return trips over the same road are easy to tell apart. Hover a leg on the map, the timeline, or a summit tile to highlight it everywhere else, and a loading animation now covers the map while routes recalculate after you reorder stops</li>
-            <li>Summits that earn SOTA's winter bonus now show a "+3" badge next to their points on the dashboard, summit detail page, and nomination search. Hover it to see when the bonus season applies</li>
-            <li>Multi-Activate's outing timeline now has a Start Time picker showing real clock times for every leg of the trip, and a clearer breakdown of which blocks on the timeline belong to which summit</li>
-            <li>Multi-Activate routes can now include up to 11 summits in one outing, up from 6</li>
-            <li>New "Multi-Activate" tool plans a driving route through several summits in one outing. Drag to reorder stops, see the route on a Street/Topo/Satellite map with real driving directions, trail tracks, and activation zones, and get a full timeline from departure to return</li>
-            <li>Multi-activation routes save automatically and appear as their own row on the dashboard with rolled-up points, distance, and time; a "Directions" button opens the full round trip in Google Maps, and stat tiles show total driving distance (handy for EV range planning) alongside total time</li>
-            <li>The same summit can be added to a route more than once, for activations that cross UTC midnight for double SOTA points</li>
-            <li>The dashboard's bulk delete tool can now remove a saved multi-activation route on its own, without touching the summits nested under it</li>
-            <li>The dashboard summit list now has a Points filter (2+, 4+, 6+, 8+, or exactly 10) alongside the existing status and difficulty filters</li>
-            <li>You can now remove multiple summits from your dashboard at once: click the trash icon to reveal checkboxes on each row, select the ones you want gone, then click the trash icon again to delete them</li>
-            <li>The dashboard's summit list now ends with a "+ Add Summits" button for quickly adding more, and the top bar button is now labeled "+ Add Summits" instead of "+ Nominate"</li>
-            <li>Pasting a SOTA reference (or a comma-separated list of them) into the "Search by Area" location box now automatically switches to the Name/Reference tab and looks it up, instead of trying to geocode it as a place</li>
-            <li>Activation zone boundaries now use SOTLAS's high-precision (~1m) terrain data where available, instead of the older lower-resolution estimate, with the older method still used as a fallback for summits SOTLAS hasn't mapped yet</li>
+            <li>New Multi-Activate tool: plan several summits in one day</li>
+            <li>Offline PDF of your route</li>
+            <li>Winter bonus badges</li>
+            <li>More precise activation zones from SOTLAS</li>
+            <li>Points filter and bulk delete on the dashboard</li>
         </ul>
     </div>
 
-    <!-- August 2026 (v1.5.8-v1.6.0) -->
+    <!-- August 2026 -->
     <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.7.4</span>
             <span class="version-date">August 2026</span>
         </div>
-        <p class="version-desc">Live activation syncing with the SOTA API, a new Community Growth page, and travel terminology that works for transit trips too.</p>
         <ul>
-            <li>Summit detail now includes a preview of the upcoming SOTAwatch alert-posting feature. Posting itself is still pending official write access from the SOTA team, but you can see what the form will look like.</li>
-            <li>The "Schedule Activation" button is now called "Create Invite," since that's what it actually does: generate a shareable planning/invite page rather than post anywhere</li>
-            <li>Additional callsigns you list in Settings now automatically get access to your dashboards the next time they log in, no separate invite needed</li>
-            <li>Bulk-nominating summits (by area or by reference list) now automatically calculates travel time for any summit with a known starting point. If your dashboard doesn't have an address yet, you'll be prompted to add one on the spot, or you can skip it and do it later.</li>
-            <li>Nominating summits now opens straight to Bulk Search by Area: search a location and add every summit in range at once. The name/reference search is still there as a second tab.</li>
-            <li>Summits marked Drive Up now show their real travel time on the dashboard map, instead of a "+ Research" flag they don't need since there's no hike to research</li>
-            <li>New "Community Growth" page (in the top nav) shows every summit with community trail data plotted on a world map, plus a chart of how that number has grown over time, including a callout marking the big June 2026 SOTA Mapping Project import</li>
-            <li>The dashboard map now has a Map / Topo / Satellite toggle, same as the summit detail map, so you can switch base layers when scanning your summit list</li>
-            <li>Opening your dashboard now quietly checks the SOTA activation record in the background. If a summit your team already activated is still showing as Ready, the row fades from green to grey and picks up the activation date automatically, with no page reload needed.</li>
-            <li>Summit detail now shows "Ready to Activate" instead of just "Ready" on the status buttons</li>
-            <li>"Trailhead" is now "Starting Point" throughout the app, since it could be a trailhead, a parking lot, or a transit stop: wherever your journey to the summit begins</li>
-            <li>"Drive Time" is now "Travel Time," and the "Directions" links to Google Maps no longer force driving mode. Google now offers transit, walking, and driving options, which is handy for activations reached by train or bus.</li>
+            <li>Community Growth page</li>
+            <li>Activated summits update from SOTA automatically</li>
+            <li>"Starting Point" and "Travel Time", with transit directions</li>
+            <li>Map, Topo and Satellite views on the dashboard map</li>
+            <li>"Create Invite" for planned activations</li>
         </ul>
     </div>
 
-    <!-- July 2026 (v1.5.4-v1.5.7) -->
+    <!-- July 2026 -->
     <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.5.7</span>
             <span class="version-date">July 2026</span>
         </div>
-        <p class="version-desc">Dashboards (formerly Planning Groups), richer map hover cards, and editable planned activations.</p>
         <ul>
-            <li>"Planning Groups" has been renamed "Dashboards" throughout the app: same feature, clearer name for the workspace that holds your summit list, addresses, and members</li>
-            <li>The "Groups & Addresses" page is now "Manage Dashboards"</li>
-            <li>Hovering a summit on the dashboard map now shows a points badge, plus a breakdown of drive time and hike time alongside the total</li>
-            <li>Summits without hike research no longer show a misleading time on the map; they're marked "+ Research" instead</li>
-            <li>Summits you've already activated this year now appear faded on the map so they stand out as done</li>
-            <li>The dashboard filter bar is now organized into two clean rows (filters on top, controls below) and wraps properly on mobile</li>
-            <li>A new Unique Summits toggle lets you instantly filter to summits your group has never activated, making it easy to hunt for firsts</li>
-            <li>Planned activations on the summit detail page can now be edited. Click Edit to update the date, time, callsigns, duration, guest message, travel notes, or live GPS link without deleting and re-creating.</li>
-            <li>The activation invite now shows a Get Directions button in the hero that opens Google Maps with the trailhead pre-set as the destination</li>
-            <li>The Day at a Glance timeline now includes a Back at Trailhead time so guests can see the full shape of the day</li>
-            <li>The invite page Gantt chart now uses the same hike time calculation as the summit detail page, including pace multiplier and one-way track handling</li>
+            <li>Planning Groups are now Dashboards</li>
+            <li>Richer map hover cards</li>
+            <li>Unique Summits filter</li>
+            <li>Editable planned activations</li>
         </ul>
     </div>
 
-    <!-- June 2026 (v1.4.2-v1.5.3) -->
+    <!-- June 2026 -->
     <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.5.3</span>
             <span class="version-date">June 2026</span>
         </div>
-        <p class="version-desc">Bulk nomination, public summit notes, per-user units, and smarter GPS-driven trail data.</p>
         <ul>
-            <li>The Nominate page now uses a wider two-column layout on desktop. The "Search by Area" tab shows the summit list alongside a large map, and hovering a summit name highlights its dot on the map.</li>
-            <li>Expired summits are now filtered out of all search results and can no longer be nominated</li>
-            <li>Summit notes can now be shared publicly. Check the new "Share publicly" box when adding a note and it will appear on that summit's page for all planning groups, with a green Public badge and your group's name.</li>
-            <li>In the "Search by Area" nominator, the Nominate button now appears above the summit list so it's always visible without scrolling when a large radius returns many results</li>
-            <li>Nominate multiple summits at once by pasting a comma-separated list of SOTA references</li>
-            <li>Units preference (metric or imperial) is now per-user and auto-detected from your callsign; non-US/Canada users default to metric</li>
-            <li>Summit detail now shows who last activated the summit globally (with callsign and date) and separately tracks the last activation by your planning group</li>
-            <li>GPX elevation profile now correctly detects when a track has no elevation data and shows a clear message instead of a blank chart</li>
-            <li>Login page shows how many summits in the global library already have a GPX route and trailhead coordinate, giving new visitors an at-a-glance sense of how much data is pre-loaded</li>
-            <li>Right-clicking anywhere on the summit map shows the exact coordinates of that point. Click them to copy to your clipboard, with a brief "Copied" confirmation just like Google Maps.</li>
-            <li>When a community route is imported, distance and elevation are automatically enabled as the source for hike planning, so there's no need to manually check "Use GPS data"</li>
-            <li>Hovering over the locked distance or elevation fields shows a tooltip explaining they're set by the GPS track</li>
-            <li>The loading animation while searching for a community route now uses the SOTAplanner mountain logo: the path draws itself and the summit marker pulses when the peak is reached</li>
-            <li>Trailhead detection is now more reliable. If a cached community route had no trailhead stored, it's automatically re-derived from the GPS file on next use.</li>
-            <li>Summit search now narrows as you type a SOTA reference prefix. Type "W6/CT-" to browse all summits in that region and pick one from the list</li>
-            <li>When you type a full designator directly, the summit name now appears in the confirmation box so you can verify you have the right summit before nominating</li>
-            <li>When nominating a summit, a loading indicator shows while the app searches the SOTA Mapping Project for a community route</li>
-            <li>If a community route has multiple alternatives on the SOTA Mapping Project, a "swap" option now appears on the summit detail page to try a different one</li>
+            <li>Add many summits at once</li>
+            <li>Public summit notes</li>
+            <li>Units per user</li>
+            <li>Right-click the map to copy coordinates</li>
+            <li>Choose between community routes</li>
         </ul>
     </div>
 
-    <!-- May 2026 (v1.0.5-v1.4.1) -->
+    <!-- May 2026 -->
     <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.4.1</span>
             <span class="version-date">May 2026</span>
         </div>
-        <p class="version-desc">SOTA SSO login, community trail routes, SOTAwatch alerts, and the first Alpine Precision redesign.</p>
         <ul>
-            <li>When you upload a GPX file, the app now automatically determines whether the track is an ascent, descent, or out-and-back, so no more manual selection needed</li>
-            <li>The trailhead location is automatically identified from the GPX and saved to the summit if none was set</li>
-            <li>The "Use GPS data" toggle now saves instantly, with no Save button needed</li>
-            <li>Distance and elevation gain fields are greyed out when GPS data is active, making it clear those values are coming from the track file</li>
-            <li>The summit's radio time in the planning timeline now uses your personal default from User Settings rather than the recorded activation time from the GPX</li>
-            <li>When you add a summit that has a community-submitted track on the SOTA Mapping Project, the route map and elevation profile appear automatically, with no GPX upload needed</li>
-            <li>Hike distance and elevation gain are pre-filled from the community track</li>
-            <li>A "Community route from SOTA Mapping Project" badge appears on any summit using a shared track</li>
-            <li>Summit detail page now shows recent SOTAwatch alerts, so you can see who has spotted this summit and when, right alongside your planning data</li>
-            <li>Activation history pulled from the SOTA database appears on each summit detail page, giving you past activations at a glance</li>
-            <li>Redesigned About page with a clearer feature overview and illustrated layout</li>
-            <li>Nominate a summit by searching its name. Type "Mount Wilson" or "Mt Adams" and pick from results, no need to know the SOTA reference code.</li>
-            <li>Summit detail page form is more compact: distance, gain, and difficulty sit in one row; trailhead and cell service share a row</li>
-            <li>Trail app links (AllTrails, Gaia, CalTopo, etc.) are now tucked behind a toggle so they don't clutter the page</li>
-            <li>Activation Zone map button now toggles: click once to zoom to the activation zone, click again to zoom back out to the full GPX track</li>
-            <li>The day timeline bar is taller and now shows each activity's label and duration directly inside the colored segment, so there's no more reading a separate legend</li>
-            <li>Notes on the summit detail page now show which group member wrote them</li>
-            <li>New users are walked through creating a group and adding a starting address step-by-step</li>
-            <li>Drive time now auto-calculates the first time you open a summit detail page, no button press needed</li>
-            <li>Groups &amp; Addresses page automatically opens your group if you only belong to one</li>
-            <li>Log in using your official SOTA credentials, with no separate password needed</li>
-            <li>When you add your first starting address to a group, it's automatically set as the active address, with no extra step needed</li>
-            <li>Co-activators field renamed for clarity when creating a new group</li>
-            <li>Any group member can add new callsigns to a planning group, not just the owner</li>
-            <li>New SVG logo across all pages</li>
-            <li>Returning users land directly on their dashboard after signing in, with no more group picker every time</li>
-            <li>New users see a welcome screen with clear instructions on how to get started</li>
-            <li>Address prompt opens automatically when you create a new planning group</li>
-            <li>Your callsign now appears in the top corner of every page. Click it to sign out</li>
-            <li>All pages redesigned with the Alpine Precision design system: warm off-white background, clean typography, warm amber accent color</li>
-            <li>Planning Groups page rebuilt with a sidebar + detail panel layout</li>
+            <li>Sign in with your SOTA account</li>
+            <li>Community routes load automatically</li>
+            <li>SOTAwatch alerts and activation history on summit pages</li>
+            <li>Find summits by name</li>
+            <li>New design across the site</li>
         </ul>
     </div>
 
-    <!-- April 2026 (v1.0.0-v1.0.4) -->
+    <!-- April 2026 -->
     <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.0.4</span>
             <span class="version-date">April 2026</span>
         </div>
-        <p class="version-desc">Initial release: summit wishlist, GPX analysis, activation timeline, and shareable invitations.</p>
         <ul>
-            <li>Sign in with your callsign. SOTA SSO coming when OAuth credentials are available</li>
-            <li>Planning groups are now private to the owner and invited members</li>
-            <li>Group owners can add and remove members by callsign</li>
-            <li>Summit list on mobile shows tap-friendly cards with key stats at a glance</li>
-            <li>Summit detail, invitation, and planning pages all work cleanly on a phone</li>
-            <li>Activation timeline on summit detail: a Gantt chart showing drive, hike up, radio time, and hike down with milestone markers</li>
-            <li>Download the GPX track from summit detail and invitation pages to load onto a watch or phone</li>
-            <li>Summit wishlist with drive time, hike time, and total day estimate</li>
-            <li>GPX track upload and analysis: hiking time, activation time, elevation, speed</li>
-            <li>Activation zone overlay on the summit map</li>
-            <li>Elevation profile chart with interactive map crosshair</li>
-            <li>Shareable activation invitation page for guests: map, timeline, driving directions</li>
-            <li>Planned activations with .ics calendar export</li>
-            <li>Cell coverage overlay (T-Mobile, Verizon, AT&amp;T)</li>
-            <li>SOTAmaps GPX import: pull community tracks directly from sotamaps.org</li>
-            <li>Drive time calculated from your saved starting address</li>
-            <li>Shared summit research: new groups can inherit trail data from existing groups</li>
-            <li>SOTLAS summit data integration</li>
-            <li>Multi-group support: keep separate wishlists for different crews or regions</li>
+            <li>Summit wishlist with total day estimates</li>
+            <li>GPX analysis, activation zones and elevation profiles</li>
+            <li>Activation timeline and shareable invitations</li>
+            <li>Cell coverage overlay</li>
         </ul>
     </div>
 
-    <!-- February 2026 (v1.0.0) -->
+    <!-- February 2026 -->
     <div class="version-block">
         <div class="version-header">
             <span class="version-number">v1.0.0</span>
             <span class="version-date">February 2026</span>
         </div>
-        <p class="version-desc">Initial release for HamPals Activator Group, Los Angeles.</p>
         <ul>
-            <li>Legacy Google Sheet planning data imported and migrated to sotaplanner.com</li>
+            <li>First release for the HamPals Activator Group, Los Angeles</li>
         </ul>
     </div>
 

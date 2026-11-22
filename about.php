@@ -349,6 +349,10 @@ $bkey = defined('GOOGLE_MAPS_BROWSER_KEY') ? GOOGLE_MAPS_BROWSER_KEY : '';
                 <span class="credit-what">Activation zone boundaries for summits SOTLAS does not cover yet.</span>
             </li>
             <li>
+                <a href="https://github.com/km6am/sota-rf" target="_blank" rel="noopener">Summit RFI by KM6AM</a>
+                <span class="credit-what">The radio interference (RFI) heat map, risk badges and report cards for US summits, used with his permission. Built from FCC and NOAA Weather Radio (National Weather Service) transmitter records and USGS terrain (SRTM and 3DEP, via AWS Terrain Tiles). Values are estimates from registered transmitter power, not measurements.</span>
+            </li>
+            <li>
                 <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">&copy; OpenStreetMap contributors</a>
                 <span class="credit-what">Trailhead and parking locations, and the base map in downloadable PDFs. Data is available under the Open Database License.</span>
             </li>
