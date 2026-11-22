@@ -9,6 +9,7 @@ require_once 'drive_leg_lib.php';     // drive time, distance and road line from
 require_once 'multi_leg_lib.php';     // car/hike between summits + finish address (BRouter)
 require_once 'multi_elev_lib.php';    // elevation profiles of the hikes (page and PDF)
 require_once 'multi_break_lib.php';   // breaks (rest stops) placed between summits
+require_once 'share_lib.php';         // shareMakeSlug() for the public /s/ link on read-only tiles
 session_start();
 
 $db = getDbConnection();
@@ -1135,6 +1136,11 @@ a:hover { text-decoration: underline; }
   white-space: nowrap;
 }
 #coords-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+/* Pop-out icon in the tile's top right: opens that summit's page in a new tab */
+.tile-open { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: var(--r-sm); color: var(--ink-3); text-decoration: none; transition: color 0.15s, background 0.15s; }
+.tile-open:hover, .tile-open:focus-visible { color: var(--ink); background: var(--bg-2); text-decoration: none; outline: none; }
+.tile-open:focus-visible { box-shadow: 0 0 0 2px var(--accent-border); }
+@media (prefers-reduced-motion: reduce) { .tile-open { transition: none; } }
 </style>
 </head>
 <body>
@@ -1306,6 +1312,7 @@ a:hover { text-decoration: underline; }
           : ($selected_address ? multi_leg_address_label($selected_address) : 'the last trailhead');
       $EDIT_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5l2 2L5 13H3v-2l8.5-8.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
       $BREAK_SVG = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2.5 6h8.5v3.5a3.5 3.5 0 0 1-3.5 3.5h-1.5a3.5 3.5 0 0 1-3.5-3.5V6z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M11 7h1a1.75 1.75 0 0 1 0 3.5h-1.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M5.5 2v2M8 2v2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+      $OPEN_SVG = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5h4v4"/><path d="M13.5 2.5 7.5 8.5"/><path d="M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/></svg>';
       $TRASH_SVG = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M5.5 4V2.5A1 1 0 0 1 6.5 1.5h3a1 1 0 0 1 1 1V4M6.5 7.5v4M9.5 7.5v4M3.5 4l.7 8.4A1 1 0 0 0 5.2 13.5h5.6a1 1 0 0 0 1-1.1L12.5 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
       $n_stops = count($stops);
       // One break tile (multi_break_lib.php). Movable like a summit tile: drag, or the arrows,
@@ -1404,6 +1411,9 @@ a:hover { text-decoration: underline; }
             <?php if (!$public_view && !$stop['is_drive_up'] && !$stop['has_trailhead']): ?>
               <a href="trail_research.php?id=<?= $stop['id'] ?>&group=<?= $current_group['id'] ?>" class="tile-warn" title="No starting point saved for <?= htmlspecialchars(addslashes($stop['name'])) ?>. Directions fall back to the summit's peak location. Add a starting point in Trail Research.">!</a>
             <?php endif; ?>
+            <?php // Members open their own summit page; read-only viewers get the public /s/ page.
+              $open_href = $public_view ? 's/' . shareMakeSlug($stop['ref']) : 'summit_detail.php?id=' . (int)$stop['id'] . '&group=' . (int)$current_group['id']; ?>
+            <a href="<?= htmlspecialchars($open_href) ?>" class="tile-open" target="_blank" rel="noopener" title="Open <?= htmlspecialchars($stop['name']) ?> in a new tab" aria-label="Open <?= htmlspecialchars($stop['name']) ?> in a new tab" draggable="false"><?= $OPEN_SVG ?></a>
             <?php if (!$public_view): ?><div class="tile-drag-handle" title="Drag to reorder" onmousedown="this.closest('.tile').draggable = true">⠿</div><?php endif; ?>
           </div>
         </div>

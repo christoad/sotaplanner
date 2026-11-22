@@ -1,37 +1,24 @@
 <?php
-// Public summit pages (summit_share.php, reached as /s/<designator>-<name>).
+// Public summit pages (summit_share.php, reached as /s/<designator>, e.g. /s/w6-ct-037).
 //
 // Every SOTA summit has one; nobody has to "share" it first. The page is built from public
 // SOTA summit data plus the same community research nominate.php already copies between
 // dashboards (trail link, hike stats, difficulty, starting point, cell service, GPX route),
 // and never shows anything about the dashboard or person that research came from.
 //
-// Only the designator matters when resolving a link: /s/w6-ct-012 and
-// /s/w6-ct-012-waterman-mtn are the same page. The name part is cosmetic.
+// Links are the designator only (/s/w6-ct-012). Older links with a name part
+// (/s/w6-ct-012-waterman-mtn) still open the same page.
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/sota_cache_helper.php';
 require_once __DIR__ . '/multi_import_lib.php';
 require_once __DIR__ . '/nominate_lib.php';
 
-function shareMakeSlug(string $ref, string $name): string {
-    // Common words are abbreviated to keep links short and readable
-    static $abbr = [
-        'mountain' => 'mtn', 'mountains' => 'mtns', 'mount' => 'mt', 'peak' => 'pk', 'point' => 'pt',
-        'ridge' => 'rdg', 'canyon' => 'cyn', 'junction' => 'jct', 'saint' => 'st', 'fort' => 'ft',
-        'benchmark' => 'bm', 'north' => 'n', 'south' => 's', 'east' => 'e', 'west' => 'w',
-    ];
-    $text = $name;
-    if (function_exists('iconv')) {
-        $t = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $text);
-        if ($t !== false && $t !== '') $text = $t;
-    }
-    $words = preg_split('/[^a-zA-Z0-9]+/', strtolower($text), -1, PREG_SPLIT_NO_EMPTY);
-    $words = array_map(fn($w) => $abbr[$w] ?? $w, $words);
-    $ref_part = trim(preg_replace('/[^a-z0-9]+/', '-', strtolower($ref)), '-');
-    $slug = trim($ref_part . '-' . implode('-', $words), '-');
-    $slug = substr($slug, 0, 100);
-    return trim($slug, '-') ?: 'summit';
+function shareMakeSlug(string $ref, string $name = ''): string {
+    // Designator only (W6/CT-037 -> w6-ct-037), so anyone can type a link by hand.
+    // $name is no longer used; older links with a name part still resolve (shareParseRef).
+    $slug = trim(preg_replace('/[^a-z0-9]+/', '-', strtolower($ref)), '-');
+    return $slug ?: 'summit';
 }
 
 /** "w6-ct-12-waterman-mtn" or "W6/CT-012" -> "W6/CT-012", or null if it does not start with a designator. */

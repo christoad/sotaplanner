@@ -272,8 +272,11 @@ session_start();
         </div>
         <p class="version-desc">Not live yet.</p>
         <ul>
-            <li>Activation count</li>
             <li>Summit to Summit mode with elevation plots</li>
+            <li>Find hiking routes from one summit to the next</li>
+            <li>Post alerts to SOTAwatch from SOTAplanner</li>
+            <li>Send your GPX tracks to SOTA Maps</li>
+            <li>GPX editor</li>
         </ul>
     </div>
 
@@ -301,6 +304,7 @@ session_start();
         <ul>
             <li>A public page for every SOTA summit, ready to share</li>
             <li>Summit weather with a 16-day forecast</li>
+            <li>Total activations for every summit</li>
             <li>Community Notes on summit pages</li>
             <li>Weather and topo maps in the Multi-Activate PDF</li>
             <li>Driving route on the summit map</li>
