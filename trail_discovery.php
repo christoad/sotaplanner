@@ -280,10 +280,13 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
 .msg-info{background:var(--accent-bg);color:var(--ink-2);border:1px solid var(--accent-border)}
 .msg-error{background:var(--red-bg);color:var(--red);border:1px solid oklch(85% 0.08 22)}
 .note{font-size:.78rem;color:var(--ink-3);margin-top:.6rem}
-.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1rem}
-@media (max-width:1000px){.split{grid-template-columns:1fr}}
-#map{height:600px;border-radius:var(--r-lg);border:1px solid var(--border)}
-.scroll{max-height:600px;overflow:auto}
+.review{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:1rem;align-items:start;margin-bottom:1rem;scroll-margin-top:68px}
+@media (max-width:1000px){.review{grid-template-columns:1fr}}
+#map{height:680px;border-radius:var(--r-lg);border:1px solid var(--border)}
+.review-side{max-height:740px;overflow:auto;margin-bottom:0}
+.revnav{display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem;font-size:.78rem;color:var(--ink-3)}
+.revnav .grow{flex:1}
+#resultsCard h2 .d2{display:inline;margin-left:.4rem;font-weight:400}
 .legend{display:flex;gap:1rem;flex-wrap:wrap;font-size:.75rem;color:var(--ink-3);margin-top:.5rem}
 .legend span{display:inline-flex;align-items:center;gap:.35rem}
 .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
@@ -400,7 +403,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
         </details>
     </div>
 
-    <div class="split">
+    <div class="review" id="review">
         <div>
             <label class="mapbar" style="text-transform:none;letter-spacing:0;font-weight:500"><input type="checkbox" id="pkToggle"> Show parking lots and trailheads <span id="pkCount" class="d2" style="display:inline"></span></label>
             <div id="map"></div>
@@ -416,10 +419,10 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
                 <span><svg width="12" height="12" viewBox="-9 -9 18 18"><path d="M 0,-8 8,0 0,8 -8,0 Z" fill="#15803d"/></svg>Trailhead (T)</span>
                 <span>Parking and trailheads: &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" style="color:inherit">OpenStreetMap</a> contributors</span>
             </div>
-            <div class="card" id="detail" style="display:none;margin-top:1rem"></div>
         </div>
-        <div class="card scroll" id="resultsCard"><p class="note">No results yet.</p></div>
+        <div class="card review-side" id="detail"><h2>Review a summit</h2><p class="note">Pick a summit from the list below. Its map shows here on the left and its routes on this side, so you can check them together. Use Previous and Next to step through the list.</p></div>
     </div>
+    <div class="card" id="resultsCard"><p class="note">No results yet.</p></div>
 <?php endif; ?>
 </div>
 
@@ -504,7 +507,7 @@ function renderAll() {
   $('ringNote').textContent = tot ? 'Ring where the top route was first found: ' + ks.map(k => { acc += ringCounts[k]; return k + ' km: ' + ringCounts[k] + ' (' + Math.round(100 * acc / tot) + '% by here)'; }).join(', ') : '';
 
   if (!rows.length) { $('resultsCard').innerHTML = '<p class="note">No results in this run yet.</p>'; return; }
-  let h = '<table><tr><th>Summit</th><th>Result</th><th class="num">Overlap</th><th class="num">Start off</th><th class="num">Ours</th><th class="num">Community</th><th class="num" title="Summit confidence: chance the routes shown include the way people actually go">Conf.</th><th class="num">Routes</th></tr>';
+  let h = '<h2>Summits in this run<span class="d2">' + rows.length + ', click one to review it above</span></h2><table><tr><th>Summit</th><th>Result</th><th class="num">Overlap</th><th class="num">Start off</th><th class="num">Ours</th><th class="num">Community</th><th class="num" title="Summit confidence: chance the routes shown include the way people actually go">Conf.</th><th class="num">Routes</th></tr>';
   rows.forEach(r => {
     const v = r.verdict ? '<span class="pill p-' + r.verdict + '">' + r.verdict + '</span>' : (r.status === 'error' ? '<span class="pill p-miss">error</span>' : '<span class="pill">no track</span>');
     const ours = r.best_time_min ? fmtT(+r.best_time_min) + '<span class="d2">' + mi(r.best_dist_m) + ' mi, ' + ft(r.best_gain_m) + ' ft</span>' : (r.status === 'none' ? '<span class="d2">none found</span>' : '-');
@@ -520,7 +523,7 @@ function renderAll() {
   });
   h += '</table><p class="note">Overlap: share of the community track\'s uphill part within 50 m of our closest route. Start off: distance between their starting point and ours. Match = 70%+ overlap and starts within 400 m. Routes: paved (p) and dirt (d) starting points found. Click a row for the map.</p>';
   $('resultsCard').innerHTML = h;
-  $('resultsCard').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => showDetail(tr.dataset.ref));
+  $('resultsCard').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { showDetail(tr.dataset.ref); $('review').scrollIntoView({behavior:'smooth', block:'start'}); });
 }
 
 /* Live progress: works whoever started the run (this page, another tab, or a script). */
@@ -571,6 +574,10 @@ function dot(p, color, scale, title, label) {
 }
 
 let cur = null, hl = null, pkMarkers = [];
+function stepSummit(dir) {   // Previous / Next in the review panel, in list order
+  const i = rows.findIndex(r => r.sota_ref === selRef) + dir;
+  if (i >= 0 && i < rows.length) { showDetail(rows[i].sota_ref); $('detail').scrollTop = 0; }
+}
 let showPk = true;
 try { showPk = localStorage.getItem('td_show_parking') !== '0'; } catch (e) {}
 async function showDetail(ref) {
@@ -634,7 +641,12 @@ function drawDetail(fit) {
     if (fit) map.fitBounds(b);
   });
   const k = d.known;
-  let h = '<h2>' + esc(s.ref) + ' ' + esc(s.name) + '</h2>';
+  const pos = rows.findIndex(r => r.sota_ref === s.ref);
+  let h = '<div class="revnav"><button class="btn btn-ghost btn-sm" type="button" onclick="stepSummit(-1)"' + (pos <= 0 ? ' disabled' : '') + '>&larr; Previous</button>' +
+          '<button class="btn btn-ghost btn-sm" type="button" onclick="stepSummit(1)"' + (pos < 0 || pos >= rows.length - 1 ? ' disabled' : '') + '>Next &rarr;</button>' +
+          '<span class="grow"></span>' + (pos >= 0 ? (pos + 1) + ' of ' + rows.length : '') + '</div>';
+  const rr = rows[pos];
+  h += '<h2>' + esc(s.ref) + ' ' + esc(s.name) + (rr && rr.verdict ? ' <span class="pill p-' + rr.verdict + '">' + rr.verdict + '</span>' : '') + '</h2>';
   h += '<p class="note" style="margin:0 0 .75rem">' + d.stats.calls + ' BRouter calls in ' + d.stats.seconds + ' s, ' + d.stats.probes_found + ' of ' + d.stats.probes + ' probes reached a road. Rings: ' +
        d.rings.map(r => r.km + ' km (' + r.new + ' new)').join(', ') + '.' +
        (k ? ' Community track: ' + mi(k.dist_m) + ' mi, ' + ft(k.gain_m) + ' ft, ' + fmtT(k.time_min) + ' up. Closest of ours is #' + (k.match_i == null ? '-' : k.match_i + 1) + ' (' + k.overlap + '% overlap, start ' + (k.start_m ?? '-') + ' m away).' : ' No community track to compare.') + '</p>' +
@@ -716,7 +728,7 @@ if ($('runSel')) {
     $('goOne').disabled = false;
     if (!r.ok) { msg(esc(r.error), 'msg-error'); return; }
     if (r.row && r.row.status === 'error') { msg('Search failed for ' + esc(ref) + ': ' + esc(r.row.error || 'unknown error'), 'msg-error'); return; }
-    msg(''); showDetail(ref);
+    msg(''); showDetail(ref); $('review').scrollIntoView({behavior:'smooth', block:'start'});
   };
   $('goBatch').onclick = async () => {
     const todo = TEST_SET.filter(ref => !rows.some(r => r.sota_ref === ref && r.status !== 'error'));
