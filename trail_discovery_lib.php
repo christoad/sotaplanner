@@ -21,10 +21,11 @@
 
 require_once __DIR__ . '/brouter_lib.php';
 require_once __DIR__ . '/sota_cache_helper.php';
+require_once __DIR__ . '/parking_lib.php';
 
 const TD_CLUSTER_M      = 150;   // starting points closer than this are the same place
 const TD_CONCURRENCY    = 3;     // BRouter runs 3 threads
-const TD_MIN_START_GAP  = 0.25;  // seconds between request starts (server allows 5/s, burst 20)
+const TD_MIN_START_GAP  = 0.25;  // seconds between request starts (server allows 10/s, burst 40, since 2026-11-21)
 const TD_RING_STEPS_KM  = [0.75, 1.5, 2.5, 4, 6, 8, 10, 12];
 
 /* ───────────────────────── settings ───────────────────────── */
@@ -481,13 +482,7 @@ function td_discover($ref, array $settings) {
         try { td_community_evidence(getDbConnection(), $kept, $slat, $slon, $s['ref'] ?? $ref, __DIR__ . '/gpx_files/global'); }
         catch (Throwable $e) { /* no evidence: the score then rests on the route itself */ }
     }
-    $rank = 0;
-    foreach ($kept as &$k) {   // $kept is sorted quickest first; dirt roads to the summit are not ranked
-        $driveup = $k['cls'] === 'dirt' && $k['dist_m'] < 400;
-        [$k['confidence'], $k['reasons']] = td_confidence($k, $driveup ? 99 : $rank++);
-        $k['driveup'] = $driveup;
-    }
-    unset($k);
+    td_score_candidates($kept, $slat, $slon, $set['max_km']);
 
     // Up to 3 routes ($kept is sorted quickest first).
     //  paved_first (Chris's rule, 2026-11-15): paved starts only; dirt only when no paved start was found.
@@ -562,33 +557,76 @@ function td_max_sac(array $r, $startIdx) {
 }
 
 /**
- * Route confidence (0 to 100): the estimated chance that this is a route people actually use, with
- * plain-English reasons. Logistic model fitted 2026-11-17 on test runs 3 and 4 (W6/CT and W4C/WM, label:
- * our start, or its gate-closed parking spot, within 400 m of the community track's start). Fitted on
- * W6/CT alone it scored AUC 0.85 on the unseen W4C/WM summits, so ranking routes transfers between regions.
- * $rank: 0 = quickest route found, 1, 2 = next quickest, 99 = not ranked (dirt road to the summit).
- * Refit as more regions are tested; the weights are only as good as the summits they came from.
+ * Score every route of one summit (sorted quickest first). Adds 'driveup', 'pk_m' / 'pkT_m' (nearest mapped
+ * parking or trailhead, OpenStreetMap list via parking_lib.php; 5000 = none within 5 km), 'confidence' and 'reasons'.
+ * Used by td_discover() and to rescore saved runs without searching again.
  */
-function td_confidence(array $c, $rank = 3) {
+function td_score_candidates(array &$kept, $slat, $slon, $max_km = 8) {
+    $pk = pk_near($slat, $slon, (int)(($max_km + 3) * 1000));
+    $fastest = null;
+    foreach ($kept as $k) {
+        $du = $k['cls'] === 'dirt' && $k['dist_m'] < 400;
+        if (!$du) $fastest = $fastest === null ? max(1, (int)$k['time_min']) : min($fastest, max(1, (int)$k['time_min']));
+    }
+    $rank = 0;
+    foreach ($kept as &$k) {   // dirt roads that reach the summit are not ranked
+        $k['driveup'] = $k['cls'] === 'dirt' && $k['dist_m'] < 400;
+        if ($pk['ok']) {
+            $n  = pk_nearest($pk['points'], $k['lat'], $k['lon'], null, 5000);
+            $nt = pk_nearest($pk['points'], $k['lat'], $k['lon'], 'T', 5000);
+            $k['pk_m'] = $n ? $n['d'] : 5000; $k['pkT_m'] = $nt ? $nt['d'] : 5000;
+        } else {
+            $k['pk_m'] = null; $k['pkT_m'] = null;   // parking list unreachable: the score leaves it out
+        }
+        $rel = $fastest ? max(1, (int)$k['time_min']) / $fastest : 1;
+        [$k['confidence'], $k['reasons']] = td_confidence($k, $k['driveup'] ? 99 : $rank++, $rel);
+    }
+    unset($k);
+}
+
+/**
+ * Route confidence (0 to 100): the estimated chance that this is a route people actually use, with
+ * plain-English reasons. Logistic model refitted 2026-11-21 on test runs 5 and 6 (194 summits in W6/CT and
+ * W4C/WM, 1,164 routes; label: our start, or its gate-closed parking spot, within 400 m of the community
+ * track's start). Cross-validated AUC 0.85; fitted on one region it scores 0.84 / 0.88 on the other.
+ * Changes from the 2026-11-17 model: mapped parking and trailheads are a signal, and a long hike only
+ * counts against a route when it is also much slower than the quickest route for that summit (big
+ * mountains, where every route is long, are no longer marked down). Fitting script: research/trail_discovery_fit.py.
+ * $rank: 0 = quickest route found, 1, 2 = next quickest, 99 = not ranked (dirt road to the summit).
+ * $rel: this route's hike time divided by the quickest route's for the summit.
+ */
+function td_confidence(array $c, $rank = 3, $rel = 1.0) {
     $why = [];
-    $z = -3.3;
-    if ($rank === 0)      { $z += 1.85; $why[] = '+ quickest route found'; }
-    elseif ($rank === 1)  { $z += 1.45; $why[] = '+ second quickest route'; }
-    elseif ($rank === 2)  { $z += 0.35; $why[] = '+ third quickest route'; }
-    elseif ($rank === 99) { $why[] = 'dirt road reaches the summit: road access unknown'; }
+    $z = -3.32;
+    if ($rank === 0)      { $z += 1.16; $why[] = '+ quickest route found'; }
+    elseif ($rank === 1)  { $z += 1.09; $why[] = '+ second quickest route'; }
+    elseif ($rank === 2)  { $z += 0.16; $why[] = 'third quickest route'; }
+    elseif ($rank === 99) { $z += 1.00; $why[] = 'dirt road reaches the summit: road access unknown'; }
     $h = (int)$c['hits'];
-    $z += 1.15 * log(1 + min($h, 200)) / 5;
+    $z += 1.40 * log(1 + min($h, 200)) / 5;
     if ($h >= 10) $why[] = '+ ' . $h . ' probes led here';
     elseif ($h <= 2) $why[] = '- only ' . $h . ' probe' . ($h === 1 ? '' : 's') . ' led here';
     $ev = $c['ev_start_m'] ?? null;
-    if ($ev !== null && $ev < 100) { $z += 1.6; $why[] = '+ a community track for a nearby summit starts here'; }
-    if (($c['ev_trail_pct'] ?? 0) >= 75) { $z += 0.65; $why[] = '+ most of the hike follows community tracks'; }
+    if ($ev !== null && $ev < 100) { $z += 1.11; $why[] = '+ a community track for a nearby summit starts here'; }
+    if (($c['ev_trail_pct'] ?? 0) >= 75) { $z += 0.38; $why[] = '+ most of the hike follows community tracks'; }
     if (!isset($c['ev_tracks']) || !$c['ev_tracks']) $why[] = 'no community tracks nearby to compare with';
-    $gap = (int)($c['summit_gap_m'] ?? 0);
-    if ($gap > 120) { $z -= 0.4; $why[] = '- last ' . $gap . ' m to the summit off trail'; }
-    if ($c['cls'] === 'paved') { $z += 0.2; $why[] = '+ paved road start'; }
-    else $why[] = '- dirt road start';
-    if ((int)$c['time_min'] > 240) { $z -= 1.2; $why[] = '- hike over 4 hours'; }
+    $pkm = $c['pk_m'] ?? null; $pkt = $c['pkT_m'] ?? null;
+    if ($pkm !== null) {
+        if ($pkm <= 150) {
+            $z += 1.39; $why[] = '+ starts at mapped ' . ($pkt !== null && $pkt <= 150 ? 'trailhead' : 'parking') . ' (' . $pkm . ' m)';
+            if ($pkt !== null && $pkt <= 150) $z += 0.29;
+        } elseif ($pkm <= 400) {
+            $z += 0.64; $why[] = '+ mapped parking ' . $pkm . ' m away';
+        } else {
+            $why[] = 'no mapped parking within 400 m';
+        }
+    }
+    if ($c['cls'] === 'paved') $z += 0.06;
+    if ((int)($c['summit_gap_m'] ?? 0) > 120) $z -= 0.03;
+    if ((int)$c['time_min'] < 45) { $z += 0.32; $why[] = '+ short hike'; }
+    if ($rel > 2.5)      { $z -= 1.14; $why[] = '- more than 2.5 times as long as the quickest route here'; }
+    elseif ($rel > 1.5)  { $z -= 0.62; $why[] = '- over 1.5 times as long as the quickest route here'; }
+    if ((int)$c['time_min'] > 240 && $rel > 1.2) { $z -= 1.44; $why[] = '- over 4 hours and much slower than the quickest route here'; }
     return [(int)round(100 / (1 + exp(-$z))), $why];
 }
 
