@@ -1703,7 +1703,7 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
         <?php endif; ?>
         <div class="topbar-divider"></div>
         <div class="user-chip" id="userChip">
-            <?= htmlspecialchars(getCurrentCallsign()) ?>
+            <?= userChipName(getCurrentCallsign()) ?>
             <?php if (($_SESSION['sota_login_type'] ?? '') === 'dev'): ?>
                 <span style="background:#856404; color:#fff3cd; font-size:0.65rem; padding:0.05rem 0.3rem; border-radius:3px;">DEV</span>
             <?php endif; ?>
@@ -1712,6 +1712,7 @@ $from_pin_json = json_encode($from_pin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | 
                 <?php if (($_SESSION['sota_callsign'] ?? '') === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
                     <a href="god_mode.php">God Mode</a>
                 <?php endif; ?>
+                <?= betaMenuLink() ?>
                 <a href="user_settings.php">Settings</a>
                 <a href="logout.php">Sign Out</a>
             </div>

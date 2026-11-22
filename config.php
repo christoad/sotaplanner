@@ -1297,3 +1297,6 @@ function format_time_duration($seconds) {
     
     return $minutes . 'm';
 }
+
+// Beta tester list (God Mode) and the BETA tag on the user chip
+require_once __DIR__ . "/beta_lib.php";
