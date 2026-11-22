@@ -1086,7 +1086,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
       </div>
     </div>
     <div class="user-chip" onclick="this.classList.toggle('open')" id="userChip">
-      <span><?= htmlspecialchars($_SESSION['sota_callsign'] ?? '') ?></span>
+      <?= userChipName($_SESSION['sota_callsign'] ?? '') ?>
       <svg class="user-chip-chevron" width="10" height="6" viewBox="0 0 10 6" fill="none">
         <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>

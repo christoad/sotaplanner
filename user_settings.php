@@ -253,7 +253,7 @@ $additional_callsigns = $user_profile['additional_callsigns'] ?? '';
   </div>
   <div class="topbar-right">
     <div class="user-chip" onclick="this.classList.toggle('open')" id="userChip">
-      <span><?= htmlspecialchars($current_user) ?></span>
+      <?= userChipName($current_user) ?>
       <svg class="user-chip-chevron" width="10" height="6" viewBox="0 0 10 6" fill="none">
         <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>

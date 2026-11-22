@@ -87,6 +87,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $message = "Banner cleared.";
     }
 
+    // Beta testers: add, or update the email and note of someone already on the list
+    if (isset($_POST['beta_save'])) {
+        $bcs   = strtoupper(trim($_POST['beta_callsign'] ?? ''));
+        $email = trim($_POST['beta_email'] ?? '');
+        $note  = trim($_POST['beta_note'] ?? '');
+        if (!preg_match('/^[A-Z0-9]{3,10}$/', $bcs)) {
+            $error = "Enter a valid callsign (3 to 10 letters and numbers).";
+        } elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $error = "That email address doesn't look right.";
+        } else {
+            try {
+                $existed = $db->prepare("SELECT 1 FROM beta_testers WHERE callsign = ?");
+                $existed->execute([$bcs]);
+                $existed = (bool)$existed->fetchColumn();
+                $db->prepare("INSERT INTO beta_testers (callsign, email, note, added_by) VALUES (?, ?, ?, ?)
+                              ON DUPLICATE KEY UPDATE email = VALUES(email), note = VALUES(note)")
+                   ->execute([$bcs, $email !== '' ? $email : null, $note !== '' ? mb_substr($note, 0, 500) : null, $real_callsign ?: $callsign]);
+                betaForget($bcs);
+                $message = $existed ? "Updated beta tester $bcs." : "Added $bcs to the beta testers.";
+            } catch (PDOException $e) {
+                $error = "Could not save. Has db_migrate_beta.php been run? (" . $e->getMessage() . ")";
+            }
+        }
+        if (!$error) { header('Location: god_mode.php?tab=beta&msg=' . urlencode($message)); exit; }
+    }
+    if (isset($_POST['beta_remove'])) {
+        $bcs = strtoupper(trim($_POST['beta_callsign'] ?? ''));
+        try {
+            $db->prepare("DELETE FROM beta_testers WHERE callsign = ?")->execute([$bcs]);
+            betaForget($bcs);
+            header('Location: god_mode.php?tab=beta&msg=' . urlencode("Removed $bcs from the beta testers."));
+            exit;
+        } catch (PDOException $e) {
+            $error = "Could not remove: " . $e->getMessage();
+        }
+    }
+
     // Delete planning group (cascade)
     if (isset($_POST['delete_group'])) {
         $gid = (int)$_POST['group_id'];
@@ -418,7 +455,26 @@ if (is_dir($gpx_dir)) {
 }
 
 $active_tab = $_GET['tab'] ?? 'overview';
-$tabs = ['overview' => 'Overview', 'users' => 'Users', 'groups' => 'Dashboards', 'activity' => 'Activity', 'data' => 'Data Tools', 'cleanup' => 'Cleanup', 'api' => 'API Status', 'server' => 'AWS Server'];
+$tabs = ['overview' => 'Overview', 'users' => 'Users', 'beta' => 'Beta Testers', 'groups' => 'Dashboards', 'activity' => 'Activity', 'data' => 'Data Tools', 'cleanup' => 'Cleanup', 'api' => 'API Status', 'server' => 'AWS Server'];
+
+if (!$message && !$error && isset($_GET['msg'])) $message = mb_substr((string)$_GET['msg'], 0, 200);
+
+// ── Beta testers (Beta Testers tab) ────────────────────────────────────────
+$beta_rows = []; $beta_table_missing = false; $beta_edit = null;
+if ($active_tab === 'beta') {
+    try {
+        $beta_rows = $db->query("
+            SELECT b.callsign, b.email, b.note, b.added_at,
+                   (SELECT 1 FROM users u WHERE u.callsign = b.callsign AND u.sso_sub IS NOT NULL LIMIT 1) AS signed_in,
+                   (SELECT MAX(v.visit_date) FROM user_visits v WHERE v.callsign = b.callsign) AS last_seen
+            FROM beta_testers b ORDER BY b.callsign
+        ")->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        $beta_table_missing = true;
+    }
+    $edit_cs = strtoupper(trim($_GET['edit'] ?? ''));
+    foreach ($beta_rows as $br) if ($br['callsign'] === $edit_cs) $beta_edit = $br;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -927,6 +983,86 @@ select.form-input { cursor: pointer; }
         </script>
 
     <!-- ── GROUPS ── -->
+    <?php elseif ($active_tab === 'beta'): ?>
+
+        <div class="section-head">
+            <div>
+                <h2>Beta Testers</h2>
+                <p>These callsigns get new features before everyone else. Their badge in the top right turns blue with a BETA tag.</p>
+            </div>
+        </div>
+
+        <?php if ($beta_table_missing): ?>
+            <div class="card"><div class="empty">The beta tester table hasn't been created yet. Run db_migrate_beta.php.</div></div>
+        <?php else: ?>
+
+        <div class="card">
+            <form method="POST" class="form-row">
+                <div class="form-group">
+                    <label class="form-label" for="beta_callsign">Callsign</label>
+                    <input class="form-input mono" id="beta_callsign" name="beta_callsign" required maxlength="10"
+                           style="min-width:120px; width:120px; text-transform:uppercase;"
+                           value="<?= htmlspecialchars($beta_edit['callsign'] ?? '') ?>" <?= $beta_edit ? 'readonly' : '' ?>>
+                </div>
+                <div class="form-group" style="flex:1; min-width:200px;">
+                    <label class="form-label" for="beta_email">Email (optional)</label>
+                    <input class="form-input" type="email" id="beta_email" name="beta_email" maxlength="255"
+                           value="<?= htmlspecialchars($beta_edit['email'] ?? '') ?>">
+                </div>
+                <div class="form-group" style="flex:2; min-width:220px;">
+                    <label class="form-label" for="beta_note">Note (optional)</label>
+                    <input class="form-input" id="beta_note" name="beta_note" maxlength="500"
+                           placeholder="e.g. GPX editor, hikes a lot in NorCal"
+                           value="<?= htmlspecialchars($beta_edit['note'] ?? '') ?>">
+                </div>
+                <button type="submit" name="beta_save" class="btn btn-primary"><?= $beta_edit ? 'Save changes' : 'Add tester' ?></button>
+                <?php if ($beta_edit): ?>
+                    <a href="god_mode.php?tab=beta" class="btn btn-ghost">Cancel</a>
+                <?php endif; ?>
+            </form>
+            <p class="muted" style="font-size:0.78rem; margin-top:var(--sp-3);">
+                The site never gets email addresses from SOTA sign-in, so add them here if you want to email testers.
+                Changes show up for the tester within about 5 minutes.
+            </p>
+        </div>
+
+        <?php if (empty($beta_rows)): ?>
+            <div class="card"><div class="empty">No beta testers yet. Add a callsign above.</div></div>
+        <?php else:
+            $beta_emails = array_values(array_filter(array_column($beta_rows, 'email'))); ?>
+        <div class="card" style="padding:0; overflow-x:auto;">
+            <table class="data-table">
+                <thead><tr><th>Callsign</th><th>Email</th><th>Note</th><th>Signed in</th><th>Last seen</th><th>Added</th><th></th></tr></thead>
+                <tbody>
+                <?php foreach ($beta_rows as $br): ?>
+                    <tr>
+                        <td class="mono"><?= htmlspecialchars($br['callsign']) ?></td>
+                        <td><?php if ($br['email']): ?><a href="mailto:<?= htmlspecialchars($br['email']) ?>"><?= htmlspecialchars($br['email']) ?></a><?php else: ?><span class="muted">-</span><?php endif; ?></td>
+                        <td style="font-size:0.82rem;"><?= $br['note'] ? htmlspecialchars($br['note']) : '<span class="muted">-</span>' ?></td>
+                        <td><?= $br['signed_in'] ? '<span class="tag tag-new">Yes</span>' : '<span class="tag tag-accent">Not yet</span>' ?></td>
+                        <td class="muted" style="font-size:0.8rem;"><?= $br['last_seen'] ? date('M j, Y', strtotime($br['last_seen'])) : '-' ?></td>
+                        <td class="muted" style="font-size:0.8rem;"><?= date('M j, Y', strtotime($br['added_at'])) ?></td>
+                        <td class="text-right" style="white-space:nowrap;">
+                            <a href="god_mode.php?tab=beta&amp;edit=<?= urlencode($br['callsign']) ?>" class="btn btn-ghost btn-sm">Edit</a>
+                            <form method="POST" class="inline-form" onsubmit="return confirm('Remove <?= htmlspecialchars($br['callsign']) ?> from the beta testers?');">
+                                <input type="hidden" name="beta_callsign" value="<?= htmlspecialchars($br['callsign']) ?>">
+                                <button type="submit" name="beta_remove" class="btn btn-danger btn-sm">Remove</button>
+                            </form>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <p class="muted" style="font-size:0.8rem;">
+            <?= count($beta_rows) ?> tester<?= count($beta_rows) === 1 ? '' : 's' ?>, <?= count($beta_emails) ?> with an email address.
+            <?php if ($beta_emails): ?>
+                <a href="mailto:?bcc=<?= htmlspecialchars(implode(',', array_map('rawurlencode', $beta_emails))) ?>&amp;subject=<?= rawurlencode('SOTAplanner beta') ?>">Email all testers (BCC)</a>
+            <?php endif; ?>
+        </p>
+        <?php endif; ?>
+        <?php endif; ?>
+
     <?php elseif ($active_tab === 'groups'): ?>
 
         <div class="section-head">
