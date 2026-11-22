@@ -4,6 +4,8 @@
 
 The one place to see what's planned. Keep it short: one line per item, details live in the notes under "Pending Work" below (or the memory file named). When something ships, starts, gets blocked or is dropped, move or delete its line here in the same session. When Chris asks "what's on the roadmap?", answer from this list.
 
+**Public "What we're working on" box** (top of `changelog.php`, synced with this list 2026-11-21): Summit to Summit mode, hiking routes from one summit to the next, posting alerts to SOTAwatch, sending GPX tracks to SOTA Maps, GPX editor. When one of these ships, take it out of that box and add it to the month's update. Trail discovery stays off the public list until Four Days in May 2027.
+
 **In progress**
 - BRouter hiking path checker (branch `brouter-paths`). Testing phase: comparison runs, then cache table, hike time and gap filling. Notes: "BRouter" sections below.
 - BRouter trail discovery (started 2026-11-15, builds on the BRouter work). God Mode only while we test on sample summits. Goal: find trails and starting points for every summit without hike data, run it on all of them, and switch it on publicly the day Chris presents SOTAplanner at Four Days in May (May 2027). Until then nothing discovered may be visible to the public. Notes: "Trail discovery" below.
