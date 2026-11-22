@@ -27,11 +27,13 @@ const TD_CLUSTER_M      = 150;   // starting points closer than this are the sam
 const TD_CONCURRENCY    = 3;     // BRouter runs 3 threads
 const TD_MIN_START_GAP  = 0.25;  // seconds between request starts (server allows 10/s, burst 40, since 2026-11-21)
 const TD_RING_STEPS_KM  = [0.75, 1.5, 2.5, 4, 6, 8, 10, 12];
+const TD_MAX_LOTS       = 160;   // parking source: most lots and trailheads routed per summit
+const TD_LOT_M          = 400;   // parking source: the lot is the start when the walking begins this close to it
 
 /* ───────────────────────── settings ───────────────────────── */
 
 function td_default_settings() {
-    return ['max_km' => 8, 'spacing_km' => 1.0, 'stop' => 'full', 'profile' => 'hiking-mountain', 'pick' => 'paved_first', 'region' => 'W6/CT'];
+    return ['max_km' => 8, 'spacing_km' => 1.0, 'stop' => 'full', 'profile' => 'hiking-mountain', 'pick' => 'paved_first', 'region' => 'W6/CT', 'source' => 'probes'];
 }
 
 function td_clean_settings(array $in) {
@@ -44,6 +46,9 @@ function td_clean_settings(array $in) {
         'stop'       => in_array($in['stop'] ?? '', ['full', 'auto2'], true) ? $in['stop'] : $d['stop'],
         'profile'    => in_array($in['profile'] ?? '', brouter_profiles(), true) ? $in['profile'] : $d['profile'],
         'pick'       => in_array($in['pick'] ?? '', ['paved_first', 'mixed'], true) ? $in['pick'] : $d['pick'],
+        // Where the search starts from (2026-11-21): rings of probe points, the mapped parking lots and
+        // trailheads around the summit (OpenStreetMap list, parking_lib.php), or both.
+        'source'     => in_array($in['source'] ?? '', ['probes', 'parking', 'both'], true) ? $in['source'] : $d['source'],
         // Test region: summits in this SOTA association/region that have a community track
         'region'     => preg_match('~^[A-Z0-9]{1,8}/[A-Z0-9]{2}$~', strtoupper((string)($in['region'] ?? ''))) ? strtoupper($in['region']) : $d['region'],
     ];
@@ -344,12 +349,62 @@ function td_discover($ref, array $settings) {
     $slat = (float)$s['lat']; $slon = (float)$s['lon'];
     $summit_ele_m = !empty($s['altFt']) ? $s['altFt'] / 3.28084 : null;
 
-    $clusters = [];   // each: lat, lon, cls, tags, hits, hike_m, first_ring_km, probe_route (coords to summit)
+    $clusters = [];   // each: lat, lon, cls, tags, hits, hike_m, first_ring_km, via, lot
     $probes = [];
     $rings = [];
     $emptyStreak = 0;
     $calls = 0;
-    foreach (TD_RING_STEPS_KM as $ri => $rk) {
+    // Add one routed probe's starting point(s) to $clusters. $lot (parking source only): the mapped lot or
+    // trailhead the route came from; when the walking starts within TD_LOT_M of it, the lot itself is the start.
+    $absorb = function (array $r, $rk, $lot = null) use (&$clusters) {
+        $read = td_read_route($r);
+        $total = end($r['cum']);
+        if ($lot && ($read['open'] || ($read['first'] && $total - $read['first']['hike_m'] <= TD_LOT_M))) {
+            // Park at the lot: the whole route from the lot is the hike.
+            $cls = $read['first']['cls'] ?? 'paved';
+            $tags = $read['first']['tags'] ?? ['highway' => 'parking'];
+            $starts = [['pt' => [$lot['lat'], $lot['lon']], 'st' => ['cls' => $cls, 'tags' => $tags, 'hike_m' => $total]]];
+        } elseif ($read['open']) {
+            return 'open';
+        } else {
+            $starts = [];
+            foreach (array_filter([$read['first'], ($read['paved'] && $read['paved'] !== $read['first']) ? $read['paved'] : null]) as $st) {
+                $starts[] = ['pt' => $r['coords'][$st['idx']], 'st' => $st];
+            }
+            $lot = null;
+        }
+        $new = 0;
+        $dirtCi = null;   // cluster of this probe's dirt start, to note the paved road beyond it
+        foreach ($starts as $x) {
+            $pt = $x['pt']; $st = $x['st'];
+            $hit = null;
+            foreach ($clusters as $ci => $c) {
+                if ($c['cls'] === $st['cls'] && td_dist($c['lat'], $c['lon'], $pt[0], $pt[1]) <= TD_CLUSTER_M) { $hit = $ci; break; }
+            }
+            if ($hit === null) {
+                $clusters[] = ['lat' => $pt[0], 'lon' => $pt[1], 'cls' => $st['cls'], 'tags' => $st['tags'], 'hits' => 1,
+                               'hike_m' => $st['hike_m'], 'first_ring_km' => $rk, 'via' => null, 'lot' => $lot];
+                $hit = count($clusters) - 1;
+                $new++;
+            } else {
+                $clusters[$hit]['hits']++;
+                if ($lot && !$clusters[$hit]['lot']) {   // a mapped lot here: park at the lot
+                    $clusters[$hit]['lot'] = $lot; $clusters[$hit]['lat'] = $pt[0]; $clusters[$hit]['lon'] = $pt[1];
+                } elseif (!$clusters[$hit]['lot'] && $st['hike_m'] < $clusters[$hit]['hike_m']) {
+                    $clusters[$hit]['hike_m'] = $st['hike_m'];
+                    $clusters[$hit]['lat'] = $pt[0]; $clusters[$hit]['lon'] = $pt[1]; $clusters[$hit]['tags'] = $st['tags'];
+                }
+                if ($rk < $clusters[$hit]['first_ring_km']) $clusters[$hit]['first_ring_km'] = $rk;
+            }
+            if ($st['cls'] === 'dirt') $dirtCi = $hit;
+            // "Gate closed" fallback: the paved road this probe reached beyond the dirt start (nearest one wins).
+            elseif ($dirtCi !== null && ($clusters[$dirtCi]['via'] === null || $st['hike_m'] < $clusters[$dirtCi]['via']['hike_m'])) {
+                $clusters[$dirtCi]['via'] = ['lat' => $pt[0], 'lon' => $pt[1], 'tags' => $st['tags'], 'hike_m' => $st['hike_m']];
+            }
+        }
+        return ['found', $new];
+    };
+    foreach ($set['source'] === 'parking' ? [] : TD_RING_STEPS_KM as $ri => $rk) {
         if ($rk > $set['max_km'] + 1e-9) break;
         $n = (int)max(8, min(32, round(2 * M_PI * $rk / $set['spacing_km'])));
         $offset = ($ri % 2) ? 180 / $n : 0;   // stagger alternate rings so probes spiral rather than line up
@@ -366,39 +421,51 @@ function td_discover($ref, array $settings) {
             $probe = ['lat' => round($pp[0][0], 5), 'lon' => round($pp[0][1], 5), 'ring' => $rk, 'st' => 'fail'];
             if (!$r['ok']) { $probe['err'] = $r['error'] ?? ''; $probes[] = $probe; continue; }
             $okHere++;
-            $read = td_read_route($r);
-            if ($read['open']) { $probe['st'] = 'open'; $probes[] = $probe; continue; }
-            $probe['st'] = 'found';
+            $a = $absorb($r, $rk);
+            $probe['st'] = $a === 'open' ? 'open' : 'found';
             $probes[] = $probe;
-            $dirtCi = null;   // cluster of this probe's dirt start, to note the paved road beyond it
-            foreach (array_filter([$read['first'], ($read['paved'] && $read['paved'] !== $read['first']) ? $read['paved'] : null]) as $st) {
-                $pt = $r['coords'][$st['idx']];
-                $hit = null;
-                foreach ($clusters as $ci => $c) {
-                    if ($c['cls'] === $st['cls'] && td_dist($c['lat'], $c['lon'], $pt[0], $pt[1]) <= TD_CLUSTER_M) { $hit = $ci; break; }
-                }
-                if ($hit === null) {
-                    $clusters[] = ['lat' => $pt[0], 'lon' => $pt[1], 'cls' => $st['cls'], 'tags' => $st['tags'], 'hits' => 1,
-                                   'hike_m' => $st['hike_m'], 'first_ring_km' => $rk, 'via' => null];
-                    $hit = count($clusters) - 1;
-                    $newHere++;
-                } else {
-                    $clusters[$hit]['hits']++;
-                    if ($st['hike_m'] < $clusters[$hit]['hike_m']) {
-                        $clusters[$hit]['hike_m'] = $st['hike_m'];
-                        $clusters[$hit]['lat'] = $pt[0]; $clusters[$hit]['lon'] = $pt[1]; $clusters[$hit]['tags'] = $st['tags'];
-                    }
-                }
-                if ($st['cls'] === 'dirt') $dirtCi = $hit;
-                // "Gate closed" fallback: the paved road this probe reached beyond the dirt start (nearest one wins).
-                elseif ($dirtCi !== null && ($clusters[$dirtCi]['via'] === null || $st['hike_m'] < $clusters[$dirtCi]['via']['hike_m'])) {
-                    $clusters[$dirtCi]['via'] = ['lat' => $pt[0], 'lon' => $pt[1], 'tags' => $st['tags'], 'hike_m' => $st['hike_m']];
-                }
-            }
+            if ($a !== 'open') $newHere += $a[1];
         }
         $rings[] = ['km' => $rk, 'probes' => $n, 'ok' => $okHere, 'new' => $newHere];
         $emptyStreak = ($newHere === 0 && $clusters) ? $emptyStreak + 1 : 0;
         if ($set['stop'] === 'auto2' && $emptyStreak >= 2) break;
+    }
+
+    // Backwards from the places people drive to: every mapped parking lot and trailhead within the search
+    // distance (lots closer than TD_CLUSTER_M to one already taken count once; trailheads first, then the
+    // nearest lots, at most TD_MAX_LOTS), each routed to the summit.
+    $lotsUsed = 0; $lotsFound = null;
+    if ($set['source'] !== 'probes') {
+        $pk = pk_near($slat, $slon, (int)($set['max_km'] * 1000), 20000);
+        if (!$pk['ok'] && !$pk['points']) return ['ok' => false, 'error' => 'Parking list not available: ' . ($pk['error'] ?? 'unknown')];
+        $pts = $pk['points'];
+        usort($pts, fn($a, $b) => ($a['k'] === 'T' ? 0 : 1) <=> ($b['k'] === 'T' ? 0 : 1) ?: $a['d'] <=> $b['d']);
+        $sites = [];
+        foreach ($pts as $p) {
+            foreach ($sites as $q) if (td_dist($q['lat'], $q['lon'], $p['lat'], $p['lon']) <= TD_CLUSTER_M) continue 2;
+            $sites[] = $p;
+            if (count($sites) >= TD_MAX_LOTS) break;
+        }
+        $lotsFound = count($pts);
+        $jobs = [];
+        foreach ($sites as $i => $p) $jobs['p' . $i] = [[$p['lat'], $p['lon']], [$slat, $slon]];
+        $res = $jobs ? td_route_many($jobs, $set['profile']) : [];
+        $calls += count($jobs);
+        $newHere = 0; $okHere = 0;
+        foreach ($sites as $i => $p) {
+            $r = $res['p' . $i] ?? ['ok' => false, 'error' => 'missing'];
+            $rk = 0.75;   // report each lot in the ring band its distance falls in, like a probe
+            foreach (TD_RING_STEPS_KM as $step) { $rk = $step; if ($p['d'] <= $step * 1000) break; }
+            $probe = ['lat' => round($p['lat'], 5), 'lon' => round($p['lon'], 5), 'ring' => $rk, 'st' => 'fail', 'src' => $p['k'], 'name' => $p['name']];
+            if (!$r['ok']) { $probe['err'] = $r['error'] ?? ''; $probes[] = $probe; continue; }
+            $okHere++;
+            $a = $absorb($r, $rk, ['k' => $p['k'], 'name' => $p['name'], 'lat' => $p['lat'], 'lon' => $p['lon']]);
+            $probe['st'] = $a === 'open' ? 'open' : 'found';
+            $probes[] = $probe;
+            if ($a !== 'open') $newHere += $a[1];
+        }
+        $lotsUsed = count($sites);
+        $rings[] = ['km' => $set['max_km'], 'probes' => $lotsUsed, 'ok' => $okHere, 'new' => $newHere, 'kind' => 'parking'];
     }
 
     // Re-route the best few groups of each tier straight from the starting point to the summit.
@@ -424,7 +491,7 @@ function td_discover($ref, array $settings) {
         $startIdx = 0;
         $cls = $c['cls']; $tags = $c['tags'];
         $want = $cls === 'paved' ? $read['paved'] : $read['first'];
-        if ($want && $want['idx'] > 0) { $startIdx = $want['idx']; $cls = $want['cls']; $tags = $want['tags']; }
+        if (!$c['lot'] && $want && $want['idx'] > 0) { $startIdx = $want['idx']; $cls = $want['cls']; $tags = $want['tags']; }
         $route = array_slice($r['coords'], $startIdx);
         if (count($route) < 2) $route = [$r['coords'][0], end($r['coords'])];
         $m = td_measure($route, $slat, $slon, $summit_ele_m);
@@ -436,6 +503,7 @@ function td_discover($ref, array $settings) {
             'straight_m' => round(td_dist($route[0][0], $route[0][1], $slat, $slon)),
             'route' => $m['route'],
             'via' => $cls === 'dirt' ? $c['via'] : null,
+            'lot' => $c['lot'] ? ['k' => $c['lot']['k'], 'name' => $c['lot']['name']] : null,
         ];
         $cands[] = $cand;
     }
@@ -508,7 +576,7 @@ function td_discover($ref, array $settings) {
         'ok' => true, 'summit' => ['ref' => $s['ref'] ?? $ref, 'name' => $s['name'] ?? '', 'lat' => $slat, 'lon' => $slon, 'alt_ft' => $s['altFt'] ?? null],
         'settings' => $set, 'rings' => $rings, 'probes' => $probes, 'candidates' => $kept, 'chosen' => $chosen, 'chosen_alt' => $chosen_alt,
         'confidence' => $summitConf($chosen), 'confidence_alt' => $summitConf($chosen_alt), 'band' => td_conf_band($summitConf($chosen)),
-        'stats' => ['calls' => $calls, 'probes' => count($probes), 'probes_found' => $found,
+        'stats' => ['calls' => $calls, 'probes' => count($probes), 'probes_found' => $found, 'lots_routed' => $lotsUsed, 'lots_found' => $lotsFound,
                     'seconds' => round(microtime(true) - $t0, 1), 'clusters' => count($clusters)],
     ];
 }
