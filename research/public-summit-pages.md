@@ -14,7 +14,7 @@ Ask Chris before starting.
 
 ## Public summit pages (shipped 2026-10-27)
 
-Every SOTA summit has a public, read-only page at `/s/<designator>-<name>` (for example `/s/w6-ct-012-waterman-mtn`), no login and no "share" step. Only the designator matters when resolving (`/s/w6-ct-012` works). The name part is cosmetic and abbreviated (mountain to mtn, peak to pk, and so on, see `shareMakeSlug()`). `.htaccess` holds the one rewrite rule; the app also answers at `summit_share.php?s=<slug>`.
+Every SOTA summit has a public, read-only page at `/s/<designator>` (for example `/s/w6-ct-012`), no login and no "share" step. Since 2026-11-21 links are the designator only (Chris: so people can type a link by hand); `shareMakeSlug()` ignores the name. Older links with a name part (`/s/w6-ct-012-waterman-mtn`) and short numbers (`/s/w6-ct-12`) still resolve. `.htaccess` holds the one rewrite rule; the app also answers at `summit_share.php?s=<slug>`.
 
 Files:
 - `summit_share.php` (the page)
