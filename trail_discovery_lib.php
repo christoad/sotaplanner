@@ -25,7 +25,7 @@ require_once __DIR__ . '/parking_lib.php';
 
 const TD_CLUSTER_M      = 150;   // starting points closer than this are the same place
 const TD_CONCURRENCY    = 3;     // BRouter runs 3 threads
-const TD_MIN_START_GAP  = 0.25;  // seconds between request starts (server allows 10/s, burst 40, since 2026-11-21)
+const TD_MIN_START_GAP  = 0.125; // seconds between request starts: 8/s (server allows 10/s, burst 40). Chris 2026-11-21: use more CPU for speed, but keep the credit balance up
 const TD_RING_STEPS_KM  = [0.75, 1.5, 2.5, 4, 6, 8, 10, 12];
 const TD_MAX_LOTS       = 160;   // parking source: most lots and trailheads routed per summit
 const TD_LOT_M          = 400;   // parking source: the lot is the start when the walking begins this close to it
