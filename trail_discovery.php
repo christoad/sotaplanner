@@ -332,7 +332,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
                     <?php if (!$runs): ?><option value="0">No runs yet</option><?php endif; ?>
                     <?php foreach ($runs as $r): $s = json_decode($r['settings_json'], true); ?>
                         <option value="<?= (int)$r['id'] ?>" <?= (int)$r['id'] === $curRun ? 'selected' : '' ?>>
-                            Run <?= (int)$r['id'] ?>: <?= tdp_h(($s['region'] ?? 'W6/CT') . ', ' . ($s['max_km'] ?? '?') . ' km, ' . ($s['spacing_km'] ?? '?') . ' km spacing, ' . (($s['stop'] ?? '') === 'auto2' ? 'early stop' : 'full search') . ', ' . (($s['pick'] ?? '') === 'mixed' ? 'quickest 3' : 'paved first') . ', ' . ['probes' => 'search rings', 'parking' => 'from mapped parking', 'both' => 'rings + mapped parking'][$s['source'] ?? 'probes']) ?>
+                            Run <?= (int)$r['id'] ?>: <?= tdp_h(($s['region'] ?? 'W6/CT') . ', ' . ($s['max_km'] ?? '?') . ' km, ' . ($s['spacing_km'] ?? '?') . ' km spacing, ' . (($s['stop'] ?? '') === 'auto2' ? 'early stop' : 'full search') . ', ' . ['mixed' => 'quickest 3', 'confidence' => 'by confidence', 'paved_first' => 'paved first'][$s['pick'] ?? 'paved_first'] . ', ' . ['probes' => 'search rings', 'parking' => 'from mapped parking', 'both' => 'rings + mapped parking'][$s['source'] ?? 'probes']) ?>
                             (<?= (int)$r['done'] ?> done<?= $r['note'] ? ', ' . tdp_h($r['note']) : '' ?>)
                         </option>
                     <?php endforeach; ?>
@@ -351,7 +351,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
                 <div><label>Probe spacing</label><select id="nSp"><?php foreach ([0.75, 1.0, 1.5] as $v): ?><option value="<?= $v ?>" <?= $v == $def['spacing_km'] ? 'selected' : '' ?>><?= $v ?> km</option><?php endforeach; ?></select></div>
                 <div><label>Stop rule</label><select id="nStop"><option value="full">Search every ring</option><option value="auto2">Stop after 2 rings with nothing new</option></select></div>
                 <div><label>Start points</label><select id="nSource"><option value="probes">Search rings around the summit</option><option value="parking">Mapped parking lots and trailheads</option><option value="both">Both</option></select></div>
-                <div><label>Routes shown</label><select id="nPick"><option value="paved_first">Paved starts first, dirt only if no paved</option><option value="mixed">Quickest 3, always one paved if found</option></select></div>
+                <div><label>Routes shown</label><select id="nPick"><option value="paved_first">Paved starts first, dirt only if no paved</option><option value="mixed">Quickest 3, always one paved if found</option><option value="confidence">Highest confidence 3, always one paved if found</option></select></div>
                 <div><label>Region</label><select id="nRegion"><?php foreach ($regions as $g): ?><option value="<?= tdp_h($g['region']) ?>" <?= $g['region'] === $curSet['region'] ? 'selected' : '' ?>><?= tdp_h($g['region']) ?> (<?= (int)$g['n'] ?> tracks)</option><?php endforeach; ?></select></div>
                 <div><label>Note</label><input type="text" id="nNote" placeholder="optional" style="width:220px"></div>
                 <button class="btn" id="goNew" type="button">Create run</button>
@@ -466,7 +466,7 @@ function renderAll() {
   const inChosen = withKnown.filter(r => +r.known_in_chosen === 1 && r.verdict !== 'miss').length;
   const altRows = withKnown.filter(r => r.known_in_alt !== null && r.known_in_alt !== undefined);
   const inAlt = altRows.filter(r => +r.known_in_alt === 1 && r.verdict !== 'miss').length;
-  const pickName = (runSettings && runSettings.pick === 'mixed') ? 'paved first' : 'quickest 3';
+  const pickName = (runSettings && runSettings.pick && runSettings.pick !== 'paved_first') ? 'paved first' : 'quickest 3';
   const startM = median(withKnown.filter(r => r.known_start_m != null).map(r => +r.known_start_m));
   const tErr = median(withKnown.filter(r => r.verdict === 'match' && r.best_time_min && r.known_time_min).map(r => Math.abs(r.best_time_min - r.known_time_min) / r.known_time_min * 100));
   const secs = median(rows.filter(r => r.status !== 'error').map(r => +r.seconds));
@@ -675,7 +675,7 @@ function drawDetail(fit) {
         '<td class="num">' + mi(c.dist_m) + ' mi</td><td class="num">' + ft(c.gain_m) + ' ft</td><td class="num">' + fmtT(c.time_min) + '</td>' +
         '<td class="num">' + c.hits + '</td><td class="num ' + confCls(c.confidence, true) + '">' + c.confidence + '%</td></tr>';
     });
-    h += '</table><p class="note">Solid lines are the routes users would see (' + (d.settings && d.settings.pick === 'mixed' ? 'top 3: the quickest, always including a paved start if one exists' : 'top 3: paved starts first, dirt only if no paved start') + '). Dashed lines are the other starts found. For a dirt start, the thin dashed line and square show the hike from the paved road if the dirt road is gated or closed. Click a row to highlight it. Hike time uses the standard SOTAplanner pace.</p>';
+    h += '</table><p class="note">Solid lines are the routes users would see (' + ({mixed: 'top 3: the quickest, always including a paved start if one exists', confidence: 'top 3: the highest confidence, always including a paved start if one exists'}[d.settings && d.settings.pick] || 'top 3: paved starts first, dirt only if no paved start') + '). Dashed lines are the other starts found. For a dirt start, the thin dashed line and square show the hike from the paved road if the dirt road is gated or closed. Click a row to highlight it. Hike time uses the standard SOTAplanner pace.</p>';
   }
   $('detail').innerHTML = h; $('detail').style.display = '';
   $('detail').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { const i = +tr.dataset.i; hl = hl === i ? null : i; drawDetail(false); });

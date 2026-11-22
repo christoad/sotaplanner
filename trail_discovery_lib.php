@@ -45,7 +45,7 @@ function td_clean_settings(array $in) {
         'spacing_km' => in_array($sp, [0.75, 1.0, 1.5], false) ? $sp : $d['spacing_km'],
         'stop'       => in_array($in['stop'] ?? '', ['full', 'auto2'], true) ? $in['stop'] : $d['stop'],
         'profile'    => in_array($in['profile'] ?? '', brouter_profiles(), true) ? $in['profile'] : $d['profile'],
-        'pick'       => in_array($in['pick'] ?? '', ['paved_first', 'mixed'], true) ? $in['pick'] : $d['pick'],
+        'pick'       => in_array($in['pick'] ?? '', ['paved_first', 'mixed', 'confidence'], true) ? $in['pick'] : $d['pick'],
         // Where the search starts from (2026-11-21): rings of probe points, the mapped parking lots and
         // trailheads around the summit (OpenStreetMap list, parking_lib.php), or both.
         'source'     => in_array($in['source'] ?? '', ['probes', 'parking', 'both'], true) ? $in['source'] : $d['source'],
@@ -359,24 +359,26 @@ function td_discover($ref, array $settings) {
     $absorb = function (array $r, $rk, $lot = null) use (&$clusters) {
         $read = td_read_route($r);
         $total = end($r['cum']);
-        if ($lot && ($read['open'] || ($read['first'] && $total - $read['first']['hike_m'] <= TD_LOT_M))) {
-            // Park at the lot: the whole route from the lot is the hike.
-            $cls = $read['first']['cls'] ?? 'paved';
-            $tags = $read['first']['tags'] ?? ['highway' => 'parking'];
-            $starts = [['pt' => [$lot['lat'], $lot['lon']], 'st' => ['cls' => $cls, 'tags' => $tags, 'hike_m' => $total]]];
+        $starts = [];
+        if ($lot) {
+            // Park at the lot: the whole route from the lot is the hike. Offered even when the route walks
+            // along a road first, because people often park at the lot where that road is gated or private.
+            $near = $read['first'] && $total - $read['first']['hike_m'] <= TD_LOT_M;
+            $seg0 = $r['segs'][0]['cls'] ?? 'walk';
+            $cls = $near ? $read['first']['cls'] : ($seg0 !== 'walk' ? $seg0 : 'paved');
+            $tags = $near ? $read['first']['tags'] : ($r['segs'][0]['tags'] ?? ['amenity' => 'parking']);
+            $starts[] = ['pt' => [$lot['lat'], $lot['lon']], 'st' => ['cls' => $cls, 'tags' => $tags, 'hike_m' => $total], 'lot' => $lot];
+            if ($near || $read['open']) $read = ['first' => null, 'paved' => null, 'open' => false];
         } elseif ($read['open']) {
             return 'open';
-        } else {
-            $starts = [];
-            foreach (array_filter([$read['first'], ($read['paved'] && $read['paved'] !== $read['first']) ? $read['paved'] : null]) as $st) {
-                $starts[] = ['pt' => $r['coords'][$st['idx']], 'st' => $st];
-            }
-            $lot = null;
+        }
+        foreach (array_filter([$read['first'], ($read['paved'] && $read['paved'] !== $read['first']) ? $read['paved'] : null]) as $st) {
+            $starts[] = ['pt' => $r['coords'][$st['idx']], 'st' => $st, 'lot' => null];
         }
         $new = 0;
         $dirtCi = null;   // cluster of this probe's dirt start, to note the paved road beyond it
         foreach ($starts as $x) {
-            $pt = $x['pt']; $st = $x['st'];
+            $pt = $x['pt']; $st = $x['st']; $lot = $x['lot'];
             $hit = null;
             foreach ($clusters as $ci => $c) {
                 if ($c['cls'] === $st['cls'] && td_dist($c['lat'], $c['lon'], $pt[0], $pt[1]) <= TD_CLUSTER_M) { $hit = $ci; break; }
@@ -476,6 +478,10 @@ function td_discover($ref, array $settings) {
         usort($ids, fn($a, $b) => $clusters[$a]['hike_m'] <=> $clusters[$b]['hike_m']);
         foreach (array_slice($ids, 0, 6) as $ci) $refineIds[] = $ci;
     }
+    // Plus up to 4 more mapped lots (shortest hike first), so a lot people park at is not crowded out
+    $lotIds = array_values(array_filter(array_keys($clusters), fn($ci) => $clusters[$ci]['lot'] && !in_array($ci, $refineIds, true)));
+    usort($lotIds, fn($a, $b) => $clusters[$a]['hike_m'] <=> $clusters[$b]['hike_m']);
+    foreach (array_slice($lotIds, 0, 4) as $ci) $refineIds[] = $ci;
     $jobs = [];
     foreach ($refineIds as $ci) $jobs['c' . $ci] = [[$clusters[$ci]['lat'], $clusters[$ci]['lon']], [$slat, $slon]];
     $res = $jobs ? td_route_many($jobs, $set['profile']) : [];
@@ -560,9 +566,20 @@ function td_discover($ref, array $settings) {
     $mixed = array_slice(array_keys($kept), 0, 3);
     if ($paved && $mixed && !array_intersect($mixed, $paved)) $mixed[count($mixed) - 1] = $paved[0];
     $pavedFirst = array_slice($paved ?: $dirt, 0, 3);
-    // Both are kept so one test run can compare the rules; 'chosen' is the run's rule.
-    $chosen     = array_values($set['pick'] === 'mixed' ? $mixed : $pavedFirst);
-    $chosen_alt = array_values($set['pick'] === 'mixed' ? $pavedFirst : $mixed);
+    //  confidence (tested 2026-11-21): the 3 routes with the highest confidence, always including the best paved
+    //  start if there is one (dirt starts carry the "if the road is gated" fallback).
+    $byConf = array_keys($kept);
+    usort($byConf, fn($a, $b) => $kept[$b]['confidence'] <=> $kept[$a]['confidence'] ?: $a <=> $b);
+    $confPick = array_slice($byConf, 0, 3);
+    if ($paved && $confPick && !array_intersect($confPick, $paved)) {
+        $bestPaved = array_values(array_filter($byConf, fn($i) => $kept[$i]['cls'] === 'paved'))[0];
+        $confPick[count($confPick) - 1] = $bestPaved;
+    }
+    sort($confPick);
+    // Two rules are kept so one test run can compare them; 'chosen' is the run's rule.
+    $rules = ['paved_first' => $pavedFirst, 'mixed' => $mixed, 'confidence' => $confPick];
+    $chosen     = array_values($rules[$set['pick']]);
+    $chosen_alt = array_values($set['pick'] === 'paved_first' ? $mixed : $pavedFirst);
 
     $found = count(array_filter($probes, fn($p) => $p['st'] === 'found'));
     // Summit confidence: the chance that the routes shown include the way people actually go.
