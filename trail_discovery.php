@@ -273,7 +273,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
 .d2{color:var(--ink-3);font-size:.72rem;display:block}
 .pill{display:inline-block;font-size:.64rem;font-weight:600;border-radius:var(--r-sm);padding:.1rem .4rem;text-transform:uppercase;letter-spacing:.05em;background:var(--gray-bg);color:var(--gray-badge);white-space:nowrap}
 .p-match{background:var(--green-bg);color:var(--green)} .p-partial{background:var(--orange-bg);color:var(--orange)} .p-miss{background:var(--red-bg);color:var(--red)}
-.p-paved{background:var(--blue-bg);color:var(--blue)} .p-dirt{background:var(--orange-bg);color:var(--orange)} .p-chosen{background:var(--ink);color:#fff}
+.p-paved{background:var(--blue-bg);color:var(--blue)} .p-lot{background:#dcfce7;color:#15803d} .p-dirt{background:var(--orange-bg);color:var(--orange)} .p-chosen{background:var(--ink);color:#fff}
 .c-high{color:var(--green);font-weight:600} .c-med{color:var(--orange);font-weight:600} .c-low{color:var(--red);font-weight:600}
 .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:.4rem;vertical-align:-1px}
 .msg{padding:.7rem 1rem;border-radius:var(--r-md);margin-bottom:1rem;font-size:.85rem}
@@ -332,7 +332,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
                     <?php if (!$runs): ?><option value="0">No runs yet</option><?php endif; ?>
                     <?php foreach ($runs as $r): $s = json_decode($r['settings_json'], true); ?>
                         <option value="<?= (int)$r['id'] ?>" <?= (int)$r['id'] === $curRun ? 'selected' : '' ?>>
-                            Run <?= (int)$r['id'] ?>: <?= tdp_h(($s['region'] ?? 'W6/CT') . ', ' . ($s['max_km'] ?? '?') . ' km, ' . ($s['spacing_km'] ?? '?') . ' km spacing, ' . (($s['stop'] ?? '') === 'auto2' ? 'early stop' : 'full search') . ', ' . (($s['pick'] ?? '') === 'mixed' ? 'quickest 3' : 'paved first')) ?>
+                            Run <?= (int)$r['id'] ?>: <?= tdp_h(($s['region'] ?? 'W6/CT') . ', ' . ($s['max_km'] ?? '?') . ' km, ' . ($s['spacing_km'] ?? '?') . ' km spacing, ' . (($s['stop'] ?? '') === 'auto2' ? 'early stop' : 'full search') . ', ' . (($s['pick'] ?? '') === 'mixed' ? 'quickest 3' : 'paved first') . ', ' . ['probes' => 'search rings', 'parking' => 'from mapped parking', 'both' => 'rings + mapped parking'][$s['source'] ?? 'probes']) ?>
                             (<?= (int)$r['done'] ?> done<?= $r['note'] ? ', ' . tdp_h($r['note']) : '' ?>)
                         </option>
                     <?php endforeach; ?>
@@ -350,12 +350,13 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
                 <div><label>Search out to</label><select id="nMax"><?php foreach ([4, 6, 8, 10, 12] as $v): ?><option value="<?= $v ?>" <?= $v == $def['max_km'] ? 'selected' : '' ?>><?= $v ?> km (<?= round($v / 1.609, 1) ?> mi)</option><?php endforeach; ?></select></div>
                 <div><label>Probe spacing</label><select id="nSp"><?php foreach ([0.75, 1.0, 1.5] as $v): ?><option value="<?= $v ?>" <?= $v == $def['spacing_km'] ? 'selected' : '' ?>><?= $v ?> km</option><?php endforeach; ?></select></div>
                 <div><label>Stop rule</label><select id="nStop"><option value="full">Search every ring</option><option value="auto2">Stop after 2 rings with nothing new</option></select></div>
+                <div><label>Start points</label><select id="nSource"><option value="probes">Search rings around the summit</option><option value="parking">Mapped parking lots and trailheads</option><option value="both">Both</option></select></div>
                 <div><label>Routes shown</label><select id="nPick"><option value="paved_first">Paved starts first, dirt only if no paved</option><option value="mixed">Quickest 3, always one paved if found</option></select></div>
                 <div><label>Region</label><select id="nRegion"><?php foreach ($regions as $g): ?><option value="<?= tdp_h($g['region']) ?>" <?= $g['region'] === $curSet['region'] ? 'selected' : '' ?>><?= tdp_h($g['region']) ?> (<?= (int)$g['n'] ?> tracks)</option><?php endforeach; ?></select></div>
                 <div><label>Note</label><input type="text" id="nNote" placeholder="optional" style="width:220px"></div>
                 <button class="btn" id="goNew" type="button">Create run</button>
             </div>
-            <p class="note">Rings sit at 0.75, 1.5, 2.5, 4, 6, 8, 10 and 12 km from the summit, up to the limit chosen. Each ring gets one probe per spacing distance around its circle (8 to 32 probes).</p>
+            <p class="note">Search rings sit at 0.75, 1.5, 2.5, 4, 6, 8, 10 and 12 km from the summit, up to the limit chosen, with one probe per spacing distance around each circle (8 to 32 probes). Mapped parking works backwards instead: every parking lot and trailhead in the OpenStreetMap list within the search distance is routed to the summit (trailheads first, then the nearest lots, up to 160 per summit). When the walking starts within 400 m of the lot, the lot itself is the start.</p>
         </details>
     </div>
 
@@ -614,7 +615,7 @@ function drawDetail(fit) {
     clearMap();
     const b = new google.maps.LatLngBounds();
     (d.rings || []).forEach(rg => { const o = new google.maps.Circle({map, center:{lat:s.lat, lng:s.lon}, radius: rg.km * 1000, strokeColor:'#64748b', strokeOpacity:.35, strokeWeight:1, fillOpacity:0, clickable:false}); overlays.push(o); });
-    (d.probes || []).forEach(p => dot([p.lat, p.lon], p.st === 'found' ? '#16a34a' : p.st === 'open' ? '#94a3b8' : '#dc2626', 3, p.st + ' (' + p.ring + ' km)' + (p.err ? ': ' + p.err : '')));
+    (d.probes || []).forEach(p => dot([p.lat, p.lon], p.st === 'found' ? '#16a34a' : p.st === 'open' ? '#94a3b8' : '#dc2626', 3, (p.src ? (p.src === 'T' ? 'Trailhead' : 'Parking') + (p.name ? ' ' + p.name : '') + ': ' : '') + p.st + ' (' + p.ring + ' km)' + (p.err ? ': ' + p.err : '')));
     if (d.known) { line(d.known.route, '#1C1B19', 6, .55, false); d.known.route.forEach(p => b.extend({lat:p[0], lng:p[1]})); dot(d.known.start, '#1C1B19', 6, 'Community track start'); }
     d.candidates.forEach((c, i) => {
       const chosen = d.chosen.includes(i), on = hl === null || hl === i;
@@ -647,7 +648,8 @@ function drawDetail(fit) {
           '<span class="grow"></span>' + (pos >= 0 ? (pos + 1) + ' of ' + rows.length : '') + '</div>';
   const rr = rows[pos];
   h += '<h2>' + esc(s.ref) + ' ' + esc(s.name) + (rr && rr.verdict ? ' <span class="pill p-' + rr.verdict + '">' + rr.verdict + '</span>' : '') + '</h2>';
-  h += '<p class="note" style="margin:0 0 .75rem">' + d.stats.calls + ' BRouter calls in ' + d.stats.seconds + ' s, ' + d.stats.probes_found + ' of ' + d.stats.probes + ' probes reached a road. Rings: ' +
+  h += '<p class="note" style="margin:0 0 .75rem">' + d.stats.calls + ' BRouter calls in ' + d.stats.seconds + ' s, ' + d.stats.probes_found + ' of ' + d.stats.probes + ' probes reached a road' +
+       (d.stats.lots_routed ? ' (' + d.stats.lots_routed + ' of them mapped parking lots and trailheads' + (d.stats.lots_found > d.stats.lots_routed ? ', out of ' + d.stats.lots_found + ' within ' + d.settings.max_km + ' km' : '') + ')' : '') + '. Rings: ' +
        d.rings.map(r => r.km + ' km (' + r.new + ' new)').join(', ') + '.' +
        (k ? ' Community track: ' + mi(k.dist_m) + ' mi, ' + ft(k.gain_m) + ' ft, ' + fmtT(k.time_min) + ' up. Closest of ours is #' + (k.match_i == null ? '-' : k.match_i + 1) + ' (' + k.overlap + '% overlap, start ' + (k.start_m ?? '-') + ' m away).' : ' No community track to compare.') + '</p>' +
        (k && 'pk' in k ? pkLine(k.pk, 'Community start') : '');
@@ -659,7 +661,8 @@ function drawDetail(fit) {
     d.candidates.forEach((c, i) => {
       const chosen = d.chosen.includes(i);
       h += '<tr class="click' + (hl === i ? ' sel' : '') + '" data-i="' + i + '"><td><span class="sw" style="background:' + COLORS[i % COLORS.length] + '"></span>' + (i + 1) + '</td>' +
-        '<td><span class="pill p-' + c.cls + '">' + c.cls + '</span> ' + (chosen ? '<span class="pill p-chosen">top 3</span> ' : '') + esc(c.road) +
+        '<td><span class="pill p-' + c.cls + '">' + c.cls + '</span> ' + (chosen ? '<span class="pill p-chosen">top 3</span> ' : '') +
+        (c.lot ? '<span class="pill p-lot">' + (c.lot.k === 'T' ? 'from trailhead' : 'from parking lot') + '</span> ' + (c.lot.name ? esc(c.lot.name) + ', ' : '') : '') + esc(c.road) +
         '<span class="d2"><a href="https://www.google.com/maps/search/?api=1&query=' + c.lat + ',' + c.lon + '" target="_blank" rel="noopener">' + c.lat.toFixed(5) + ', ' + c.lon.toFixed(5) + '</a>, first seen ' + c.first_ring_km + ' km out' +
         (c.summit_gap_m > 40 ? ', <strong>last ' + c.summit_gap_m + ' m to the summit off trail</strong> (included in hike)' : '') + '</span>' +
         ('pk' in c ? pkLine(c.pk, 'Start') + (c.pk_t && (!c.pk || c.pk.k !== 'T') ? pkLine(c.pk_t, 'Nearest trailhead') : '') : '') +
@@ -746,7 +749,7 @@ if ($('runSel')) {
   };
   $('goPause').onclick = () => { running = false; $('goPause').disabled = true; $('batchNote').textContent = 'Pausing after the current summit...'; };
   $('goNew').onclick = async () => {
-    const r = await api('new_run', {max_km: +$('nMax').value, spacing_km: +$('nSp').value, stop: $('nStop').value, pick: $('nPick').value, region: $('nRegion').value, note: $('nNote').value});
+    const r = await api('new_run', {max_km: +$('nMax').value, spacing_km: +$('nSp').value, stop: $('nStop').value, pick: $('nPick').value, region: $('nRegion').value, source: $('nSource').value, note: $('nNote').value});
     if (!r.ok) { msg(esc(r.error), 'msg-error'); return; }
     location.href = '?run=' + r.id;
   };
