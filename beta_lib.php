@@ -78,3 +78,8 @@ function userChipName($callsign) {
          . '<span class="chip-callsign">' . $cs . '</span>'
          . '<span class="chip-beta-tag">Beta</span></span>';
 }
+
+/** "Beta Features" link for the user chip menu; empty for everyone who can't see beta features. */
+function betaMenuLink() {
+    return canSeeBeta() ? '<a href="beta.php">Beta Features</a>' : '';
+}
