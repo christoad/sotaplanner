@@ -266,7 +266,7 @@ foreach ($stops as $i => $_st) {
 $pace_mult = $current_group['pace_multiplier'] ?? 1.0;
 multi_alt_apply($stops, $alt_lookup['active'], $pace_mult);
 $exit_new = multi_exit_load($db, $multi_id);
-multi_leg_apply_brouter($stops, $want_hike, $pace_mult, $exit_new);
+multi_leg_apply_brouter($stops, $want_hike, $pace_mult, $exit_new, multi_end_load($db, $multi_id));
 
 // Suggest an alternate start where the previous summit sits on the next one's trail
 // (skipped for pairs that already have a pin, that this user opted out of / dismissed, or that have an explicit choice)
@@ -420,19 +420,22 @@ foreach ($stops as $i => $stop) {
         $up_note = '';
         if ($stop['chained']) {
             $um = $stop['alt']['method'] ?? '';
-            $up_note = ($um === 'tracks') ? 'dotted: joined from recorded GPX tracks'
+            $up_note = ($um === 'recorded') ? 'follows the recorded GPX track'
+                : (($um === 'tracks') ? 'dotted: joined from recorded GPX tracks'
                 : (($um === 'merged') ? 'dotted: recorded GPX tracks where they exist, OpenStreetMap trails (BRouter) between them'
-                : 'dotted: estimated from OpenStreetMap trails (BRouter)');
+                : 'dotted: estimated from OpenStreetMap trails (BRouter)'));
         }
         $map_hikes[] = ['key' => $hk, 'color' => $hcol, 'label' => $up_label . ' ' . $stop['name'], 'kind' => $stop['chained'] ? 'direct' : 'up', 'stop' => $i,
-                        'dotted' => (bool)$stop['chained'], 'note' => $up_note];
+                        'dotted' => $stop['chained'] && (($stop['alt']['method'] ?? '') !== 'recorded'), 'note' => $up_note];
         $elapsed += $stop['up_min'];
         $milestones[] = ['short' => 'On Summit', 'full' => 'On summit: ' . $stop['name'], 'min' => $elapsed];
     }
     $segments[] = ['type' => 'radio', 'label' => "Radio #$n", 'minutes' => $stop['act_min'], 'stop' => $i, 'color' => '#DE6E5A'];
     $elapsed += $stop['act_min'];
     if ($stop['down_min'] > 0) {
-        if (!empty($stop['back_routed'])) {
+        if (!empty($stop['loop_finish'])) {
+            $down_label = 'Finish the loop to the start';
+        } elseif (!empty($stop['back_routed'])) {
             $down_label = 'Return to #' . ($stop['chain_head'] + 1) . (count($stop['back_via'] ?? []) > 1 ? ' via ' . implode(', ', array_map(fn($v) => '#' . $v, array_slice($stop['back_via'], 0, -1))) : '');
         } elseif (!empty($stop['exit_new'])) {
             $down_label = "Down to #$n trailhead";
@@ -443,7 +446,8 @@ foreach ($stops as $i => $stop) {
         $hcol = $HIKE_COLORS[$hike_color_i % count($HIKE_COLORS)]; $hike_color_i++;
         $segments[] = ['type' => 'hike', 'label' => $down_label, 'minutes' => $stop['down_min'], 'stop' => $i, 'leg_key' => $hk, 'color' => $hcol];
         $down_dotted = !empty($stop['back_routed']);
-        $down_note = $down_dotted ? 'dotted: tracks back the same way, solid where it follows a recorded GPX track, then the recorded track of #' . ($stop['chain_head'] + 1) . ' down to the start' : '';
+        $down_note = $down_dotted ? 'dotted: tracks back the same way, solid where it follows a recorded GPX track, then the recorded track of #' . ($stop['chain_head'] + 1) . ' down to the start'
+            : (!empty($stop['loop_finish']) ? 'the rest of the recorded GPX track, back to the car' : '');
         $map_hikes[] = ['key' => $hk, 'color' => $hcol, 'label' => $down_label . ' (' . $stop['name'] . ')', 'kind' => 'down', 'stop' => $i,
                         'dotted' => $down_dotted, 'note' => $down_note];
         $elapsed += $stop['down_min'];
@@ -604,6 +608,7 @@ foreach ($stops as $i => $stop) {
         // down uses it), so drawing that track would show a route that is not part of the plan
         'gpx_path' => $stop['gpx_path'],
         'chain_head' => $stop['chain_head'] ?? null, 'chain_end' => !empty($stop['chain_end']), 'exit_new' => !empty($stop['exit_new']), 'back_routed' => !empty($stop['back_routed']),
+        'continues' => !empty($stop['continues']), 'loop_route' => $stop['loop_route'] ?? null, 'up_from_track' => !empty($stop['up_from_track']),
         'chained' => $stop['chained'],
         'route' => $stop['route'] ?? null,
         'route_proven' => $stop['route_proven'] ?? null,
@@ -982,7 +987,10 @@ a:hover { text-decoration: underline; }
 .elev-trip { margin-top: var(--sp-3); }
 .elev-trip-title { font-size: 0.78rem; font-weight: 600; color: var(--ink-2); margin-bottom: 0.25rem; }
 .elev-canvas-wrap { position: relative; }
-.elev-canvas { width: 100%; height: 190px; display: block; }
+.elev-canvas { width: 100%; height: 190px; display: block; cursor: crosshair; touch-action: pan-y; }
+.elev-vline { position: absolute; width: 1px; background: var(--ink-3); pointer-events: none; }
+.elev-dot { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--ink-3); pointer-events: none; }
+.elev-vline[hidden], .elev-dot[hidden] { display: none; }
 .elev-tip { position: absolute; top: 4px; pointer-events: none; background: var(--ink); color: #fff; font-size: 0.72rem; padding: 0.25rem 0.5rem; border-radius: var(--r-sm); white-space: nowrap; z-index: 2; }
 .elev-legend { display: flex; flex-wrap: wrap; gap: 0.35rem 0.9rem; margin-top: 0.35rem; font-size: 0.72rem; color: var(--ink-2); }
 .elev-legend .legend-swatch { margin-right: 0.3rem; }
@@ -1384,7 +1392,8 @@ a:hover { text-decoration: underline; }
           $nx_method = $nx['alt']['method'] ?? null;
           $nx_can_hike = $has_next && !$nx['is_drive_up'] && $nx['ref'] !== $stop['ref'];
           $is_new = !empty($stop['exit_new']);
-          $sel = $nx_hike ? 'hike' : ($is_new ? 'new' : 'back');
+          $loop_ok = $on_foot && !empty($stop['loop_ok']);   // every leg so far followed one recorded track that ends back at the car
+          $sel = $nx_hike ? 'hike' : ($is_new ? 'new' : (!empty($stop['loop_finish']) ? 'loop' : 'back'));
           // Wording follows the flow: a drive-up summit has no hike to come back from, so the choice is
           // simply what happens next
           if (!empty($stop['is_drive_up'])) $back_label = $has_next ? 'Travel on to #' . ($i + 2) : ($end_other ? 'Travel to finish' : 'Travel home');
@@ -1452,9 +1461,12 @@ a:hover { text-decoration: underline; }
         <span class="tile-next-label">After this summit</span>
         <?php if (!$public_view): ?>
         <div class="seg" role="radiogroup">
-          <button type="button" role="radio" aria-checked="<?= $sel === 'back' ? 'true' : 'false' ?>" class="<?= $sel === 'back' ? 'on' : '' ?>" onclick="if(!this.classList.contains('on'))setAfter(<?= $i ?>, 'back')"><?= $back_label ?></button>
+          <button type="button" role="radio" aria-checked="<?= $sel === 'back' ? 'true' : 'false' ?>" class="<?= $sel === 'back' ? 'on' : '' ?>" onclick="if(!this.classList.contains('on'))setAfter(<?= $i ?>, 'back'<?= $loop_ok ? ', 1' : '' ?>)"><?= $back_label ?></button>
+          <?php if ($loop_ok): ?>
+          <button type="button" role="radio" aria-checked="<?= $sel === 'loop' ? 'true' : 'false' ?>" class="<?= $sel === 'loop' ? 'on' : '' ?>" title="Carry on along the recorded GPX track back to the car" onclick="if(!this.classList.contains('on'))setAfter(<?= $i ?>, 'loop')">Finish the loop</button>
+          <?php endif; ?>
           <?php if ($has_next): ?>
-          <button type="button" role="radio" aria-checked="<?= $sel === 'hike' ? 'true' : 'false' ?>" class="<?= $sel === 'hike' ? 'on' : '' ?>"<?= $nx_can_hike ? '' : ' disabled' ?><?= ($sel === 'hike' && !in_array($nx_method, ['brouter', 'merged'], true)) ? ' data-auto="1" title="Currently using a shared start point. Click to plan the walk with the path finder instead."' : '' ?> onclick="if(!this.classList.contains('on')||this.dataset.auto)setAfter(<?= $i ?>, 'hike')">Hike direct to #<?= $i + 2 ?></button>
+          <button type="button" role="radio" aria-checked="<?= $sel === 'hike' ? 'true' : 'false' ?>" class="<?= $sel === 'hike' ? 'on' : '' ?>"<?= $nx_can_hike ? '' : ' disabled' ?><?= ($sel === 'hike' && !in_array($nx_method, ['brouter', 'merged', 'tracks', 'recorded'], true)) ? ' data-auto="1" title="Currently using a shared start point. Click to plan the walk with the path finder instead."' : '' ?> onclick="if(!this.classList.contains('on')||this.dataset.auto)setAfter(<?= $i ?>, 'hike')">Hike direct to #<?= $i + 2 ?></button>
           <?php endif; ?>
           <?php if ($on_foot): ?>
           <button type="button" role="radio" aria-checked="<?= $sel === 'new' ? 'true' : 'false' ?>" class="<?= $sel === 'new' ? 'on' : '' ?>" onclick="if(!this.classList.contains('on'))setAfter(<?= $i ?>, 'new')">Down to this summit's trailhead</button>
@@ -1462,11 +1474,13 @@ a:hover { text-decoration: underline; }
         </div>
         <div class="tile-next-msg" id="after-err-<?= $i ?>" hidden></div>
         <?php else: ?>
-        <div class="after-pick"><?= $sel === 'hike' ? 'Hike direct to #' . ($i + 2) : ($sel === 'new' ? "Down to this summit's trailhead" : $back_label) ?></div>
+        <div class="after-pick"><?= $sel === 'hike' ? 'Hike direct to #' . ($i + 2) : ($sel === 'new' ? "Down to this summit's trailhead" : ($sel === 'loop' ? 'Finish the loop' : $back_label)) ?></div>
         <?php endif; ?>
 
         <?php if ($sel === 'hike'): ?>
-          <?php if ($nx_method === 'brouter'): ?>
+          <?php if ($nx_method === 'recorded'): ?>
+            <div class="tile-next-msg ok">Hike <?= formatTime($nx['up_min']) ?> to #<?= $i + 2 ?>: <?= number_format($nx['leg_dist_mi'], 1) ?> mi, <?= number_format($nx['leg_gain_ft']) ?> ft climb, following the recorded GPX track that passes both summits.</div>
+          <?php elseif ($nx_method === 'brouter'): ?>
             <div class="tile-next-msg ok">Hike <?= formatTime($nx['up_min']) ?> to #<?= $i + 2 ?>: <?= number_format($nx['leg_dist_mi'], 1) ?> mi, <?= number_format($nx['leg_gain_ft']) ?> ft climb, following map trails.</div>
           <?php elseif ($nx_method === 'merged'): ?>
             <div class="tile-next-msg ok">Hike <?= formatTime($nx['up_min']) ?> to #<?= $i + 2 ?>: <?= number_format($nx['leg_dist_mi'], 1) ?> mi, <?= number_format($nx['leg_gain_ft']) ?> ft climb, following recorded GPX tracks where they exist and map trails between them.</div>
@@ -1480,6 +1494,7 @@ a:hover { text-decoration: underline; }
           <?php if ($stop['down_min'] > 0): ?>
             <div class="tile-next-msg ok">
               <?php if ($sel === 'new'): ?>Walk <?= formatTime($stop['down_min']) ?> down this summit's own trail to its starting point.
+              <?php elseif ($sel === 'loop'): ?>Finish the loop: <?= formatTime($stop['down_min']) ?> (<?= number_format($stop['dist_down'], 1) ?> mi) on the rest of the recorded GPX track, back to the car.
               <?php elseif (!empty($stop['back_routed'])): ?>Track back <?= formatTime($stop['down_min']) ?> (<?= number_format($stop['dist_down'], 1) ?> mi) via <?= htmlspecialchars(implode(', ', array_map(fn($n) => '#' . $n, $stop['back_via'] ?? []))) ?> to the start.
               <?php else: ?>Hike down <?= formatTime($stop['down_min']) ?>.<?php endif; ?>
             </div>
@@ -1686,7 +1701,7 @@ a:hover { text-decoration: underline; }
     <?php foreach ($elev_trips as $ti => $trip): ?>
       <div class="elev-trip">
         <div class="elev-trip-title"><?= htmlspecialchars($trip['title']) ?></div>
-        <div class="elev-canvas-wrap"><canvas class="elev-canvas" data-trip="<?= (int)$ti ?>"></canvas><div class="elev-tip" hidden></div></div>
+        <div class="elev-canvas-wrap"><canvas class="elev-canvas" data-trip="<?= (int)$ti ?>"></canvas><div class="elev-vline" hidden></div><div class="elev-dot" hidden></div><div class="elev-tip" hidden></div></div>
         <div class="elev-legend">
           <?php foreach ($trip['segments'] as $sg): ?>
             <span><span class="legend-swatch" style="background:<?= htmlspecialchars($sg['color']) ?>;"></span><?= htmlspecialchars($sg['label']) ?></span>
@@ -2078,8 +2093,14 @@ function hikePathFor(h) {
         if (s.alt && !s.alt.ret) return [[s.alt.lat, s.alt.lng], [s.summit_lat, s.summit_lng]];
         return null;
     }
-    if (h.kind === 'up') return hikeOwnPath(s);
+    if (h.kind === 'up') {
+        const own = hikeOwnPath(s);
+        // Carrying on to the next summit: only the way up to this summit, not the rest of the recorded hike
+        if (own && s.continues && s.gpx_path) return summitToStart(own, s.summit_lat, s.summit_lng).reverse();
+        return own;
+    }
     // Walking down after the radio
+    if (s.loop_route && s.loop_route.length > 1) return s.loop_route;
     if (s.exit_new) return hikeOwnPath(s);
     if (s.back_routed && s.chain_head !== null) {
         // Back the way we came: each leg in reverse, then the first summit's own way down
@@ -2457,22 +2478,51 @@ function drawElevCharts() {
             c.fillStyle = '#1C1B19'; c.font = '600 11px "DM Sans", system-ui, sans-serif';
             c.fillText('#' + (sg.summit + 1), x, y - 7);
         });
-        // Hover read-out
-        const tip = cv.parentNode.querySelector('.elev-tip');
-        cv.onmousemove = function(ev) {
-            const r = cv.getBoundingClientRect(), mx = ev.clientX - r.left;
+        // Hover read-out: a cursor line and dot on the profile, and a matching dot on the map
+        const wrap = cv.parentNode, tip = wrap.querySelector('.elev-tip');
+        const vline = wrap.querySelector('.elev-vline'), dot = wrap.querySelector('.elev-dot');
+        function hide() { tip.hidden = true; vline.hidden = true; dot.hidden = true; elevMapDot(null); }
+        function show(clientX) {
+            const r = cv.getBoundingClientRect(), mx = clientX - r.left;
             const d = Math.min(total, Math.max(0, (mx - L_) / pw * total));
             let best = null;
             trip.segments.forEach(sg => { if (d >= sg.start_m - 1 && d <= sg.end_m + 1) best = sg; });
-            if (!best) { tip.hidden = true; return; }
-            let q = best.pts[0];
-            best.pts.forEach(p => { if (Math.abs(p[0] - d) < Math.abs(q[0] - d)) q = p; });
-            tip.textContent = best.label + ': ' + (q[0] * dK).toFixed(2) + ' ' + dU + ', ' + Math.round(q[1] * eK).toLocaleString() + ' ' + eU;
+            if (!best) { hide(); return; }
+            // Interpolate between the two profile points either side of the cursor
+            const P = best.pts;
+            let k = 0;
+            while (k < P.length - 2 && P[k + 1][0] < d) k++;
+            const a = P[k], b = P[k + 1] || a, span = b[0] - a[0];
+            const f = span > 0 ? Math.min(1, Math.max(0, (d - a[0]) / span)) : 0;
+            const ele = a[1] + (b[1] - a[1]) * f, dd = a[0] + span * f;
+            const x = X(dd), y = Y(ele);
+            vline.style.left = x + 'px'; vline.style.top = T_ + 'px'; vline.style.height = ph + 'px'; vline.hidden = false;
+            dot.style.left = x + 'px'; dot.style.top = y + 'px'; dot.style.background = best.color; dot.hidden = false;
+            tip.textContent = best.label + ': ' + (dd * dK).toFixed(2) + ' ' + dU + ', ' + Math.round(ele * eK).toLocaleString() + ' ' + eU;
             tip.hidden = false;
-            tip.style.left = Math.min(Math.max(0, mx + 10), W - tip.offsetWidth) + 'px';
-        };
-        cv.onmouseleave = () => { tip.hidden = true; };
+            tip.style.left = Math.min(Math.max(0, x + 10), W - tip.offsetWidth) + 'px';
+            if (a.length > 3 && b.length > 3) elevMapDot([a[2] + (b[2] - a[2]) * f, a[3] + (b[3] - a[3]) * f], best.color);
+        }
+        cv.onmousemove = ev => show(ev.clientX);
+        cv.onmouseleave = hide;
+        // Phones: drag a finger along the profile
+        cv.ontouchstart = cv.ontouchmove = function(ev) { if (ev.touches.length === 1) { show(ev.touches[0].clientX); ev.preventDefault(); } };
+        cv.ontouchend = cv.ontouchcancel = hide;
     });
+}
+// The map dot that follows the elevation profile cursor (null hides it)
+let _elevMapDot = null;
+function elevMapDot(ll, color) {
+    if (typeof mapInstance === 'undefined' || !mapInstance) return;
+    if (!ll) { if (_elevMapDot) { _elevMapDot.remove(); _elevMapDot = null; } return; }
+    if (!_elevMapDot) {
+        _elevMapDot = L.circleMarker(ll, { radius: 8, weight: 3, color: '#fff', fillColor: color, fillOpacity: 1, interactive: false }).addTo(mapInstance);
+    } else {
+        _elevMapDot.setLatLng(ll); _elevMapDot.setStyle({ fillColor: color });
+    }
+    _elevMapDot.bringToFront();
+    // Keep the dot in view without jumping the map around: only pan once it leaves the visible area
+    if (!mapInstance.getBounds().pad(-0.05).contains(ll)) mapInstance.panTo(ll, { animate: false });
 }
 if (typeof ELEV_TRIPS !== 'undefined' && ELEV_TRIPS.length) {
     drawElevCharts();
@@ -2728,13 +2778,14 @@ function editActTime(i) {
     if (btns[2]) btns[2].onclick = () => setActTime(i, 0);
     inp.onkeydown = e => { if (e.key === 'Enter') save(); else if (e.key === 'Escape') window.location.reload(); };
 }
-function setAfter(i, choice) {
+function setAfter(i, choice, loopOk) {
     const a = MAP_STOPS[i], b = MAP_STOPS[i + 1];
     if (!a) return;
     const err = document.getElementById('after-err-' + i);
     if (err) err.hidden = true;
     if (choice === 'hike') document.body.style.cursor = 'progress';   // first time for a pair, the path finder may take a few seconds
     const params = { action: 'after', from_id: a.id, to_id: b ? b.id : 0, choice: choice, multi_id: MULTI_ID };
+    if (loopOk) params.loop_ok = 1;   // "Track back" chosen over finishing the loop: remember it
     fetch('multi_leg_save.php', { method: 'POST', credentials: 'same-origin', body: new URLSearchParams(params) })
         .then(r => r.json())
         .then(d => {

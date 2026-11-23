@@ -2,7 +2,7 @@
 // AJAX endpoint for Multi-Activate leg settings (see multi_leg_lib.php).
 // POST action = mode    : multi_id, from_id, to_id, mode = car | hike | auto
 // POST action = act_time: multi_id, summit_id, minutes (0 = route default)
-// POST action = after   : multi_id, from_id, to_id (0 if last), choice = hike | back | new
+// POST action = after   : multi_id, from_id, to_id (0 if last), choice = hike | back | loop | new
 // POST action = exit    : multi_id, summit_id, exit = back | new (walk down the way we came, or on to this summit's own trailhead)
 // POST action = finish  : multi_id, address_id (0 = back at the starting address)
 require_once 'config.php';
@@ -53,16 +53,19 @@ if ($action === 'mode') {
     $from_id = (int)($_POST['from_id'] ?? 0);
     $to_id   = (int)($_POST['to_id'] ?? 0);   // 0 for the last summit
     $choice  = $_POST['choice'] ?? '';
-    if (!$from_id || !in_array($choice, ['hike', 'back', 'new'], true) || ($choice === 'hike' && !$to_id)) leg_fail('Bad request');
+    if (!$from_id || !in_array($choice, ['hike', 'back', 'loop', 'new'], true) || ($choice === 'hike' && !$to_id)) leg_fail('Bad request');
     $ids = array_values(array_unique(array_filter([$from_id, $to_id])));
     $st = $db->prepare("SELECT COUNT(*) FROM summits WHERE planning_group_id = ? AND id IN (" . implode(',', array_fill(0, count($ids), '?')) . ")");
     $st->execute(array_merge([$group['id']], $ids));
     if ((int)$st->fetchColumn() < count($ids)) leg_fail('Summit not found in this dashboard');
     if ($choice === 'hike') {
-        $rows = $db->prepare("SELECT id, sota_ref, latitude, longitude, elevation_m FROM summits WHERE planning_group_id = ? AND id IN (?, ?)");
+        $rows = $db->prepare("SELECT s.id, s.sota_ref, s.latitude, s.longitude, s.elevation_m, g.file_path FROM summits s
+                              LEFT JOIN gpx_tracks g ON g.summit_id = s.id AND g.planning_group_id = s.planning_group_id
+                              WHERE s.planning_group_id = ? AND s.id IN (?, ?)");
         $rows->execute([$group['id'], $from_id, $to_id]);
         $sm = [];
-        foreach ($rows->fetchAll() as $r) $sm[(int)$r['id']] = ['ref' => $r['sota_ref'], 'summit_lat' => (float)$r['latitude'], 'summit_lng' => (float)$r['longitude'], 'elev_m' => (float)$r['elevation_m']];
+        foreach ($rows->fetchAll() as $r) $sm[(int)$r['id']] = ['ref' => $r['sota_ref'], 'summit_lat' => (float)$r['latitude'], 'summit_lng' => (float)$r['longitude'],
+                                                               'elev_m' => (float)$r['elevation_m'], 'gpx_file' => ($r['file_path'] && is_readable($r['file_path'])) ? $r['file_path'] : null];
         // Recorded tracks of every summit in this route, in case BRouter has no complete path but the tracks join up
         $tf = $db->prepare("SELECT g.file_path FROM multi_activation_summits mas
                             JOIN gpx_tracks g ON g.summit_id = mas.summit_id AND g.planning_group_id = ?
@@ -75,6 +78,10 @@ if ($action === 'mode') {
     } else {
         if ($to_id) multi_leg_set($db, $multi_id, $from_id, $to_id, 'car');
         multi_exit_set($db, $multi_id, $from_id, $choice === 'new');
+        // How a walking chain ends. "Track back" is only remembered when finishing the loop was on offer (it is the
+        // default there); anywhere else track back is the default already, so nothing needs storing.
+        $end = ($choice === 'loop' || ($choice === 'back' && !empty($_POST['loop_ok']))) ? $choice : null;
+        multi_end_set($db, $multi_id, $from_id, $end);
     }
     logActivity($db, 'Multi after summit', "route $multi_id summit $from_id", $choice, $group['name']);
     echo json_encode(['ok' => true]);

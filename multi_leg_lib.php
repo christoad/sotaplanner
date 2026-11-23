@@ -94,6 +94,34 @@ function multi_exit_set(PDO $db, $multi_id, $summit_id, $new_trailhead) {
 }
 
 /**
+ * [summit_id => 'back'|'loop'] explicit choice for how a walking chain ends, when no row in multi_stop_exit
+ * sends it to the summit's own trailhead. No row means automatic: finish the loop when the recorded track allows it,
+ * otherwise track back.
+ */
+function multi_end_load(PDO $db, $multi_id) {
+    $out = [];
+    if (!$multi_id) return $out;
+    try {
+        $st = $db->prepare("SELECT summit_id, mode FROM multi_stop_end WHERE multi_activation_id = ?");
+        $st->execute([(int)$multi_id]);
+        foreach ($st->fetchAll() as $r) $out[(int)$r['summit_id']] = $r['mode'];
+    } catch (Exception $e) { /* migration not run yet */ }
+    return $out;
+}
+
+/** $mode 'back' or 'loop' stores the choice; anything else clears it. */
+function multi_end_set(PDO $db, $multi_id, $summit_id, $mode) {
+    try {
+        if (in_array($mode, ['back', 'loop'], true)) {
+            $db->prepare("INSERT INTO multi_stop_end (multi_activation_id, summit_id, mode) VALUES (?, ?, ?)
+                          ON DUPLICATE KEY UPDATE mode = VALUES(mode)")->execute([(int)$multi_id, (int)$summit_id, $mode]);
+        } else {
+            $db->prepare("DELETE FROM multi_stop_end WHERE multi_activation_id = ? AND summit_id = ?")->execute([(int)$multi_id, (int)$summit_id]);
+        }
+    } catch (Exception $e) { /* migration not run yet */ }
+}
+
+/**
  * Where the walk to the next summit leaves the activation zone of $stop: the point of its zone
  * boundary closest to the target. Falls back to the summit's own coordinates when no zone is known.
  */
@@ -154,6 +182,100 @@ function multi_leg_read_gpx($file) {
         }
     }
     return $pts;
+}
+
+// ── One recorded track through both summits ──────────────────────────────────
+// A loop (or a traverse) recorded as one GPX track often passes several summits. When the two summits of a
+// "Hike direct" leg are both on one recorded track of the route, that piece of the track IS the walk: no path
+// finder, no stitching. The same track then also gives the first summit's exact way up and, for a loop, the
+// rest of the loop back to the car.
+const MULTI_LEG_MATCH_M = 200;   // a summit this close to a track counts as on it (summit coordinates are rarely exactly on the path)
+const MULTI_LEG_LOOP_M  = 300;   // a track that ends this close to where the car is parked closes the loop
+
+/** Every point of a GPX file at full resolution: [[lat, lon, ele|null], ...]. Cached per request. */
+function multi_leg_full_points($file) {
+    static $cache = [];
+    if (!$file || !is_readable($file)) return [];
+    if (isset($cache[$file])) return $cache[$file];
+    $c = @file_get_contents($file);
+    preg_match_all('/<trkpt\b[^>]*?\blat="([\d.\-]+)"[^>]*?\blon="([\d.\-]+)"[^>]*?(?:\/>|>\s*(?:<ele>([\d.\-]+)<\/ele>)?)/i', (string)$c, $m, PREG_SET_ORDER);
+    $pts = [];
+    foreach ($m as $r) $pts[] = [(float)$r[1], (float)$r[2], (isset($r[3]) && $r[3] !== '') ? (float)$r[3] : null];
+    return $cache[$file] = $pts;
+}
+
+/** Index of the closest point of each pass the track makes within MULTI_LEG_MATCH_M of ($lat, $lng). */
+function multi_leg_passes(array $pts, $lat, $lng) {
+    $out = []; $best = null; $best_d = INF;
+    foreach ($pts as $k => $p) {
+        $d = bp_dist($p[0], $p[1], $lat, $lng);
+        if ($d <= MULTI_LEG_MATCH_M) {
+            if ($d < $best_d) { $best_d = $d; $best = $k; }
+        } elseif ($best !== null) {
+            $out[] = $best; $best = null; $best_d = INF;
+        }
+    }
+    if ($best !== null) $out[] = $best;
+    return $out;
+}
+
+/** Distance (mi), climb (ft) and drop (ft) walking $pts from index $a to $b ($a <= $b), same smoothing as the GPX analysis. */
+function multi_leg_span(array $pts, $a, $b) {
+    $mi = 0.0; $eles = [];
+    for ($k = $a; $k <= $b; $k++) {
+        if ($k > $a) $mi += bp_dist($pts[$k - 1][0], $pts[$k - 1][1], $pts[$k][0], $pts[$k][1]) / 1609.344;
+        if ($pts[$k][2] !== null) $eles[] = $pts[$k][2];
+    }
+    [$g, $l] = gpx_smoothed_gain_loss($eles);
+    return [$mi, $g * 3.28084, $l * 3.28084];
+}
+
+/**
+ * Looks for one recorded track (of any summit in the route) that passes $prev's summit and then $cur's summit.
+ * The track may be walked in its recorded direction or backwards (a loop done the other way round); the
+ * recorded direction is preferred. Returns null, or:
+ *   ['file', 'rev' => walked backwards, 'pts' => the whole track in walking order, 'a' / 'b' => indexes of the
+ *    two summits in 'pts' (a < b), 'mi', 'gain_ft', 'loss_ft' for the piece from a to b]
+ * $track_files lists the route's GPX files; $prev / $cur may carry 'gpx_file' so their own tracks are tried first.
+ */
+function multi_leg_track_match(array $prev, array $cur, array $track_files) {
+    $files = array_values(array_unique(array_filter(array_merge([$prev['gpx_file'] ?? null, $cur['gpx_file'] ?? null], $track_files))));
+    $straight = bp_dist($prev['summit_lat'], $prev['summit_lng'], $cur['summit_lat'], $cur['summit_lng']);
+    $best = null; $best_score = INF;
+    foreach ($files as $f) {
+        $pts = multi_leg_full_points($f);
+        $n = count($pts);
+        if ($n < 2) continue;
+        $pa = multi_leg_passes($pts, $prev['summit_lat'], $prev['summit_lng']);
+        $pb = multi_leg_passes($pts, $cur['summit_lat'], $cur['summit_lng']);
+        foreach ($pa as $a) foreach ($pb as $b) {
+            if ($a === $b) continue;
+            $rev = $b < $a;
+            [$mi, $g, $l] = $rev ? multi_leg_span($pts, $b, $a) : multi_leg_span($pts, $a, $b);
+            if ($rev) [$g, $l] = [$l, $g];
+            $m = $mi * 1609.344;
+            // Same rule as the path finder: a piece far longer than the gap is not a sensible "direct" hike
+            if ($straight > 0 && $m > $straight * 2.5 && $m - $straight > 1200) continue;
+            $score = $mi * ($rev ? 1.05 : 1.0);
+            if ($score < $best_score) {
+                $best_score = $score;
+                $best = ['file' => $f, 'rev' => $rev, 'a' => $rev ? $n - 1 - $a : $a, 'b' => $rev ? $n - 1 - $b : $b,
+                         'mi' => $mi, 'gain_ft' => $g, 'loss_ft' => $l];
+            }
+        }
+    }
+    if ($best) {
+        $pts = multi_leg_full_points($best['file']);
+        $best['pts'] = $best['rev'] ? array_reverse($pts) : $pts;
+    }
+    return $best;
+}
+
+/** Points of $pts from index $a to $b as route coordinates [lat, lon, 1 (on a recorded track), ele]. */
+function multi_leg_track_coords(array $pts, $a, $b) {
+    $out = [];
+    for ($k = $a; $k <= $b; $k++) $out[] = [$pts[$k][0], $pts[$k][1], 1, $pts[$k][2]];
+    return $out;
 }
 
 /**
@@ -286,6 +408,14 @@ function multi_leg_track_route(array $cur, array $files, array $from, array $ext
  */
 function multi_leg_route_pair(array $prev, array $cur, array $track_files = []) {
     if ($prev['ref'] === $cur['ref']) return ['ok' => false, 'error' => 'These two stops are the same summit.'];
+    // Best case: one recorded track already walks from this summit to the next (a loop or traverse through both)
+    if ($match = multi_leg_track_match($prev, $cur, $track_files)) {
+        $route = ['ok' => true, 'coords' => multi_leg_track_coords($match['pts'], $match['a'], $match['b']),
+                  'distance_m' => $match['mi'] * 1609.344, 'ascend_m' => $match['gain_ft'] / 3.28084,
+                  'descend_m' => $match['loss_ft'] / 3.28084, 'cached' => false, 'method' => 'recorded',
+                  'uses_tracks' => true, 'match' => $match];
+        return ['ok' => true, 'route' => $route, 'from' => [(float)$prev['summit_lat'], (float)$prev['summit_lng']], 'method' => 'recorded'];
+    }
     // Start where the previous summit's activation zone ends nearest the next summit, finish on the next summit
     $from = multi_leg_zone_exit($prev, $cur['summit_lat'], $cur['summit_lng']);
     $r = brouter_route_cached($from[0], $from[1], $cur['summit_lat'], $cur['summit_lng']);
@@ -352,8 +482,10 @@ function multi_leg_route_pair(array $prev, array $cur, array $track_files = []) 
  * Adds to a stop that is reached this way: chained=true, alt=['method'=>'brouter', ...],
  * 'route' (thinned [[lat,lon],...] for the map), 'leg_dist_mi', 'leg_gain_ft'.
  * Adds to a stop where it failed: 'leg_error' (message). That stop is left as a car leg.
+ * @param array $exits      [summit_id => true]: chain ends that walk on to their own starting point (multi_exit_load)
+ * @param array $ends       [summit_id => 'back'|'loop']: explicit choice at a chain end (multi_end_load)
  */
-function multi_leg_apply_brouter(array &$stops, array $want_hike, $pace, array $exits = []) {
+function multi_leg_apply_brouter(array &$stops, array $want_hike, $pace, array $exits = [], array $ends = []) {
     $track_files = multi_leg_track_files($stops);   // recorded tracks, for when BRouter finds no complete path
     foreach ($want_hike as $i => $_) {
         if ($i < 1 || !isset($stops[$i]) || $stops[$i]['chained'] || $stops[$i]['is_drive_up']) continue;
@@ -372,14 +504,18 @@ function multi_leg_apply_brouter(array &$stops, array $want_hike, $pace, array $
         $stops[$i]['chained'] = true;
         $stops[$i]['alt'] = ['lat' => (float)$prev['summit_lat'], 'lng' => (float)$prev['summit_lng'], 'method' => 'brouter',
                              'off_m' => null, 'set_by' => null, 'mode' => 'brouter'];
-        if (in_array($pair['method'] ?? '', ['tracks', 'merged'], true)) $stops[$i]['alt']['method'] = $pair['method'];
+        // Coordinates of merged / tracks-only / one-recorded-track walks carry [lat, lon, on a recorded track, ele]
+        $has_tr = in_array($pair['method'] ?? '', ['tracks', 'merged', 'recorded'], true);
+        if ($has_tr) $stops[$i]['alt']['method'] = $pair['method'];
+        if (($pair['method'] ?? '') === 'recorded') {
+            $tm = $r['match'];
+            $stops[$i]['track_match'] = ['file' => $tm['file'], 'rev' => $tm['rev'], 'a' => $tm['a'], 'b' => $tm['b']];
+        }
         $thin = bp_thin($r['coords'], 250);
         $stops[$i]['route'] = array_map(fn($c) => [round($c[0], 5), round($c[1], 5)], $thin);
-        // Which points sit on a recorded track (drawn solid on the map); only merged / tracks-only walks carry this
-        $stops[$i]['route_proven'] = in_array($pair['method'] ?? '', ['tracks', 'merged'], true)
-            ? array_map(fn($c) => (int)($c[2] ?? 0), $thin) : null;
-        // Elevation along the route (metres) for the elevation profile; merged / tracks-only coords carry it as the 4th value
-        $has_tr = in_array($pair['method'] ?? '', ['tracks', 'merged'], true);
+        // Which points sit on a recorded track (drawn solid on the map)
+        $stops[$i]['route_proven'] = $has_tr ? array_map(fn($c) => (int)($c[2] ?? 0), $thin) : null;
+        // Elevation along the route (metres) for the elevation profile
         $stops[$i]['route_ele'] = array_map(fn($c) => $has_tr ? ($c[3] ?? null) : ($c[2] ?? null), $thin);
         $stops[$i]['leg_dist_mi'] = $mi;
         $stops[$i]['leg_gain_ft'] = $gain_ft;
@@ -390,7 +526,32 @@ function multi_leg_apply_brouter(array &$stops, array $want_hike, $pace, array $
         $stops[$i - 1]['continues'] = true;
     }
 
+    // The first summit of a walking chain whose next leg follows the first summit's OWN recorded track (a loop
+    // through both summits): its way up is the part of that track before the summit, not the usual 60% share
+    // of the whole recorded hike (which for a loop includes the other summits and the way back).
+    foreach ($stops as $i => $s) {
+        $tm = $s['track_match'] ?? null;
+        if (!$tm || $i < 1) continue;
+        $h = $i - 1;
+        $head = $stops[$h];
+        if (!empty($head['chained']) || $tm['file'] !== ($head['gpx_file'] ?? null)) continue;
+        $pts = multi_leg_full_points($tm['file']);
+        if ($tm['rev']) $pts = array_reverse($pts);
+        // The walk must begin where the car is (a track walked backwards from a far end does not)
+        if (!empty($head['has_trailhead']) && bp_dist($pts[0][0], $pts[0][1], (float)$head['lat'], (float)$head['lng']) > MULTI_LEG_LOOP_M) continue;
+        [$mi, $g, $l] = multi_leg_span($pts, 0, $tm['a']);
+        $stops[$h]['up_min'] = max(1, (int)calculateHikeTime($mi, $g, $pace));
+        $stops[$h]['dist_up'] = $mi;
+        $stops[$h]['elev_ft'] = $g;
+        $stops[$h]['up_loss_ft'] = $l;   // the climb if this part is walked back down
+        $stops[$h]['up_from_track'] = true;
+        $stops[$h]['hike_min'] = $stops[$h]['up_min'] + $stops[$h]['down_min'];
+        $stops[$h]['dist_mi'] = $mi + ($stops[$h]['dist_down'] ?? 0);
+    }
+
     // The last summit of a walking chain (summits reached on foot, one after another):
+    //   loop: every leg followed one recorded track, and that track carries on back to where the car is parked:
+    //         finish it. This is the default whenever it is possible.
     //   back: walk back the way we came. Each leg is walked in reverse (same distance, the climb is the
     //         original descent), summit by summit, and then the FIRST summit's own descent to the start.
     //   new:  carry on down this summit's own trail to its own starting point, where a ride is waiting.
@@ -400,6 +561,8 @@ function multi_leg_apply_brouter(array &$stops, array $want_hike, $pace, array $
         while ($j > 0 && !empty($stops[$j]['chained'])) $j--;
         $stops[$k]['chain_end'] = true;
         $stops[$k]['chain_head'] = $j;
+        $loop = multi_leg_loop_finish($stops, $j, $k, $pace);
+        if ($loop) $stops[$k]['loop_ok'] = ['min' => $loop['min'], 'mi' => $loop['mi']];
         if (!empty($exits[$s['id']])) {
             $stops[$k]['exit_new'] = true;
             $stops[$k]['down_min'] = (int)$s['own_down_min'];
@@ -407,6 +570,16 @@ function multi_leg_apply_brouter(array &$stops, array $want_hike, $pace, array $
             continue;
         }
         if (($s['alt']['mode'] ?? '') === 'return') continue;   // reached on the way down: nothing extra to walk
+        if ($loop && ($ends[$s['id']] ?? '') !== 'back') {
+            $stops[$k]['down_min'] = max(1, $loop['min']);
+            $stops[$k]['dist_down'] = $loop['mi'];
+            $stops[$k]['elev_ft'] = (float)($stops[$k]['elev_ft'] ?? 0) + $loop['gain_ft'];   // the loop's last stretch has real climbing too
+            $stops[$k]['loop_finish'] = true;
+            $thin = bp_thin($loop['coords'], 250);
+            $stops[$k]['loop_route'] = array_map(fn($c) => [round($c[0], 5), round($c[1], 5)], $thin);
+            $stops[$k]['loop_ele'] = array_map(fn($c) => $c[3] ?? null, $thin);
+            continue;
+        }
         $t = 0.0; $d = 0.0; $via = [];
         for ($m = $k; $m > $j; $m--) {
             $via[] = $m;   // 1-based number of the summit walked back through (stop index m-1)
@@ -417,8 +590,14 @@ function multi_leg_apply_brouter(array &$stops, array $want_hike, $pace, array $
             $d += $mi;
         }
         $head = $stops[$j];
-        $t += (int)$head['own_down_min'];
-        $d += (float)($head['own_dist_down'] ?? 0);
+        if (!empty($head['up_from_track'])) {
+            // Its way up came from the recorded track, so the way back down is that same stretch reversed
+            $t += calculateHikeTime($head['dist_up'], $head['up_loss_ft'] ?? 0, $pace);
+            $d += (float)$head['dist_up'];
+        } else {
+            $t += (int)$head['own_down_min'];
+            $d += (float)($head['own_dist_down'] ?? 0);
+        }
         $stops[$k]['down_min'] = max(1, (int)round($t));
         $stops[$k]['dist_down'] = $d;
         $stops[$k]['back_routed'] = true;
@@ -431,6 +610,37 @@ function multi_leg_apply_brouter(array &$stops, array $want_hike, $pace, array $
         $s['leg_error'] = $s['leg_error'] ?? null;
     }
     unset($s);
+}
+
+/**
+ * "Finish the loop" for the walking chain from stop $j (where the car is) to stop $k: possible when every leg of
+ * the chain followed the same recorded track in the same direction, summit after summit, and that track ends
+ * back where the car is parked. Returns null or ['mi', 'gain_ft', 'min', 'coords'] for the rest of the track.
+ */
+function multi_leg_loop_finish(array $stops, $j, $k, $pace) {
+    $file = null; $rev = null; $last_b = -1;
+    for ($m = $j + 1; $m <= $k; $m++) {
+        $tm = $stops[$m]['track_match'] ?? null;
+        if (!$tm) return null;
+        if ($file === null) { $file = $tm['file']; $rev = $tm['rev']; }
+        elseif ($tm['file'] !== $file || $tm['rev'] !== $rev || $tm['a'] < $last_b) return null;
+        $last_b = $tm['b'];
+    }
+    if ($file === null) return null;
+    $pts = multi_leg_full_points($file);
+    if ($rev) $pts = array_reverse($pts);
+    $n = count($pts);
+    if ($last_b >= $n - 1) return null;
+    // Where the car is: the first summit's starting point, or the start of the track when its way up came from it
+    $head = $stops[$j];
+    $cars = [];
+    if (!empty($head['has_trailhead'])) $cars[] = [(float)$head['lat'], (float)$head['lng']];
+    if (!empty($head['up_from_track'])) $cars[] = [$pts[0][0], $pts[0][1]];
+    $home = false;
+    foreach ($cars as $c) if (bp_dist($pts[$n - 1][0], $pts[$n - 1][1], $c[0], $c[1]) <= MULTI_LEG_LOOP_M) $home = true;
+    if (!$home) return null;
+    [$mi, $g] = multi_leg_span($pts, $last_b, $n - 1);
+    return ['mi' => $mi, 'gain_ft' => $g, 'min' => (int)calculateHikeTime($mi, $g, $pace), 'coords' => multi_leg_track_coords($pts, $last_b, $n - 1)];
 }
 
 /**

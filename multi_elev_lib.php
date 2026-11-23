@@ -28,14 +28,15 @@ function multi_elev_fill(array $pts) {
     return $pts;
 }
 
-/** Points to [[dist_m, ele_m], ...] with distance counted from $d0, lightly smoothed. */
+/** Points to [[dist_m, ele_m, lat, lon], ...] with distance counted from $d0, lightly smoothed.
+ *  lat/lon let the page move a dot along the map line as the profile is hovered. */
 function multi_elev_series(array $pts, $d0 = 0.0) {
     $pts = multi_elev_fill($pts);
     if (count($pts) < 2) return [];
     $out = []; $d = $d0;
     foreach ($pts as $i => $p) {
         if ($i > 0) $d += bp_dist($pts[$i - 1][0], $pts[$i - 1][1], $p[0], $p[1]);
-        $out[] = [$d, (float)$p[2]];
+        $out[] = [round($d, 1), (float)$p[2], round((float)$p[0], 5), round((float)$p[1], 5)];
     }
     // 3-point smoothing takes the GPS wobble out without moving the summits much
     $sm = $out;
@@ -113,7 +114,7 @@ function multi_elev_trips(array $stops) {
             $col = $next_color();
             if (!empty($s['chained'])) {
                 $m = $s['alt']['method'] ?? 'brouter';
-                $add("Hike to #$n", 'direct', multi_elev_direct($stops, $i), $m !== 'tracks', $i, $col);
+                $add("Hike to #$n", 'direct', multi_elev_direct($stops, $i), !in_array($m, ['tracks', 'recorded'], true), $i, $col);
             } else {
                 $close();
                 $add("Hike up #$n", 'up', multi_elev_own_up($s), empty($s['gpx_file']), $i, $col);
@@ -121,11 +122,16 @@ function multi_elev_trips(array $stops) {
         }
         if (($s['down_min'] ?? 0) > 0) {
             $col = $next_color();
-            if (!empty($s['back_routed']) && ($s['chain_head'] ?? null) !== null) {
+            if (!empty($s['loop_finish']) && !empty($s['loop_route'])) {
+                // The rest of the recorded loop, back to the car
+                $pts = [];
+                foreach ($s['loop_route'] as $q => $c) $pts[] = [$c[0], $c[1], $s['loop_ele'][$q] ?? null];
+                $add('Finish the loop', 'down', $pts, false, null, $col);
+            } elseif (!empty($s['back_routed']) && ($s['chain_head'] ?? null) !== null) {
                 // Track back: each leg in reverse, then the first summit's own way down
                 for ($m = $i; $m > $s['chain_head']; $m--) {
                     $pts = array_reverse(multi_elev_direct($stops, $m));
-                    $add('Track back from #' . ($m + 1), 'back', $pts, ($stops[$m]['alt']['method'] ?? '') !== 'tracks', null, $col);
+                    $add('Track back from #' . ($m + 1), 'back', $pts, !in_array($stops[$m]['alt']['method'] ?? '', ['tracks', 'recorded'], true), null, $col);
                 }
                 $head = $stops[$s['chain_head']];
                 $add('Down from #' . ($s['chain_head'] + 1), 'down', array_reverse(multi_elev_own_up($head)), empty($head['gpx_file']), null, $col);

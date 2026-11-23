@@ -132,7 +132,7 @@ foreach ($stops as $i => $_st) {
 }
 $pace_mult = $current_group['pace_multiplier'] ?? 1.0;
 multi_alt_apply($stops, $alt_lookup['active'], $pace_mult);
-multi_leg_apply_brouter($stops, $want_hike, $pace_mult, multi_exit_load($db, $multi_id));
+multi_leg_apply_brouter($stops, $want_hike, $pace_mult, multi_exit_load($db, $multi_id), multi_end_load($db, $multi_id));
 
 $finish_addr = null; $finish_geo = null;
 if (!empty($multi_finish_id) && (!$selected_address || (int)$selected_address['id'] !== $multi_finish_id)) {
