@@ -1,4 +1,4 @@
-# Trail discovery: status and handoff (updated 2026-11-22)
+# Trail discovery: status and handoff (updated 2026-11-24)
 
 This is the "pick up where we left off" file for BRouter trail discovery. CLAUDE.md has the short version under "Trail discovery". Read this file before continuing the work.
 
@@ -7,7 +7,7 @@ This is the "pick up where we left off" file for BRouter trail discovery. CLAUDE
 - **Goal:** for every SOTA summit with no hike data, find likely trails and starting points with our own BRouter server. Run it on every such summit, then switch it on publicly on the day Chris presents SOTAplanner at Four Days in May (May 2027). Until then nothing discovered may be visible to the public. It is God Mode only.
 - **Global scope (2026-11-16):** only methods that work worldwide. No country-specific data such as U.S. Forest Service MVUM.
 - **No paved-road assumption (2026-11-22, replaces the 2026-11-15 "paved first" rule):** Chris said a paved road cannot be assumed to exist near every summit worldwide. Routes are now picked by confidence, not by road surface. The default is `pick = confidence` and `source = both`.
-  - The confidence pick still keeps one paved start in the top 3, but only when one was found. Whether to drop that guarantee too is an open question (see section 9).
+  - The confidence pick (`confidence`) still keeps one paved start in the top 3 when one was found. `confidence_any` (added 2026-11-24) drops that guarantee. Tested on runs 13 to 16: the guarantee changes results by about 2 points either way, so it hardly matters. Recommended to Chris: make `confidence_any` the default (his call).
 - **Up to 3 routes per summit**, each with a confidence score. Nobody reviews every summit by hand. A user who adds a discovered summit to a dashboard is told a review is required. Summits with nothing found stay "Needs Research".
 - **Dirt starts** always carry the "if the road is gated or closed, park at the paved road here" fallback, when a paved point beyond it was found.
 - **AWS box:** using more CPU to go faster is fine, but never run the CPU credits down. Keep them above about 300. Never mention hosting costs anywhere.
@@ -53,10 +53,11 @@ This is the "pick up where we left off" file for BRouter trail discovery. CLAUDE
 6. **Score each route** (`td_score_candidates`, then `td_confidence`).
 7. **Pick 3** (`pick`):
    - `confidence`: top 3 by confidence, with one paved start included if any was found. This is the default.
+   - `confidence_any`: top 3 by confidence, no paved rule (alternate stored: `confidence`).
    - `mixed`: the 3 quickest.
    - `paved_first`: the old rule.
    - The result also stores `chosen_alt`, the other rule's pick, so one run compares both.
-8. **Summit confidence** = 1 − product of (1 − route confidence) over the shown routes. Bands: high 70+, medium 40–69, low under 40.
+8. **Summit confidence** (`td_summit_conf`, since 2026-11-24) = logistic of the best and second best shown route scores: z = 0.91 + 0.31 logit(best) + 0.50 logit(second). Bands: high 70+, medium 40–69, low under 40. (Before: 1 − product of misses, which put almost every summit in medium.)
 9. **Community comparison:** for test summits only, our routes are compared against the community GPX track (`td_compare_known`), counting gate-closed spots too.
 
 **Speed:** about 11–14 s per summit at about 14 requests/s (`TD_MIN_START_GAP` 0.07). Credits went from 576 to 570 over runs 11 and 12, so there is room to go faster.
@@ -90,11 +91,22 @@ Table produced by `research/trail_discovery_compare.py`.
 | 10 | W4C/WM | both | paved first | 40% | 49% | 33% | 28/33/29 | 11 |
 | **11** | W6/CT | both, lots always offered | **confidence** | **59%** | **77%** | **65%** | 52/46/7 | 14 |
 | **12** | W4C/WM | both, lots always offered | **confidence** | **53%** | **56%** | **63%** | 28/37/25 | 11 |
+| 13 | GM/SS (Scotland) | both | confidence, no paved rule | 47% | 59% | 49% | 62/87/43 | 14 |
+| 14 | OE/TI (Tyrol) | both | confidence, no paved rule | 41% | 56% | 46% | 27/37/16 | 20 |
+| **15** | W6/CT | both, lot fix, retry | confidence, no paved rule | **65%** | 77% | 68% | 52/46/7 | 16 |
+| **16** | GM/SS | both, lot fix, retry | confidence, no paved rule | **51%** | 60% | 51% | 63/87/42 | 13 |
+| **17** | W6/CT | both, lot fix step 2 | confidence, no paved rule | **67%** | 77% | 68% | 52/46/7 | 16 |
+| 18 | W4C/WM | both, lot fix step 2 | confidence, no paved rule | 54% | 56% | 64% | 28/37/25 | 13 |
+
+Runs 11 to 14 were rescored on 2026-11-24 with the four-region weights (in sample, so a little flattering): shown at 400 m 62% / 56% / 51% / 44%. Runs 15 and 16 were searched with those weights. Backups before rescoring: `sota_discovered/runs-{11..14}-before-rescore-20261124` and `rows-11-12-before-rescore-20261124.tsv`. Run 14 lost 9 summits to BRouter timeouts (section 8) and 15 OE/TI summits are retired.
 
 **Takeaways:**
 - Most of the gain from run 10 to 12 is the confidence pick. The paved-first rule on the same runs 11 and 12 would give 55% and 43%.
 - Runs 11 and 12 gained 13 and lost 8 summits in W6/CT (San Jacinto is among the losses), and gained 14 and lost 2 in W4C/WM, compared with runs 9 and 10.
 - No community start was beyond the 8 km search distance.
+- **Outside the US (2026-11-24) results are lower:** Scotland 47 to 51%, Tyrol 41 to 44%, and "any candidate at their start" is only 56 to 60%, so in those regions our candidates often do not include the real start at all.
+- **Paved guarantee:** with or without it, shown at 400 m differs by at most 2 points in runs 13 to 16 (the "alt rule" column of `research/trail_discovery_report.php`).
+- **Lot fix, two steps (2026-11-24).** (1) A mapped lot keeps its own route when its walk joins a quicker road or trail start's trail (run 15: W6/CT 62% to 65%, run 16 GM/SS unchanged). (2) After run 15, from DEV-B / Chris: Waterman W6/CT-012 showed the picnic area start while people park at the "FEE AREA" lot 206 m away; as its own route the lot had 1 probe hit and scored 9. Now, when a lot is within `TD_LOT_M` (400 m) of such a start (within 150 m, or route overlap 85%+), the start moves to the lot and keeps both probe counts (Waterman: FEE AREA route 33%, shown). Step 2 full runs: run 17 W6/CT 67% (best so far; Waterman now 39 m), run 18 W4C/WM 54% (rescored run 12: 56%, in sample). Run 17 is the run DEV-B republishes for the summit page picker. Bertha Peak W6/CT-054: people park at an unnamed lot 52 m from their start; it merges with the Cougar Crest Trailhead lot 494 m away (two lots, same trail, overlap rule) and the named trailhead is kept. Left as is: a reasonable answer just outside the 400 m yardstick. Raising the extra lots re-routed (`TD_EXTRA_LOTS`) from 4 to 8 did not help.
 - Runs 5 and 6 repeated runs 3 and 4 exactly, so the search is repeatable.
 
 **Misses by cause (runs 9 and 10, before the confidence pick):**
@@ -112,25 +124,27 @@ Example of (c): Bertha Peak W6/CT-054. Its lot route merged into the quicker Cou
 
 `td_confidence($c, $rank, $rel)` is a logistic model. Its label is "route start (or its gate-closed spot) within 400 m of the community start".
 
-Current weights were fitted on runs 5 and 6 (1,164 routes, 194 summits): cross-validated AUC 0.85.
+**Refitted 2026-11-24 on runs 11 to 14** (457 summits in W6/CT, W4C/WM, GM/SS, OE/TI; 4,905 routes; fit variant `v3` in `research/trail_discovery_fit.py`). Cross-validated route AUC 0.78. Fitted on the other three regions it scores GM/SS 0.77, OE/TI 0.72, W4C/WM 0.81, W6/CT 0.76, so route ranking travels reasonably well.
 
 | Signal | Weight |
 |---|---|
-| Bias | −3.32 |
-| Speed rank 0 / 1 / 2 | +1.16 / +1.09 / +0.16 |
-| Drive-up | +1.00 |
-| Probe hits: 1.40 × log(1 + min(hits, 200)) / 5 | +1.40 scale |
-| Community evidence: start within 100 m | +1.11 |
-| Community evidence: 75%+ of the hike on community tracks | +0.38 |
-| Mapped parking within 150 m (trailhead adds +0.29) | +1.39 |
-| Mapped parking within 400 m | +0.64 |
-| Paved start | +0.06 |
-| Off-trail gap over 120 m | −0.03 |
-| Hike under 45 min | +0.32 |
-| Longer than 2.5× the quickest (1.5× gives −0.62) | −1.14 |
-| Over 4 h and over 1.2× the quickest | −1.44 |
+| Bias | −3.70 |
+| Speed rank 0 / 1 / 2 | +1.19 / +1.13 / +0.56 |
+| Drive-up (dirt road to the summit) | +1.07 |
+| Probe hits: 1.73 × log(1 + min(hits, 200)) / 5 | +1.73 scale |
+| Start first found at the 0.75 km ring / 1.5 km ring / 4 km or more | +0.40 / +0.16 / −0.39 |
+| Mapped trailhead (lot kind T) | +0.48 |
+| Lot no ring probe reached (hits ≤ 1) | +0.14 |
+| SAC 3+ trail | +0.23 |
+| Community evidence: start within 100 m / 75%+ on community tracks | +0.98 / +0.22 |
+| Mapped parking within 150 m / within 400 m | +1.64 / +1.28 |
+| Paved start | −0.35 |
+| Off-trail gap over 120 m | −0.34 |
+| Hike under 45 min | +0.02 |
+| Longer than 1.5× / 2.5× the quickest | +0.07 / −0.27 |
+| Over 4 h and over 1.2× the quickest | −0.57 |
 
-**Known problem: the bands are inflated in runs 11 and 12.** Offering every lot as a start makes "start at mapped parking" true by construction for those routes. The medium band was right only 51% (W6/CT) and 42% (W4C/WM) of the time. Ranking still works. **Refit on runs 11 and 12 before trusting the bands** (section 7). Expect the parking weights to drop and the probe-hit and community weights to matter more.
+**Summit score is the weak part (finding 2026-11-24).** `research/trail_discovery_summit_fit.py` re-picks the shown 3 with cross-validated route scores and compares ways to combine them. Summit AUC is only about 0.64 whatever the method. With the calibrated formula (section 3, step 8): high (about 12% of summits) was right 80% of the time overall, 95 to 100% in the US regions, but only about 60% in GM/SS and OE/TI. Below 70, summits are right about half the time, and no signal tried (consensus of probe hits, community tracks nearby, trailhead shown, named lot, number of candidates, fastest time, far start) separates medium from low. The ceiling: on about 40% of summits none of our candidates is at the community start at all, and nothing we measure predicts which summits those are. **So the score must not be used alone to fill in hike data;** user choice (the summit page picker, `research/discovered-routes-picker.md`) is what turns candidates into answers, and the votes it collects are the labels for the next refit.
 
 ## 6. Parking and trailhead list (done 2026-11-21)
 
@@ -154,26 +168,33 @@ Current weights were fitted on runs 5 and 6 (1,164 routes, 194 summits): cross-v
    ```
    - It resumes where it stopped and logs in again when the session expires.
    - Two runs at once from one IP are fine at the 20/s limit.
-3. **Compare runs.** Save `trail_discovery.php?ajax=results&run=N` (signed in) as `rN.json`, then:
+3. **One-line report per run** (shown at 400 m, alternate rule, top 3, bands):
+   ```
+   ssh dreamhost-sota "cd /home/chrisr069/christopherreddick.com/sotaplanner-a && php research/trail_discovery_report.php . 15 16"
+   ```
+   Creating runs from the Mac: POST JSON settings to `trail_discovery.php?ajax=new_run` after the developer login (same as the batch script).
+4. **Compare runs.** Save `trail_discovery.php?ajax=results&run=N` (signed in) as `rN.json`, then:
    ```
    python3 research/trail_discovery_compare.py r11.json r12.json
    ```
-4. **Per-summit miss table or per-route table.** Run on the server against a slot that holds the current code:
+5. **Per-summit miss table or per-route table.** Run on the server against a slot that holds the current code:
    ```
    ssh dreamhost-sota "php /home/chrisr069/christopherreddick.com/sotaplanner-a/research/trail_discovery_misses.php /home/chrisr069/christopherreddick.com/sotaplanner-a 11 12" > misses.tsv
    ssh dreamhost-sota "php /home/chrisr069/christopherreddick.com/sotaplanner-a/research/trail_discovery_cands.php /home/chrisr069/christopherreddick.com/sotaplanner-a 11 12" > cands.tsv
    ```
-5. **Refit the confidence score:**
+6. **Refit the confidence score:**
    ```
    ssh dreamhost-sota "php .../sotaplanner-a/research/trail_discovery_extract.php /home/chrisr069/christopherreddick.com/sotaplanner-a 11 12" > routes.tsv
-   python3 research/trail_discovery_fit.py routes.tsv
+   python3 research/trail_discovery_fit.py routes.tsv final v3
+   python3 research/trail_discovery_summit_fit.py routes.tsv v3
    ```
+   The rescore script now also re-picks the shown routes and redoes the community comparison (`td_result_row()`, shared with the page).
    Put the new weights into `td_confidence()`, then rescore saved runs without searching again:
    ```
    php research/trail_discovery_rescore.php <site dir> <run> ...
    ```
    Back up the run folders first (as done 2026-11-21: `sota_discovered/runs-{5,6}-before-rescore-20261121`).
-6. **Before and after long runs,** check CPU credits in God Mode > AWS Server. Not more often than every 5 minutes (Mark's rule).
+7. **Before and after long runs,** check CPU credits in God Mode > AWS Server. Not more often than every 5 minutes (Mark's rule).
 
 ## 8. Gotchas learned
 
@@ -184,22 +205,17 @@ Current weights were fitted on runs 5 and 6 (1,164 routes, 194 summits): cross-v
 - Path Finder (`brouter_paths.php`) is two-summit routing only. `?mode=discover` forwards to `trail_discovery.php?ref=`.
 - The box's nginx and status files have copies in `research/brouter-box/`. Edit on the box, then copy back.
 - Node on the Mac is broken (missing llhttp library). Check JavaScript syntax with macOS JavaScriptCore `jsc` instead.
+- **BRouter's thread-priority watchdog (found 2026-11-24).** BRouter runs 3 threads; when a request arrives and all are busy, it stops the longest running route ("operation killed by thread-priority-watchdog after N seconds", HTTP 400). Slow routes lose every time when two runners share the box. `td_route_many` now retries such routes one at a time after the rest (at most `TD_SLOW_MAX` 12 per batch, 20 s each, `TD_SLOW_BUDGET` 40 s).
+- **Big glaciated Alpine peaks time out even alone.** Großvenediger OE/TI-003: every route from 6 km out hits BRouter's 60 s limit (`maxRunningTime=60`) with nothing else running; routes from the 0.75 km ring work. 9 of 80 OE/TI summits got no start for this reason (OE/TI-003, 005, 120, 262, 423 among them). Not fixed: ideas are routing to an intermediate point found by the inner rings, or a profile that allows glacier ways.
+- **Retired summits:** 15 OE/TI and 2 GM/SS summits with community tracks are no longer in the SOTA list; the batch skips them ("Unknown summit") and stores nothing.
 
 ## 9. Next steps, in order
 
-1. **Refit the confidence score on runs 11 and 12,** rescore those runs, and check the bands are honest again: high about 80%+ right, low clearly worse.
-2. **Third region, never seen before, to check that it holds up outside the US.** Pick one with good community-track coverage and few paved roads, for example a UK or Alps association. This directly tests Chris's 2026-11-22 point.
-   - Settings: both start points, confidence pick.
-   - Also try one run with the paved guarantee switched off. That needs a small new `pick` option: confidence top 3, no paved rule.
-3. **Fix near misses (cause c):** keep a lot or trailhead start as its own candidate even when its route merges into a quicker nearby start (Bertha Peak).
-4. **Nothing-nearby misses (cause d, mostly North Carolina):** probably private roads or unmapped access. Try a car-profile route from each start to the public road network to flag `access=private`, which works globally.
-5. **Storage for the full run** (not built): summary rows in the database, route shapes as files, served by a PHP page behind a launch switch in `app_settings`.
-6. **Proposed public use (to agree with Chris):**
-   - High: fill in hike data, labelled as discovered and unverified.
-   - Medium: routes shown with "review required".
-   - Low: stays Needs Research, with suggestions only.
-   - Every user confirmation (a matching GPX upload, "I hiked this") becomes ground truth for refitting.
-7. Later, all global:
-   - Learn gates from community tracks that start partway along a dirt road.
-   - Our own gate correction table.
-   - Map gates in OSM, which reaches BRouter on the weekly tile refresh.
+1. **Ask Chris:** make `confidence_any` (no paved rule) the default? The data says the rule hardly matters.
+2. **Ship to production** what is on slot A (branch `brouter-paths`, not committed yet): new weights, calibrated summit score, `confidence_any`, lot fix, watchdog retry, `td_result_row()`, report script. Only when Chris says so.
+3. **Raise "any candidate at their start" outside the US** (Scotland 60%, Tyrol 56%). Look at run 16 and 14 misses (`trail_discovery_misses.php`): likely lay-bys and roadside verges not mapped as parking in Scotland, and valley villages, huts and lifts in the Alps.
+4. **Big glaciated peaks** (section 8): route to an intermediate point from the inner rings, or a glacier-tolerant profile, so they stop timing out.
+6. **Nothing-nearby misses (cause d, mostly North Carolina):** car-profile route from each start to the public road network to flag `access=private`.
+7. **Storage and the summit page picker:** designed in `research/discovered-routes-picker.md` (Chris's idea, 2026-11-24), to be built as its own feature `discovered-routes` in slot B. It reads the run files; it should not need changes in `trail_discovery_lib.php`.
+8. **Summit bands for users:** suggested to Chris: two levels ("Likely" 70+, "Needs review") since medium and low cannot be told apart (section 5).
+9. Later, all global: learn gates from community tracks that start partway along a dirt road; our own gate correction table; map gates in OSM.

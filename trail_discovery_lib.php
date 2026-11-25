@@ -25,10 +25,13 @@ require_once __DIR__ . '/parking_lib.php';
 
 const TD_CLUSTER_M      = 150;   // starting points closer than this are the same place
 const TD_CONCURRENCY    = 3;     // BRouter runs 3 threads
+const TD_SLOW_MAX       = 12;    // routes stopped by BRouter's watchdog: most retried one at a time per batch
+const TD_SLOW_BUDGET    = 40;    // seconds per batch for those retries (each retry may take at most 20 s)
 const TD_MIN_START_GAP  = 0.07;  // seconds between request starts: about 14/s (server allows 20/s, burst 60). Chris 2026-11-21: use more CPU for speed, but keep the credit balance up
 const TD_RING_STEPS_KM  = [0.75, 1.5, 2.5, 4, 6, 8, 10, 12];
 const TD_MAX_LOTS       = 160;   // parking source: most lots and trailheads routed per summit
 const TD_LOT_M          = 400;   // parking source: the lot is the start when the walking begins this close to it
+const TD_EXTRA_LOTS     = 4;     // mapped lots re-routed besides the best 6 starts per road type (8 tried 2026-11-24: no gain)
 
 /* ───────────────────────── settings ───────────────────────── */
 
@@ -47,7 +50,7 @@ function td_clean_settings(array $in) {
         'spacing_km' => in_array($sp, [0.75, 1.0, 1.5], false) ? $sp : $d['spacing_km'],
         'stop'       => in_array($in['stop'] ?? '', ['full', 'auto2'], true) ? $in['stop'] : $d['stop'],
         'profile'    => in_array($in['profile'] ?? '', brouter_profiles(), true) ? $in['profile'] : $d['profile'],
-        'pick'       => in_array($in['pick'] ?? '', ['paved_first', 'mixed', 'confidence'], true) ? $in['pick'] : $d['pick'],
+        'pick'       => in_array($in['pick'] ?? '', ['paved_first', 'mixed', 'confidence', 'confidence_any'], true) ? $in['pick'] : $d['pick'],
         // Where the search starts from (2026-11-21): rings of probe points, the mapped parking lots and
         // trailheads around the summit (OpenStreetMap list, parking_lib.php), or both.
         'source'     => in_array($in['source'] ?? '', ['probes', 'parking', 'both'], true) ? $in['source'] : $d['source'],
@@ -245,23 +248,33 @@ function td_route_many(array $jobs, $profile = 'hiking-mountain') {
     }
     $queue = [];
     foreach ($jobs as $k => $pp) $queue[] = [$k, $pp, 0];
+    // Routes BRouter's thread-priority watchdog stopped (it stops the longest running route when a request
+    // arrives and all its threads are busy; slow alpine routes lose every time, 1,310 lost in run 14, OE/TI):
+    // retried one at a time once the rest are done, at most TD_SLOW_MAX of them and TD_SLOW_BUDGET seconds.
+    $slow = []; $slowMode = false; $slowT0 = 0.0;
     $mh = curl_multi_init();
     $live = [];
     $lastStart = 0.0;
-    $make = function ($pp) use ($profile) {
+    $make = function ($pp, $timeout = 75) use ($profile) {
         $pairs = array_map(fn($p) => round($p[1], 6) . ',' . round($p[0], 6), $pp);
         $ch = curl_init(BROUTER_URL . '?' . http_build_query(['lonlats' => implode('|', $pairs), 'profile' => $profile,
                                                             'alternativeidx' => 0, 'format' => 'geojson']));
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => ['X-Api-Key: ' . BROUTER_API_KEY],
-                                CURLOPT_CONNECTTIMEOUT => 5, CURLOPT_TIMEOUT => 75]);
+                                CURLOPT_CONNECTTIMEOUT => 5, CURLOPT_TIMEOUT => $timeout]);
         return $ch;
     };
-    while ($queue || $live) {
-        while ($queue && count($live) < TD_CONCURRENCY) {
+    while ($queue || $live || $slow) {
+        if (!$queue && !$live && $slow) {
+            if (!$slowMode) { $slowMode = true; $slowT0 = microtime(true); }
+            [$k, $pp, $body] = array_shift($slow);
+            if (microtime(true) - $slowT0 > TD_SLOW_BUDGET) { $out[$k] = ['ok' => false, 'http' => 400, 'error' => $body]; continue; }
+            $queue[] = [$k, $pp, 9];
+        }
+        while ($queue && count($live) < ($slowMode ? 1 : TD_CONCURRENCY)) {
             $wait = TD_MIN_START_GAP - (microtime(true) - $lastStart);
             if ($wait > 0) usleep((int)($wait * 1e6));
             [$k, $pp, $tries] = array_shift($queue);
-            $ch = $make($pp);
+            $ch = $make($pp, $slowMode ? 20 : 75);
             curl_multi_add_handle($mh, $ch);
             $live[(int)$ch] = [$ch, $k, $pp, $tries];
             $lastStart = microtime(true);
@@ -278,6 +291,10 @@ function td_route_many(array $jobs, $profile = 'hiking-mountain') {
             if (in_array($http, [429, 502, 503, 504, 0], true) && $tries < 2) {
                 usleep(1500000);
                 $queue[] = [$k, $pp, $tries + 1];
+                continue;
+            }
+            if ($http === 400 && $tries < 9 && strpos((string)$body, 'thread-priority-watchdog') !== false && count($slow) < TD_SLOW_MAX) {
+                $slow[] = [$k, $pp, trim(substr((string)$body, 0, 160))];
                 continue;
             }
             if ($http === 200) {
@@ -480,10 +497,10 @@ function td_discover($ref, array $settings) {
         usort($ids, fn($a, $b) => $clusters[$a]['hike_m'] <=> $clusters[$b]['hike_m']);
         foreach (array_slice($ids, 0, 6) as $ci) $refineIds[] = $ci;
     }
-    // Plus up to 4 more mapped lots (shortest hike first), so a lot people park at is not crowded out
+    // Plus up to TD_EXTRA_LOTS more mapped lots (shortest hike first), so a lot people park at is not crowded out
     $lotIds = array_values(array_filter(array_keys($clusters), fn($ci) => $clusters[$ci]['lot'] && !in_array($ci, $refineIds, true)));
     usort($lotIds, fn($a, $b) => $clusters[$a]['hike_m'] <=> $clusters[$b]['hike_m']);
-    foreach (array_slice($lotIds, 0, 4) as $ci) $refineIds[] = $ci;
+    foreach (array_slice($lotIds, 0, TD_EXTRA_LOTS) as $ci) $refineIds[] = $ci;
     $jobs = [];
     foreach ($refineIds as $ci) $jobs['c' . $ci] = [[$clusters[$ci]['lat'], $clusters[$ci]['lon']], [$slat, $slon]];
     $res = $jobs ? td_route_many($jobs, $set['profile']) : [];
@@ -544,14 +561,27 @@ function td_discover($ref, array $settings) {
     foreach ($cands as $c) {
         $dup = false;
         foreach ($kept as &$k) {
+            $d = td_dist($k['lat'], $k['lon'], $c['lat'], $c['lon']);
+            $lotVsRoad = !empty($c['lot']) && empty($k['lot']);
+            // A mapped lot near a quicker road or trail start whose walk joins it: park at the lot. The start
+            // moves to the lot and keeps the probe evidence of both (2026-11-24, Waterman W6/CT-012: the
+            // community starts at the "FEE AREA" lot 206 m from our picnic area start; as a separate route the
+            // lot had 1 probe hit and scored 9). Lots further than TD_LOT_M keep their own route (Bertha Peak
+            // W6/CT-054, 505 m back). Two lots, or two road starts, merge as before.
+            if ($lotVsRoad && $d <= TD_LOT_M && ($d <= TD_CLUSTER_M || td_overlap_pct($c['route'], $k['route'], 30) >= 85)) {
+                $hits = $k['hits'] + $c['hits']; $ring = min((float)$k['first_ring_km'], (float)$c['first_ring_km']);
+                $k = $c; $k['hits'] = $hits; $k['first_ring_km'] = $ring;
+                $dup = true; break;
+            }
             if ($k['cls'] !== $c['cls']) continue;
-            $same = td_dist($k['lat'], $k['lon'], $c['lat'], $c['lon']) <= TD_CLUSTER_M
-                 || td_overlap_pct($c['route'], $k['route'], 30) >= 85;
+            $same = $d <= TD_CLUSTER_M || (!$lotVsRoad && td_overlap_pct($c['route'], $k['route'], 30) >= 85);
             if ($same) { $k['hits'] += $c['hits']; $dup = true; break; }
         }
         unset($k);
         if (!$dup) $kept[] = $c;
     }
+    // Moving a start back to a lot makes that route a little longer: keep the list quickest first for ranking.
+    usort($kept, fn($a, $b) => $a['time_min'] <=> $b['time_min'] ?: $a['dist_m'] <=> $b['dist_m']);
     // Confidence (model fitted on test run 3, 2026-11-17): needs each route's speed rank and the
     // community evidence from neighboring summits' tracks.
     if (function_exists('getDbConnection')) {
@@ -560,44 +590,64 @@ function td_discover($ref, array $settings) {
     }
     td_score_candidates($kept, $slat, $slon, $set['max_km']);
 
-    // Up to 3 routes ($kept is sorted quickest first).
-    //  paved_first (Chris's rule, 2026-11-15): paved starts only; dirt only when no paved start was found.
-    //  mixed: the 3 quickest whatever the road, but always keep the quickest paved start if there is one.
+    [$chosen, $chosen_alt] = td_pick($kept, $set['pick']);
+    $found = count(array_filter($probes, fn($p) => $p['st'] === 'found'));
+    return [
+        'ok' => true, 'summit' => ['ref' => $s['ref'] ?? $ref, 'name' => $s['name'] ?? '', 'lat' => $slat, 'lon' => $slon, 'alt_ft' => $s['altFt'] ?? null],
+        'settings' => $set, 'rings' => $rings, 'probes' => $probes, 'candidates' => $kept, 'chosen' => $chosen, 'chosen_alt' => $chosen_alt,
+        'confidence' => td_summit_conf($kept, $chosen), 'confidence_alt' => td_summit_conf($kept, $chosen_alt), 'band' => td_conf_band(td_summit_conf($kept, $chosen)),
+        'stats' => ['calls' => $calls, 'probes' => count($probes), 'probes_found' => $found, 'lots_routed' => $lotsUsed, 'lots_found' => $lotsFound,
+                    'seconds' => round(microtime(true) - $t0, 1), 'clusters' => count($clusters)],
+    ];
+}
+
+/**
+ * The routes to show (up to 3) under a pick rule, plus the routes another rule would show, so one test run can
+ * compare two rules. $kept must be sorted quickest first and already scored. Returns [chosen, chosen_alt].
+ *  paved_first (Chris's rule 2026-11-15, dropped 2026-11-22): paved starts only; dirt only when no paved start was found.
+ *  mixed: the 3 quickest whatever the road, always keeping the quickest paved start if there is one.
+ *  confidence (default since 2026-11-22): the 3 highest confidence routes, always including the best paved start if any.
+ *  confidence_any (2026-11-24): the 3 highest confidence routes, no paved rule (for regions with few paved roads).
+ * Alternates: confidence_any compares with confidence, paved_first with mixed, the others with paved_first.
+ */
+function td_pick(array $kept, $pick) {
     $paved = array_keys(array_filter($kept, fn($c) => $c['cls'] === 'paved'));
     $dirt  = array_keys(array_filter($kept, fn($c) => $c['cls'] === 'dirt'));
     $mixed = array_slice(array_keys($kept), 0, 3);
     if ($paved && $mixed && !array_intersect($mixed, $paved)) $mixed[count($mixed) - 1] = $paved[0];
     $pavedFirst = array_slice($paved ?: $dirt, 0, 3);
-    //  confidence (tested 2026-11-21): the 3 routes with the highest confidence, always including the best paved
-    //  start if there is one (dirt starts carry the "if the road is gated" fallback).
     $byConf = array_keys($kept);
     usort($byConf, fn($a, $b) => $kept[$b]['confidence'] <=> $kept[$a]['confidence'] ?: $a <=> $b);
-    $confPick = array_slice($byConf, 0, 3);
+    $confAny = array_slice($byConf, 0, 3);
+    $confPick = $confAny;
     if ($paved && $confPick && !array_intersect($confPick, $paved)) {
         $bestPaved = array_values(array_filter($byConf, fn($i) => $kept[$i]['cls'] === 'paved'))[0];
         $confPick[count($confPick) - 1] = $bestPaved;
     }
-    sort($confPick);
-    // Two rules are kept so one test run can compare them; 'chosen' is the run's rule.
-    $rules = ['paved_first' => $pavedFirst, 'mixed' => $mixed, 'confidence' => $confPick];
-    $chosen     = array_values($rules[$set['pick']]);
-    $chosen_alt = array_values($set['pick'] === 'paved_first' ? $mixed : $pavedFirst);
+    sort($confPick); sort($confAny);
+    $rules = ['paved_first' => $pavedFirst, 'mixed' => $mixed, 'confidence' => $confPick, 'confidence_any' => $confAny];
+    $alt = ['paved_first' => 'mixed', 'mixed' => 'paved_first', 'confidence' => 'paved_first', 'confidence_any' => 'confidence'];
+    $pick = isset($rules[$pick]) ? $pick : 'confidence';
+    return [array_values($rules[$pick]), array_values($rules[$alt[$pick]])];
+}
 
-    $found = count(array_filter($probes, fn($p) => $p['st'] === 'found'));
-    // Summit confidence: the chance that the routes shown include the way people actually go.
-    $summitConf = function ($idx) use ($kept) {
-        if (!$idx) return null;
-        $q = 1.0;
-        foreach ($idx as $i) $q *= 1 - $kept[$i]['confidence'] / 100;
-        return (int)round(100 * (1 - $q));
-    };
-    return [
-        'ok' => true, 'summit' => ['ref' => $s['ref'] ?? $ref, 'name' => $s['name'] ?? '', 'lat' => $slat, 'lon' => $slon, 'alt_ft' => $s['altFt'] ?? null],
-        'settings' => $set, 'rings' => $rings, 'probes' => $probes, 'candidates' => $kept, 'chosen' => $chosen, 'chosen_alt' => $chosen_alt,
-        'confidence' => $summitConf($chosen), 'confidence_alt' => $summitConf($chosen_alt), 'band' => td_conf_band($summitConf($chosen)),
-        'stats' => ['calls' => $calls, 'probes' => count($probes), 'probes_found' => $found, 'lots_routed' => $lotsUsed, 'lots_found' => $lotsFound,
-                    'seconds' => round(microtime(true) - $t0, 1), 'clusters' => count($clusters)],
-    ];
+/**
+ * Summit confidence (0 to 100): the chance that the routes shown include where people actually start.
+ * Recalibrated 2026-11-24 on runs 11 to 14 (457 summits, 4 regions): a logistic fit on the best and second best
+ * shown route scores. The old "1 minus the product of misses" treated the 3 routes as independent guesses and put
+ * nearly every summit in the medium band. Cross-validated: 70+ (high, about 12% of summits) was right 80% of the
+ * time overall but only about 60% in GM/SS and OE/TI; below 70 it was right about half the time, and no signal
+ * tried so far separates medium from low. Summit AUC only 0.64: do not use the score alone to fill in hike data
+ * (research/trail_discovery_summit_fit.py).
+ */
+function td_summit_conf(array $kept, array $idx) {
+    if (!$idx) return null;
+    $ps = [];
+    foreach ($idx as $i) $ps[] = min(0.9999, max(0.0001, $kept[$i]['confidence'] / 100));
+    rsort($ps);
+    $lg = fn($p) => log($p / (1 - $p));
+    $z = 0.91 + 0.31 * $lg($ps[0]) + 0.50 * $lg(max($ps[1] ?? 0.001, 0.001));
+    return (int)round(100 / (1 + exp(-$z)));
 }
 
 /**
@@ -673,47 +723,51 @@ function td_score_candidates(array &$kept, $slat, $slon, $max_km = 8) {
 
 /**
  * Route confidence (0 to 100): the estimated chance that this is a route people actually use, with
- * plain-English reasons. Logistic model refitted 2026-11-21 on test runs 5 and 6 (194 summits in W6/CT and
- * W4C/WM, 1,164 routes; label: our start, or its gate-closed parking spot, within 400 m of the community
- * track's start). Cross-validated AUC 0.85; fitted on one region it scores 0.84 / 0.88 on the other.
- * Changes from the 2026-11-17 model: mapped parking and trailheads are a signal, and a long hike only
- * counts against a route when it is also much slower than the quickest route for that summit (big
- * mountains, where every route is long, are no longer marked down). Fitting script: research/trail_discovery_fit.py.
+ * plain-English reasons. Logistic model refitted 2026-11-24 on test runs 11 to 14 (457 summits in W6/CT,
+ * W4C/WM, GM/SS and OE/TI, 4,905 routes, search rings plus mapped parking; label: our start, or its gate-closed
+ * parking spot, within 400 m of the community track's start). Cross-validated AUC 0.78; fitted on the other three
+ * regions it scores GM/SS 0.77, OE/TI 0.72, W4C/WM 0.81, W6/CT 0.76. New since the 2026-11-21 model: how close to the summit the start was first found
+ * (search ring), mapped trailheads (OSM trailhead tag), a lot no search ring reached, and SAC grade 3+ trails.
+ * Paved starts now count slightly against a route because people in both test regions often park at the
+ * end of a dirt road or at its gate. Fitting script: research/trail_discovery_fit.py (variant v3).
  * $rank: 0 = quickest route found, 1, 2 = next quickest, 99 = not ranked (dirt road to the summit).
  * $rel: this route's hike time divided by the quickest route's for the summit.
  */
 function td_confidence(array $c, $rank = 3, $rel = 1.0) {
     $why = [];
-    $z = -3.32;
-    if ($rank === 0)      { $z += 1.16; $why[] = '+ quickest route found'; }
-    elseif ($rank === 1)  { $z += 1.09; $why[] = '+ second quickest route'; }
-    elseif ($rank === 2)  { $z += 0.16; $why[] = 'third quickest route'; }
-    elseif ($rank === 99) { $z += 1.00; $why[] = 'dirt road reaches the summit: road access unknown'; }
+    $z = -3.70;
+    if ($rank === 0)      { $z += 1.19; $why[] = '+ quickest route found'; }
+    elseif ($rank === 1)  { $z += 1.13; $why[] = '+ second quickest route'; }
+    elseif ($rank === 2)  { $z += 0.56; $why[] = 'third quickest route'; }
+    elseif ($rank === 99) { $z += 1.07; $why[] = 'dirt road reaches the summit: road access unknown'; }
     $h = (int)$c['hits'];
-    $z += 1.40 * log(1 + min($h, 200)) / 5;
+    $z += 1.73 * log(1 + min($h, 200)) / 5;
     if ($h >= 10) $why[] = '+ ' . $h . ' probes led here';
     elseif ($h <= 2) $why[] = '- only ' . $h . ' probe' . ($h === 1 ? '' : 's') . ' led here';
+    $ring = (float)($c['first_ring_km'] ?? 8);
+    if ($ring <= 0.75)     { $z += 0.40; $why[] = '+ start found within 0.75 km of the summit'; }
+    elseif ($ring <= 1.5)  { $z += 0.16; $why[] = '+ start found within 1.5 km of the summit'; }
+    elseif ($ring >= 4)    { $z -= 0.39; $why[] = '- start first found ' . $ring . ' km or more from the summit'; }
+    $lotK = $c['lot']['k'] ?? '';
+    if ($lotK === 'T') { $z += 0.48; $why[] = '+ mapped trailhead'; }
+    if ($lotK !== '' && $h <= 1) $z += 0.14;
+    if ((int)($c['sac'] ?? 0) >= 3) { $z += 0.23; $why[] = '+ graded mountain trail (SAC 3 or harder)'; }
     $ev = $c['ev_start_m'] ?? null;
-    if ($ev !== null && $ev < 100) { $z += 1.11; $why[] = '+ a community track for a nearby summit starts here'; }
-    if (($c['ev_trail_pct'] ?? 0) >= 75) { $z += 0.38; $why[] = '+ most of the hike follows community tracks'; }
+    if ($ev !== null && $ev < 100) { $z += 0.98; $why[] = '+ a community track for a nearby summit starts here'; }
+    if (($c['ev_trail_pct'] ?? 0) >= 75) { $z += 0.22; $why[] = '+ most of the hike follows community tracks'; }
     if (!isset($c['ev_tracks']) || !$c['ev_tracks']) $why[] = 'no community tracks nearby to compare with';
-    $pkm = $c['pk_m'] ?? null; $pkt = $c['pkT_m'] ?? null;
+    $pkm = $c['pk_m'] ?? null;
     if ($pkm !== null) {
-        if ($pkm <= 150) {
-            $z += 1.39; $why[] = '+ starts at mapped ' . ($pkt !== null && $pkt <= 150 ? 'trailhead' : 'parking') . ' (' . $pkm . ' m)';
-            if ($pkt !== null && $pkt <= 150) $z += 0.29;
-        } elseif ($pkm <= 400) {
-            $z += 0.64; $why[] = '+ mapped parking ' . $pkm . ' m away';
-        } else {
-            $why[] = 'no mapped parking within 400 m';
-        }
+        if ($pkm <= 150)     { $z += 1.64; $why[] = '+ starts at mapped parking (' . $pkm . ' m)'; }
+        elseif ($pkm <= 400) { $z += 1.28; $why[] = '+ mapped parking ' . $pkm . ' m away'; }
+        else                 { $why[] = 'no mapped parking within 400 m'; }
     }
-    if ($c['cls'] === 'paved') $z += 0.06;
-    if ((int)($c['summit_gap_m'] ?? 0) > 120) $z -= 0.03;
-    if ((int)$c['time_min'] < 45) { $z += 0.32; $why[] = '+ short hike'; }
-    if ($rel > 2.5)      { $z -= 1.14; $why[] = '- more than 2.5 times as long as the quickest route here'; }
-    elseif ($rel > 1.5)  { $z -= 0.62; $why[] = '- over 1.5 times as long as the quickest route here'; }
-    if ((int)$c['time_min'] > 240 && $rel > 1.2) { $z -= 1.44; $why[] = '- over 4 hours and much slower than the quickest route here'; }
+    if ($c['cls'] === 'paved') $z -= 0.35;
+    if ((int)($c['summit_gap_m'] ?? 0) > 120) { $z -= 0.34; $why[] = '- no mapped way to the very top'; }
+    if ((int)$c['time_min'] < 45) $z += 0.02;
+    if ($rel > 2.5)      { $z -= 0.27; $why[] = '- more than 2.5 times as long as the quickest route here'; }
+    elseif ($rel > 1.5)  { $z += 0.07; }
+    if ((int)$c['time_min'] > 240 && $rel > 1.2) { $z -= 0.57; $why[] = '- over 4 hours and much slower than the quickest route here'; }
     return [(int)round(100 / (1 + exp(-$z))), $why];
 }
 
@@ -877,6 +931,72 @@ function td_zone_rings($ref, $lat, $lon, $alt_ft) {
 }
 
 /* ───────────────────────── storage ───────────────────────── */
+
+/* ───────────────────────── saving a result ───────────────────────── */
+
+/** Search radius for the parking list: the run's search area plus room for routes that bend outward. */
+function td_parking_radius_m(array $d) {
+    return (int)((($d['settings']['max_km'] ?? 8) + 2) * 1000);
+}
+/** Metres from a point to the nearest mapped parking or trailhead, capped at 5000 (5000 = none within 5 km). */
+function td_parking_m(array $pts, $lat, $lon) {
+    $n = pk_nearest($pts, $lat, $lon, null, 5000);
+    return $n ? $n['d'] : 5000;
+}
+
+/**
+ * The trail_disc_results row for one discovery result, including the comparison with the summit's own community
+ * track (stored into $d['known']) and the distances to mapped parking. Writes the route file too.
+ * Used by trail_discovery.php (?ajax=one) and research/trail_discovery_rescore.php.
+ */
+function td_result_row($db, $run, $ref, array &$d, $site_dir) {
+    $row = ['run_id' => $run, 'sota_ref' => $ref, 'status' => 'error', 'error' => null, 'calls' => 0, 'probes_found' => 0,
+            'seconds' => 0, 'n_paved' => 0, 'n_dirt' => 0, 'best_tier' => null, 'best_dist_m' => null, 'best_gain_m' => null,
+            'best_time_min' => null, 'best_ring_km' => null, 'confidence' => null, 'known_dist_m' => null, 'known_gain_m' => null,
+            'known_time_min' => null, 'known_start_m' => null, 'known_overlap' => null, 'known_in_chosen' => null, 'known_in_alt' => null,
+            'known_shown_start_m' => null, 'known_alt_start_m' => null, 'best_parking_m' => null, 'known_parking_m' => null,
+            'verdict' => null, 'file' => null];
+    if (!$d['ok']) {
+        $row['error'] = mb_substr($d['error'], 0, 255);
+    } else {
+        $row['status'] = $d['chosen'] ? 'ok' : 'none';
+        $row['calls'] = $d['stats']['calls'];
+        $row['probes_found'] = $d['stats']['probes_found'];
+        $row['seconds'] = $d['stats']['seconds'];
+        foreach ($d['candidates'] as $c) $row[$c['cls'] === 'paved' ? 'n_paved' : 'n_dirt']++;
+        if ($d['chosen']) {
+            $b = $d['candidates'][$d['chosen'][0]];
+            $row['best_tier'] = $b['cls']; $row['best_dist_m'] = $b['dist_m']; $row['best_gain_m'] = $b['gain_m'];
+            $row['best_time_min'] = $b['time_min']; $row['best_ring_km'] = $b['first_ring_km']; $row['confidence'] = $d['confidence'] ?? null;
+        }
+        // Community track for the same summit, if there is one
+        $st = $db->prepare("SELECT filename FROM global_gpx_tracks WHERE sota_ref = ? LIMIT 1");
+        $st->execute([$ref]);
+        $fn = $st->fetchColumn();
+        $known = null;
+        if ($fn) {
+            $pts = brouter_read_gpx_points($site_dir . '/gpx_files/global/' . basename($fn), 2000);
+            $known = $pts ? td_compare_known($d, $pts) : null;
+        }
+        if ($known) {
+            $row['known_dist_m'] = $known['dist_m']; $row['known_gain_m'] = $known['gain_m']; $row['known_time_min'] = $known['time_min'];
+            $row['known_start_m'] = $known['start_m']; $row['known_overlap'] = $known['overlap'];
+            $row['known_in_chosen'] = $known['in_chosen'] ? 1 : 0; $row['verdict'] = $known['verdict'];
+            $row['known_in_alt'] = !empty($known['in_chosen_alt']) ? 1 : 0;
+            $row['known_shown_start_m'] = $known['shown_start_m'] ?? null; $row['known_alt_start_m'] = $known['alt_start_m'] ?? null;
+        }
+        $d['known'] = $known;
+        // Mapped parking near our top start and near the community start (null = list not reachable)
+        $pk = pk_near($d['summit']['lat'], $d['summit']['lon'], td_parking_radius_m($d) + 3000);
+        if ($pk['ok']) {
+            if ($d['chosen']) { $b = $d['candidates'][$d['chosen'][0]]; $row['best_parking_m'] = td_parking_m($pk['points'], $b['lat'], $b['lon']); }
+            if ($known) $row['known_parking_m'] = td_parking_m($pk['points'], $known['start'][0], $known['start'][1]);
+        }
+        $row['file'] = td_save_file($run, $ref, $d);
+        if (!$row['file']) $row['error'] = 'Could not write the route file to ' . td_store_dir();
+    }
+    return $row;
+}
 
 /** Private folder for route shapes, one level above the web roots (shared by production and staging). */
 function td_store_dir() {

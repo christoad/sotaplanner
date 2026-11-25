@@ -48,16 +48,6 @@ function td_parking_annotate(array &$d, array $pts) {
     unset($c);
     if (!empty($d['known']['start'])) $d['known']['pk'] = pk_nearest($pts, $d['known']['start'][0], $d['known']['start'][1], null, 1000);
 }
-/** Search radius for the parking list: the run's search area plus room for routes that bend outward. */
-function td_parking_radius_m(array $d) {
-    return (int)((($d['settings']['max_km'] ?? 8) + 2) * 1000);
-}
-/** Metres from a point to the nearest mapped parking or trailhead, capped at 5000 (5000 = none within 5 km). */
-function td_parking_m(array $pts, $lat, $lon) {
-    $n = pk_nearest($pts, $lat, $lon, null, 5000);
-    return $n ? $n['d'] : 5000;
-}
-
 function td_run_settings($db, $run_id) {
     $st = $db->prepare("SELECT settings_json FROM trail_disc_runs WHERE id = ?");
     $st->execute([(int)$run_id]);
@@ -102,51 +92,7 @@ if (isset($_GET['ajax'])) {
             if (!$d['ok'] && strpos($d['error'], 'Unknown summit') === 0) {   // typo or retired summit: say so, store nothing
                 echo json_encode(['ok' => false, 'error' => $d['error'] . ' (not in the SOTA summit list)']); exit;
             }
-            $row = ['run_id' => $run, 'sota_ref' => $ref, 'status' => 'error', 'error' => null, 'calls' => 0, 'probes_found' => 0,
-                    'seconds' => 0, 'n_paved' => 0, 'n_dirt' => 0, 'best_tier' => null, 'best_dist_m' => null, 'best_gain_m' => null,
-                    'best_time_min' => null, 'best_ring_km' => null, 'confidence' => null, 'known_dist_m' => null, 'known_gain_m' => null,
-                    'known_time_min' => null, 'known_start_m' => null, 'known_overlap' => null, 'known_in_chosen' => null, 'known_in_alt' => null,
-                    'known_shown_start_m' => null, 'known_alt_start_m' => null, 'best_parking_m' => null, 'known_parking_m' => null,
-                    'verdict' => null, 'file' => null];
-            if (!$d['ok']) {
-                $row['error'] = mb_substr($d['error'], 0, 255);
-            } else {
-                $row['status'] = $d['chosen'] ? 'ok' : 'none';
-                $row['calls'] = $d['stats']['calls'];
-                $row['probes_found'] = $d['stats']['probes_found'];
-                $row['seconds'] = $d['stats']['seconds'];
-                foreach ($d['candidates'] as $c) $row[$c['cls'] === 'paved' ? 'n_paved' : 'n_dirt']++;
-                if ($d['chosen']) {
-                    $b = $d['candidates'][$d['chosen'][0]];
-                    $row['best_tier'] = $b['cls']; $row['best_dist_m'] = $b['dist_m']; $row['best_gain_m'] = $b['gain_m'];
-                    $row['best_time_min'] = $b['time_min']; $row['best_ring_km'] = $b['first_ring_km']; $row['confidence'] = $d['confidence'] ?? null;
-                }
-                // Community track for the same summit, if there is one
-                $st = $db->prepare("SELECT filename FROM global_gpx_tracks WHERE sota_ref = ? LIMIT 1");
-                $st->execute([$ref]);
-                $fn = $st->fetchColumn();
-                $known = null;
-                if ($fn) {
-                    $pts = brouter_read_gpx_points(__DIR__ . '/gpx_files/global/' . basename($fn), 2000);
-                    $known = $pts ? td_compare_known($d, $pts) : null;
-                }
-                if ($known) {
-                    $row['known_dist_m'] = $known['dist_m']; $row['known_gain_m'] = $known['gain_m']; $row['known_time_min'] = $known['time_min'];
-                    $row['known_start_m'] = $known['start_m']; $row['known_overlap'] = $known['overlap'];
-                    $row['known_in_chosen'] = $known['in_chosen'] ? 1 : 0; $row['verdict'] = $known['verdict'];
-                    $row['known_in_alt'] = !empty($known['in_chosen_alt']) ? 1 : 0;
-                    $row['known_shown_start_m'] = $known['shown_start_m'] ?? null; $row['known_alt_start_m'] = $known['alt_start_m'] ?? null;
-                }
-                $d['known'] = $known;
-                // Mapped parking near our top start and near the community start (null = list not reachable)
-                $pk = pk_near($d['summit']['lat'], $d['summit']['lon'], td_parking_radius_m($d) + 3000);
-                if ($pk['ok']) {
-                    if ($d['chosen']) { $b = $d['candidates'][$d['chosen'][0]]; $row['best_parking_m'] = td_parking_m($pk['points'], $b['lat'], $b['lon']); }
-                    if ($known) $row['known_parking_m'] = td_parking_m($pk['points'], $known['start'][0], $known['start'][1]);
-                }
-                $row['file'] = td_save_file($run, $ref, $d);
-                if (!$row['file']) $row['error'] = 'Could not write the route file to ' . td_store_dir();
-            }
+            $row = td_result_row($db, $run, $ref, $d, __DIR__);
             $cols = array_keys($row);
             $sql = "REPLACE INTO trail_disc_results (" . implode(',', $cols) . ") VALUES (" . implode(',', array_fill(0, count($cols), '?')) . ")";
             $db->prepare($sql)->execute(array_values($row));
@@ -334,7 +280,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
                     <?php if (!$runs): ?><option value="0">No runs yet</option><?php endif; ?>
                     <?php foreach ($runs as $r): $s = json_decode($r['settings_json'], true); ?>
                         <option value="<?= (int)$r['id'] ?>" <?= (int)$r['id'] === $curRun ? 'selected' : '' ?>>
-                            Run <?= (int)$r['id'] ?>: <?= tdp_h(($s['region'] ?? 'W6/CT') . ', ' . ($s['max_km'] ?? '?') . ' km, ' . ($s['spacing_km'] ?? '?') . ' km spacing, ' . (($s['stop'] ?? '') === 'auto2' ? 'early stop' : 'full search') . ', ' . ['mixed' => 'quickest 3', 'confidence' => 'by confidence', 'paved_first' => 'paved first'][$s['pick'] ?? 'paved_first'] . ', ' . ['probes' => 'search rings', 'parking' => 'from mapped parking', 'both' => 'rings + mapped parking'][$s['source'] ?? 'probes']) ?>
+                            Run <?= (int)$r['id'] ?>: <?= tdp_h(($s['region'] ?? 'W6/CT') . ', ' . ($s['max_km'] ?? '?') . ' km, ' . ($s['spacing_km'] ?? '?') . ' km spacing, ' . (($s['stop'] ?? '') === 'auto2' ? 'early stop' : 'full search') . ', ' . ['mixed' => 'quickest 3', 'confidence' => 'by confidence', 'confidence_any' => 'by confidence, no paved rule', 'paved_first' => 'paved first'][$s['pick'] ?? 'paved_first'] . ', ' . ['probes' => 'search rings', 'parking' => 'from mapped parking', 'both' => 'rings + mapped parking'][$s['source'] ?? 'probes']) ?>
                             (<?= (int)$r['done'] ?> done<?= $r['note'] ? ', ' . tdp_h($r['note']) : '' ?>)
                         </option>
                     <?php endforeach; ?>
@@ -353,7 +299,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
                 <div><label>Probe spacing</label><select id="nSp"><?php foreach ([0.75, 1.0, 1.5] as $v): ?><option value="<?= $v ?>" <?= $v == $def['spacing_km'] ? 'selected' : '' ?>><?= $v ?> km</option><?php endforeach; ?></select></div>
                 <div><label>Stop rule</label><select id="nStop"><option value="full">Search every ring</option><option value="auto2">Stop after 2 rings with nothing new</option></select></div>
                 <div><label>Start points</label><select id="nSource"><option value="both">Both</option><option value="probes">Search rings around the summit</option><option value="parking">Mapped parking lots and trailheads</option></select></div>
-                <div><label>Routes shown</label><select id="nPick"><option value="confidence">Highest confidence 3, always one paved if found</option><option value="mixed">Quickest 3, always one paved if found</option><option value="paved_first">Paved starts first, dirt only if no paved (old rule)</option></select></div>
+                <div><label>Routes shown</label><select id="nPick"><option value="confidence">Highest confidence 3, always one paved if found</option><option value="confidence_any">Highest confidence 3, no paved rule</option><option value="mixed">Quickest 3, always one paved if found</option><option value="paved_first">Paved starts first, dirt only if no paved (old rule)</option></select></div>
                 <div><label>Region</label><select id="nRegion"><?php foreach ($regions as $g): ?><option value="<?= tdp_h($g['region']) ?>" <?= $g['region'] === $curSet['region'] ? 'selected' : '' ?>><?= tdp_h($g['region']) ?> (<?= (int)$g['n'] ?> tracks)</option><?php endforeach; ?></select></div>
                 <div><label>Note</label><input type="text" id="nNote" placeholder="optional" style="width:220px"></div>
                 <button class="btn" id="goNew" type="button">Create run</button>
@@ -468,7 +414,7 @@ function renderAll() {
   const inChosen = withKnown.filter(r => +r.known_in_chosen === 1 && r.verdict !== 'miss').length;
   const altRows = withKnown.filter(r => r.known_in_alt !== null && r.known_in_alt !== undefined);
   const inAlt = altRows.filter(r => +r.known_in_alt === 1 && r.verdict !== 'miss').length;
-  const pickName = (runSettings && runSettings.pick && runSettings.pick !== 'paved_first') ? 'paved first' : 'quickest 3';
+  const pickName = {paved_first: 'quickest 3', mixed: 'paved first', confidence: 'paved first', confidence_any: 'confidence with one paved'}[(runSettings && runSettings.pick) || 'paved_first'] || 'paved first';
   const startM = median(withKnown.filter(r => r.known_start_m != null).map(r => +r.known_start_m));
   const tErr = median(withKnown.filter(r => r.verdict === 'match' && r.best_time_min && r.known_time_min).map(r => Math.abs(r.best_time_min - r.known_time_min) / r.known_time_min * 100));
   const secs = median(rows.filter(r => r.status !== 'error').map(r => +r.seconds));

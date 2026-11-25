@@ -9,7 +9,7 @@ require_once $slot . '/trail_discovery_lib.php';
 require_once $slot . '/parking_lib.php';
 $runs = array_slice($argv, 2);
 echo implode("\t", ['run', 'ref', 'i', 'label', 'chosen', 'cls', 'rank', 'driveup', 'hits', 'time_min', 'rel_time', 'gap_m',
-                    'ev_start_m', 'ev_trail_pct', 'ev_tracks', 'pk_m', 'pkT_m', 'closed_pk_m', 'old_conf', 'n_ranked']) . "\n";
+                    'ev_start_m', 'ev_trail_pct', 'ev_tracks', 'pk_m', 'pkT_m', 'closed_pk_m', 'old_conf', 'n_ranked', 'lot_k', 'lot_named', 'first_ring_km', 'sac', 'gain_m', 'dist_m']) . "\n";
 foreach ($runs as $run) {
     foreach (glob(td_store_dir() . '/runs/' . (int)$run . '/*.json.gz') as $f) {
         $d = json_decode(gzdecode(file_get_contents($f)), true);
@@ -32,7 +32,8 @@ foreach ($runs as $run) {
             echo implode("\t", [$run, $s['ref'], $i, $dd <= 400 ? 1 : 0, in_array($i, $d['chosen'], true) ? 1 : 0, $c['cls'], $r, $driveup ? 1 : 0,
                 (int)$c['hits'], (int)$c['time_min'], round(max(1, (int)$c['time_min']) / $fastest, 3), (int)($c['summit_gap_m'] ?? 0),
                 $c['ev_start_m'] ?? '', $c['ev_trail_pct'] ?? '', $c['ev_tracks'] ?? '',
-                $n ? $n['d'] : 5000, $nt ? $nt['d'] : 5000, $nc ? $nc['d'] : '', $c['confidence'] ?? '', count($ranked)]) . "\n";
+                $n ? $n['d'] : 5000, $nt ? $nt['d'] : 5000, $nc ? $nc['d'] : '', $c['confidence'] ?? '', count($ranked),
+                $c['lot']['k'] ?? '', (!empty($c['lot']['name'])) ? 1 : 0, $c['first_ring_km'] ?? '', $c['sac'] ?? '', (int)($c['gain_m'] ?? 0), (int)($c['dist_m'] ?? 0)]) . "\n";
         }
     }
 }

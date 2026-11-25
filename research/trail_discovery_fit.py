@@ -29,6 +29,20 @@ def feats(r, variant):
         f["rel_1_5"] = r["rel_time"] > 1.5
         f["rel_2_5"] = r["rel_time"] > 2.5
         f["long_slow"] = r["time_min"] > 240 and r["rel_time"] > 1.2
+    if variant in ("v3", "v3b"):
+        f["rel_1_5"] = r["rel_time"] > 1.5
+        f["rel_2_5"] = r["rel_time"] > 2.5
+        f["long_slow"] = r["time_min"] > 240 and r["rel_time"] > 1.2
+        fr = float(r["first_ring_km"] or 8)
+        f["ring_near"] = fr <= 0.75
+        f["ring_1_5"] = fr == 1.5
+        f["ring_far"] = fr >= 4
+        f["lot_T"] = r["lot_k"] == "T"
+        f["lot_alone"] = r["lot_k"] != "" and r["hits"] <= 1
+        f["sac3"] = r["sac"] not in ("", "0", "1", "2")
+        if variant == "v3":
+            f["at_parking"] = r["pk_m"] <= 150
+            f["parking_400"] = 150 < r["pk_m"] <= 400
     if variant in ("rel+pk", "abs+pk", "final"):
         f["at_parking"] = r["pk_m"] <= 150
         f["at_trailhead"] = r["pkT_m"] <= 150
@@ -86,7 +100,7 @@ y = [r["label"] for r in rows]
 print(f"old score (as stored):  AUC {auc([float(r['old_conf'] or 0) for r in rows], y):.3f}")
 summit_table(rows, [float(r["old_conf"] or 0) / 100 for r in rows], "old score bands")
 
-for variant in sys.argv[2:] or ("old", "rel", "abs+pk", "rel+pk", "final"):
+for variant in [v for v in (sys.argv[2:] or ("old", "rel", "abs+pk", "rel+pk", "final")) if v != "none"]:
     X = [feats(r, variant)[0] for r in rows]
     # 5-fold cross validation, grouped by summit (a summit's routes are never split)
     random.seed(7); order = summits[:]; random.shuffle(order); fold = {s: i % 5 for i, s in enumerate(order)}
@@ -98,10 +112,12 @@ for variant in sys.argv[2:] or ("old", "rel", "abs+pk", "rel+pk", "final"):
             if fold[(r["run"], r["ref"])] == k: cv[i] = pred(w, X[i])
     # region transfer: fit on one region, test on the other
     tx = []
-    for test in ("W6/CT", "W4C/WM"):
+    regions = sorted({r["region"] for r in rows})
+    for test in regions:   # leave one region out: fit on the others, score this one
         tr = [i for i, r in enumerate(rows) if r["region"] != test]; te = [i for i, r in enumerate(rows) if r["region"] == test]
+        if not tr: tx.append(float("nan")); continue
         w = fit([X[i] for i in tr], [y[i] for i in tr]); tx.append(auc([pred(w, X[i]) for i in te], [y[i] for i in te]))
-    print(f"\n{variant}: cross-validated AUC {auc(cv, y):.3f} | trained on the other region: W6/CT {tx[0]:.3f}, W4C/WM {tx[1]:.3f}")
+    print(f"\n{variant}: cross-validated AUC {auc(cv, y):.3f} | fitted on the other regions: " + ", ".join(f"{g} {a:.3f}" for g, a in zip(regions, tx)))
     summit_table(rows, cv, "cross-validated bands")
     longs = {k for k in summits if min([int(r["time_min"]) for r in rows if (r["run"], r["ref"]) == k and r["driveup"] == 0] or [0]) > 240}
     summit_table([r for r in rows if (r["run"], r["ref"]) in longs], [p for r, p in zip(rows, cv) if (r["run"], r["ref"]) in longs], "big-mountain summits only (quickest over 4 h)")
