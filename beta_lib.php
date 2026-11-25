@@ -6,7 +6,7 @@
  * isBetaTester()   true if the callsign is on the list (defaults to the signed-in user,
  *                  so while God Mode impersonates a tester you see what they see)
  * canSeeBeta()     what beta-only features should check: God Mode or a listed tester
- * userChipName()   the callsign markup for the top-right user chip; adds the BETA tag
+ * userChipName()   the callsign markup for the top-right user chip; adds the BETA USER tag
  *                  and switches the chip to the beta color for listed testers
  */
 
@@ -70,13 +70,13 @@ function userChipName($callsign) {
 .chip-beta-tag {
   font-size: 0.55rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
   background: var(--blue, oklch(52% 0.12 240)); color: #fff;
-  border-radius: 3px; padding: 0.05rem 0.3rem; margin-top: 2px;
+  border-radius: 3px; padding: 0.05rem 0.3rem; margin-top: 2px; white-space: nowrap;
 }
 </style>';
     }
     return $css . '<span class="chip-name-stack" title="Beta tester: you get new features early">'
          . '<span class="chip-callsign">' . $cs . '</span>'
-         . '<span class="chip-beta-tag">Beta</span></span>';
+         . '<span class="chip-beta-tag">Beta User</span></span>';
 }
 
 /** "Beta Features" link for the user chip menu; empty for everyone who can't see beta features. */
