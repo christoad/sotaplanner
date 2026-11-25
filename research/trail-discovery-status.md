@@ -6,8 +6,9 @@ This is the "pick up where we left off" file for BRouter trail discovery. CLAUDE
 
 - **Goal:** for every SOTA summit with no hike data, find likely trails and starting points with our own BRouter server. Run it on every such summit, then switch it on publicly on the day Chris presents SOTAplanner at Four Days in May (May 2027). Until then nothing discovered may be visible to the public. It is God Mode only.
 - **Global scope (2026-11-16):** only methods that work worldwide. No country-specific data such as U.S. Forest Service MVUM.
-- **No paved-road assumption (2026-11-22, replaces the 2026-11-15 "paved first" rule):** Chris said a paved road cannot be assumed to exist near every summit worldwide. Routes are now picked by confidence, not by road surface. The default is `pick = confidence` and `source = both`.
-  - The confidence pick (`confidence`) still keeps one paved start in the top 3 when one was found. `confidence_any` (added 2026-11-24) drops that guarantee. Tested on runs 13 to 16: the guarantee changes results by about 2 points either way, so it hardly matters. Recommended to Chris: make `confidence_any` the default (his call).
+- **No paved-road assumption (2026-11-22, replaces the 2026-11-15 "paved first" rule):** Chris said a paved road cannot be assumed to exist near every summit worldwide. Routes are now picked by confidence, not by road surface. The default is `pick = confidence_any` (since 2026-11-24) and `source = both`.
+  - The confidence pick (`confidence`) still keeps one paved start in the top 3 when one was found. `confidence_any` (added 2026-11-24) drops that guarantee. Tested on runs 13 to 18: the guarantee changes results by about 2 points either way. **Chris, 2026-11-24: no paved rule; `confidence_any` is the default.**
+- **Three confidence levels stay** (Chris, 2026-11-24): high, medium, low, even though medium and low are right about equally often today (section 5).
 - **Up to 3 routes per summit**, each with a confidence score. Nobody reviews every summit by hand. A user who adds a discovered summit to a dashboard is told a review is required. Summits with nothing found stay "Needs Research".
 - **Dirt starts** always carry the "if the road is gated or closed, park at the paved road here" fallback, when a paved point beyond it was found.
 - **AWS box:** using more CPU to go faster is fine, but never run the CPU credits down. Keep them above about 300. Never mention hosting costs anywhere.
@@ -52,8 +53,8 @@ This is the "pick up where we left off" file for BRouter trail discovery. CLAUDE
 5. **Off-trail finish:** when BRouter stops short of the summit, a straight line plus the climb to the listed height is added, with a confidence penalty.
 6. **Score each route** (`td_score_candidates`, then `td_confidence`).
 7. **Pick 3** (`pick`):
-   - `confidence`: top 3 by confidence, with one paved start included if any was found. This is the default.
-   - `confidence_any`: top 3 by confidence, no paved rule (alternate stored: `confidence`).
+   - `confidence_any`: top 3 by confidence, no paved rule. **The default since 2026-11-24.** Alternate stored: `confidence`.
+   - `confidence`: top 3 by confidence, with one paved start included if any was found (default 2026-11-22 to 24).
    - `mixed`: the 3 quickest.
    - `paved_first`: the old rule.
    - The result also stores `chosen_alt`, the other rule's pick, so one run compares both.
@@ -211,11 +212,9 @@ Example of (c): Bertha Peak W6/CT-054. Its lot route merged into the quicker Cou
 
 ## 9. Next steps, in order
 
-1. **Ask Chris:** make `confidence_any` (no paved rule) the default? The data says the rule hardly matters.
-2. **Ship to production** what is on slot A (branch `brouter-paths`, not committed yet): new weights, calibrated summit score, `confidence_any`, lot fix, watchdog retry, `td_result_row()`, report script. Only when Chris says so.
-3. **Raise "any candidate at their start" outside the US** (Scotland 60%, Tyrol 56%). Look at run 16 and 14 misses (`trail_discovery_misses.php`): likely lay-bys and roadside verges not mapped as parking in Scotland, and valley villages, huts and lifts in the Alps.
-4. **Big glaciated peaks** (section 8): route to an intermediate point from the inner rings, or a glacier-tolerant profile, so they stop timing out.
-6. **Nothing-nearby misses (cause d, mostly North Carolina):** car-profile route from each start to the public road network to flag `access=private`.
-7. **Storage and the summit page picker:** designed in `research/discovered-routes-picker.md` (Chris's idea, 2026-11-24), to be built as its own feature `discovered-routes` in slot B. It reads the run files; it should not need changes in `trail_discovery_lib.php`.
-8. **Summit bands for users:** suggested to Chris: two levels ("Likely" 70+, "Needs review") since medium and low cannot be told apart (section 5).
-9. Later, all global: learn gates from community tracks that start partway along a dirt road; our own gate correction table; map gates in OSM.
+1. **Ship to production** what is on slot A (branch `brouter-paths`, committed 2026-11-24, not merged to `main`): new weights, calibrated summit score, `confidence_any`, lot fix, watchdog retry, `td_result_row()`, report script. Only when Chris says so.
+2. **Raise "any candidate at their start" outside the US** (Scotland 60%, Tyrol 56%). Look at run 16 and 14 misses (`trail_discovery_misses.php`): likely lay-bys and roadside verges not mapped as parking in Scotland, and valley villages, huts and lifts in the Alps.
+3. **Big glaciated peaks** (section 8): route to an intermediate point from the inner rings, or a glacier-tolerant profile, so they stop timing out.
+4. **Nothing-nearby misses (cause d, mostly North Carolina):** car-profile route from each start to the public road network to flag `access=private`.
+5. **Storage and the summit page picker:** designed in `research/discovered-routes-picker.md` (Chris's idea, 2026-11-24), to be built as its own feature `discovered-routes` in slot B. It reads the run files; it should not need changes in `trail_discovery_lib.php`.
+6. Later, all global: learn gates from community tracks that start partway along a dirt road; our own gate correction table; map gates in OSM.

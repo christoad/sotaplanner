@@ -36,9 +36,11 @@ const TD_EXTRA_LOTS     = 4;     // mapped lots re-routed besides the best 6 sta
 /* ───────────────────────── settings ───────────────────────── */
 
 function td_default_settings() {
-    return ['max_km' => 8, 'spacing_km' => 1.0, 'stop' => 'full', 'profile' => 'hiking-mountain', 'pick' => 'confidence', 'region' => 'W6/CT', 'source' => 'both'];
+    return ['max_km' => 8, 'spacing_km' => 1.0, 'stop' => 'full', 'profile' => 'hiking-mountain', 'pick' => 'confidence_any', 'region' => 'W6/CT', 'source' => 'both'];
     // Defaults since 2026-11-22 (Chris): pick by confidence, not paved first, because a paved road cannot be
     // assumed to exist near every summit worldwide; start from both search rings and mapped parking (runs 11 / 12).
+    // Since 2026-11-24 (Chris): no paved rule at all (confidence_any); keeping one paved start changed results by
+    // at most 2 points either way in runs 13 to 18.
 }
 
 function td_clean_settings(array $in) {
@@ -606,8 +608,8 @@ function td_discover($ref, array $settings) {
  * compare two rules. $kept must be sorted quickest first and already scored. Returns [chosen, chosen_alt].
  *  paved_first (Chris's rule 2026-11-15, dropped 2026-11-22): paved starts only; dirt only when no paved start was found.
  *  mixed: the 3 quickest whatever the road, always keeping the quickest paved start if there is one.
- *  confidence (default since 2026-11-22): the 3 highest confidence routes, always including the best paved start if any.
- *  confidence_any (2026-11-24): the 3 highest confidence routes, no paved rule (for regions with few paved roads).
+ *  confidence (default 2026-11-22 to 2026-11-24): the 3 highest confidence routes, always including the best paved start if any.
+ *  confidence_any (default since 2026-11-24, Chris): the 3 highest confidence routes, no paved rule.
  * Alternates: confidence_any compares with confidence, paved_first with mixed, the others with paved_first.
  */
 function td_pick(array $kept, $pick) {
