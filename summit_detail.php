@@ -9,6 +9,7 @@ require_once 'osm_trailhead_lib.php';
 require_once 'share_lib.php';
 require_once 'summit_changelog_lib.php';
 require_once 'summit_advisory_lib.php';
+require_once 'discovered_routes_lib.php';   // Discovered routes panel (God Mode Discovery mode until launch)
 session_start();
 requireLogin();
 
@@ -1470,6 +1471,7 @@ if ($tl_show) {
                 <a href="god_mode.php">God Mode</a>
             <?php endif; ?>
             <?= betaMenuLink() ?>
+            <?= dr_menu_link() ?>
             <a href="user_settings.php">Settings</a>
             <a href="logout.php">Sign Out</a>
         </div>
@@ -1724,6 +1726,8 @@ if ($tl_show) {
         </div>
       </div>
       <?php endif; ?>
+
+      <?php dr_render_panel($db, $summit, $gpx_data, $current_group, $user_units); // Discovered routes (discovered_routes_lib.php) ?>
 
       <!-- Map -->
       <?php

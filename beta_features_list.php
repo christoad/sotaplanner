@@ -23,4 +23,13 @@ return [
         'focus'   => [],
         'cases'   => [],
     ],
+    [
+        'key'     => 'discovered_routes',
+        'name'    => 'Suggested routes for summits with no track',
+        'status'  => 'next',
+        'summary' => 'For summits nobody has uploaded a track for yet, the summit page will suggest up to three possible routes from a road or parking spot to the top. '
+                   . 'Mark each one as looking viable or not, and pick one to fill in the hike distance, climb and time for your dashboard.',
+        'focus'   => [],
+        'cases'   => [],
+    ],
 ];
