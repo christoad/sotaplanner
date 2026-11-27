@@ -33,7 +33,9 @@ const TD_LOT_M          = 400;   // parking source: the lot is the start when th
 /* ───────────────────────── settings ───────────────────────── */
 
 function td_default_settings() {
-    return ['max_km' => 8, 'spacing_km' => 1.0, 'stop' => 'full', 'profile' => 'hiking-mountain', 'pick' => 'paved_first', 'region' => 'W6/CT', 'source' => 'probes'];
+    return ['max_km' => 8, 'spacing_km' => 1.0, 'stop' => 'full', 'profile' => 'hiking-mountain', 'pick' => 'confidence', 'region' => 'W6/CT', 'source' => 'both'];
+    // Defaults since 2026-11-22 (Chris): pick by confidence, not paved first, because a paved road cannot be
+    // assumed to exist near every summit worldwide; start from both search rings and mapped parking (runs 11 / 12).
 }
 
 function td_clean_settings(array $in) {

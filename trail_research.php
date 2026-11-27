@@ -45,7 +45,7 @@ if (!$current_group) {
 }
 
 // -----------------------------------------------------------------------
-// Trail URL scraper — tries AllTrails (__NEXT_DATA__), JSON-LD, meta tags
+// Trail URL scraper: tries AllTrails (__NEXT_DATA__), JSON-LD, meta tags
 // -----------------------------------------------------------------------
 function scrapeTrailUrl($url) {
     $result = [
@@ -109,7 +109,7 @@ function scrapeTrailUrl($url) {
     }
 
     if (!$html) {
-        $result['error'] = 'Could not fetch that page — the site appears to be blocking automated requests. Please enter trail data manually below.';
+        $result['error'] = 'Could not fetch that page. The site appears to be blocking automated requests. Please enter trail data manually below.';
         return $result;
     }
 
@@ -117,7 +117,7 @@ function scrapeTrailUrl($url) {
     if (strpos($url, 'alltrails.com') !== false) {
         if (preg_match('/<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)<\/script>/si', $html, $m)) {
             $nd = json_decode($m[1], true);
-            // Navigate to trail object — structure: props.pageProps.trail
+            // Navigate to trail object, structure: props.pageProps.trail
             $trail = $nd['props']['pageProps']['trail'] ?? null;
             if ($trail) {
                 $result['source'] = 'AllTrails';
@@ -165,7 +165,7 @@ function scrapeTrailUrl($url) {
 
             $result['source'] = 'Structured Data';
 
-            // Distance — may be "7.1 miles", "11.4 km", or a number in meters
+            // Distance may be "7.1 miles", "11.4 km", or a number in meters
             foreach (['distance', 'length'] as $dk) {
                 if (!isset($item[$dk])) continue;
                 $raw = $item[$dk];
@@ -463,6 +463,7 @@ $google_maps = "https://www.google.com/maps/search/" . urlencode($summit_name . 
         <?php if (($current_user ?? '') === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
           <a href="god_mode.php">God Mode</a>
         <?php endif; ?>
+        <?= betaMenuLink() ?>
         <a href="user_settings.php">Settings</a>
         <a href="logout.php">Sign Out</a>
       </div>
@@ -526,7 +527,7 @@ $google_maps = "https://www.google.com/maps/search/" . urlencode($summit_name . 
             <div class="msg msg-warn">
               <?php if ($isBlocked): ?>
                 <strong><?= htmlspecialchars($blockedSite) ?> blocks automated data fetching.</strong>
-                Enter the trail stats manually below — you can still save the link.
+                Enter the trail stats manually below. You can still save the link.
               <?php else: ?>
                 <?= htmlspecialchars($scraped['error']) ?>
               <?php endif; ?>
@@ -556,7 +557,7 @@ $google_maps = "https://www.google.com/maps/search/" . urlencode($summit_name . 
                      placeholder="https://www.alltrails.com/trail/...">
               <button type="submit" name="scrape_trail" class="btn btn-primary">Look Up</button>
             </div>
-            <div class="form-hint">Auto-fill works with Hiking Project, TrailLink, and most structured trail sites. AllTrails and GaiaGPS block automated access — paste the link and enter stats manually.</div>
+            <div class="form-hint">Auto-fill works with Hiking Project, TrailLink, and most structured trail sites. AllTrails and GaiaGPS block automated access. Paste the link and enter stats manually.</div>
           </div>
         </form>
 
@@ -631,7 +632,7 @@ $google_maps = "https://www.google.com/maps/search/" . urlencode($summit_name . 
           <li><strong>AllTrails:</strong> Use the map view and zoom to the summit coordinates. Look for trails that go to or through the summit.</li>
           <li><strong>Check Elevation:</strong> The trail's highest point should match the summit elevation (<?= number_format($summit['elevation_ft']) ?> ft).</li>
           <li><strong>Read Reviews:</strong> Trail reviews often mention if the trail reaches the summit.</li>
-          <li><strong>Multiple Routes:</strong> Some summits have several trails — pick the most direct or one that matches your skill level.</li>
+          <li><strong>Multiple Routes:</strong> Some summits have several trails. Pick the most direct or one that matches your skill level.</li>
           <li><strong>Trail Names:</strong> The trail might not be named after the summit. Look for trails in the same area.</li>
         </ul>
       </div>

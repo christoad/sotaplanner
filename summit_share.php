@@ -335,6 +335,7 @@ $jsflags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="2,3.5 5,6.5 8,3.5"/></svg>
         <div class="user-dropdown">
           <a href="index.php">My Dashboard</a>
+          <?= betaMenuLink() ?>
           <a href="logout.php">Sign Out</a>
         </div>
       </div>

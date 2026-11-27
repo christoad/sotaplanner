@@ -988,7 +988,7 @@ select.form-input { cursor: pointer; }
         <div class="section-head">
             <div>
                 <h2>Beta Testers</h2>
-                <p>These callsigns get new features before everyone else. Their badge in the top right turns blue with a BETA tag.</p>
+                <p>These callsigns get new features before everyone else. Their badge in the top right turns blue with a BETA tag. Testers see <a href="beta.php">the Beta Features page</a> in their badge menu; its features and test cases are listed in beta_features_list.php.</p>
             </div>
         </div>
 
