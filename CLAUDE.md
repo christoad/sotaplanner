@@ -25,6 +25,7 @@ The one place to see what's planned. Keep it short: one line per item, details l
 - Visual polish, in order: dashboard hover effects, Community Growth chart animation, scroll reveals on About and Changelog, login hero gradient. Notes: "Visual sophistication backlog".
 - Icon and graphics redesign. Scope to agree with Chris first. Notes: "Queued projects (added 2026-11-16)".
 - Map of GPX library coverage. Notes: memory `project_gpx_coverage_map`.
+- Multi-Activate elevation profile distance axis reads shorter than the tile distances (added 2026-11-26). Cause: `multi_elev_series()` in `multi_elev_lib.php` measures distance on already simplified points (`multi_leg_read_gpx()` drops points under 20 m apart; direct legs and the loop finish use `route` thinned to 250 points by `bp_thin()`), so switchbacks get cut. Fix: measure on the full points, simplify only for drawing (or scale each segment to its tile distance). Chart only, small branch.
 - RFI layer follow-ups (the layer shipped 2026-11-20; public `/s/` page shipped 2026-11-21): Multi-Activate PDF, click-for-value popup on the heat map. Alaska and Hawaii need KM6AM's grid to cover them first. Notes: "RFI layer on the summit map".
 
 **Ideas, not scheduled**
