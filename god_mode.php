@@ -384,20 +384,52 @@ if (($_GET['tab'] ?? '') === 'users') {
         ")->fetchAll();
         $total = count($visit_users);
         $once = $few = $regular = 0; $active7 = $active30 = 0; $eligible = $came_back = 0;
-        $today = strtotime(date('Y-m-d'));
+        // Whole days, counted in UTC so a daylight saving change never makes a day 23 or 25 hours.
+        $dayNum = function ($ymd) { return intdiv(strtotime($ymd . ' 00:00:00 UTC'), 86400); };
+        $today = $dayNum(date('Y-m-d'));
         foreach ($visit_users as &$vu) {
             $d = (int)$vu['days_active'];
             $vu['tier'] = $d >= 4 ? 'Regular' : ($d >= 2 ? 'Returning' : 'One-time');
             if ($d >= 4) $regular++; elseif ($d >= 2) $few++; else $once++;
-            $age = ($today - strtotime($vu['last_seen'])) / 86400;
+            $age = $today - $dayNum($vu['last_seen']);
             if ($age <= 7) $active7++;
             if ($age <= 30) $active30++;
-            if (($today - strtotime($vu['first_seen'])) / 86400 >= 7) { $eligible++; if ($d >= 2) $came_back++; }
+            if ($today - $dayNum($vu['first_seen']) >= 7) { $eligible++; if ($d >= 2) $came_back++; }
         }
         unset($vu);
         $visit_stats = compact('total', 'once', 'few', 'regular', 'active7', 'active30', 'eligible', 'came_back');
         $visit_stats['users'] = $visit_users;
         $visit_stats['tracking_since'] = $db->query("SELECT MIN(visit_date) FROM user_visits")->fetchColumn();
+
+        // Stat cards over time: the same numbers worked out as they stood at the end of
+        // every day since tracking began, rebuilt from user_visits (one row per person per day).
+        $by_day = [];
+        foreach ($db->query("
+            SELECT callsign, visit_date FROM user_visits
+            WHERE callsign NOT IN ('KI6CR', 'ZZ1ZZZ', 'ZZ9TST') ORDER BY visit_date
+        ")->fetchAll(PDO::FETCH_NUM) as [$h_cs, $h_date]) {
+            $by_day[$dayNum($h_date)][] = $h_cs;
+        }
+        $history = [];
+        if ($by_day) {
+            $h_cnt = $h_first = $h_last = [];
+            for ($dn = min(array_keys($by_day)); $dn <= $today; $dn++) {
+                foreach ($by_day[$dn] ?? [] as $h_cs) {
+                    $h_cnt[$h_cs] = ($h_cnt[$h_cs] ?? 0) + 1;
+                    if (!isset($h_first[$h_cs])) $h_first[$h_cs] = $dn;
+                    $h_last[$h_cs] = $dn;
+                }
+                $o = $f = $r = $a7 = $a30 = $el = $cb = 0;
+                foreach ($h_cnt as $h_cs => $n) {
+                    if ($n >= 4) $r++; elseif ($n >= 2) $f++; else $o++;
+                    if ($dn - $h_last[$h_cs] <= 7) $a7++;
+                    if ($dn - $h_last[$h_cs] <= 30) $a30++;
+                    if ($dn - $h_first[$h_cs] >= 7) { $el++; if ($n >= 2) $cb++; }
+                }
+                $history[] = [gmdate('Y-m-d', $dn * 86400), count($h_cnt), $o, $f, $r, $a7, $a30, $el ? round($cb / $el * 100, 1) : null];
+            }
+        }
+        $visit_stats['history'] = $history;
         $wk = $db->query("
             SELECT YEARWEEK(visit_date, 1) AS yw, MIN(visit_date) AS wk_start, COUNT(DISTINCT callsign) AS n
             FROM user_visits WHERE callsign NOT IN ('KI6CR', 'ZZ1ZZZ', 'ZZ9TST') AND visit_date >= DATE_SUB(CURDATE(), INTERVAL 8 WEEK)
@@ -825,6 +857,264 @@ select.form-input { cursor: pointer; }
             </div>
             <?php endforeach; ?>
         </div>
+
+        <?php if (count($vs['history']) >= 2): ?>
+        <style>
+        .uh-card { padding: var(--sp-4) var(--sp-4) var(--sp-3); margin-bottom: var(--sp-4); }
+        .uh-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-3); }
+        .uh-title { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); }
+        .uh-ranges { display: flex; gap: var(--sp-1); }
+        .uh-range { height: 26px; padding: 0 var(--sp-3); border-radius: 100px; font: 500 0.75rem var(--font-sans); background: var(--surface); border: 1px solid var(--border-2); color: var(--ink-2); cursor: pointer; }
+        .uh-range:hover { background: var(--bg-2); color: var(--ink); }
+        .uh-range[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+        .uh-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+        .uh-all { height: 30px; min-width: 76px; padding: 0 var(--sp-3); border-radius: 100px; font: 600 0.75rem var(--font-sans); background: var(--surface); border: 1px solid var(--border-2); color: var(--ink-2); cursor: pointer; }
+        .uh-all:hover { background: var(--bg-2); color: var(--ink); }
+        .uh-all:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .uh-chip { display: inline-flex; align-items: center; gap: 0.45rem; height: 30px; padding: 0 0.7rem; border-radius: 100px; font: 500 0.78rem var(--font-sans); background: var(--surface); border: 1px solid var(--border-2); color: var(--ink-2); cursor: pointer; transition: background 0.12s, border-color 0.12s, color 0.12s; }
+        .uh-chip:hover { background: var(--bg-2); color: var(--ink); }
+        .uh-chip .sw { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+        .uh-chip .v { font-weight: 600; color: var(--ink); }
+        .uh-chip[aria-pressed="false"] { color: var(--ink-4); border-style: dashed; }
+        .uh-chip[aria-pressed="false"] .sw { background: transparent !important; box-shadow: inset 0 0 0 1.5px var(--ink-4); }
+        .uh-chip[aria-pressed="false"] .v { color: var(--ink-4); }
+        .uh-chip:focus-visible, .uh-range:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .uh-chart { position: relative; }
+        .uh-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; color: var(--ink-3); }
+        .uh-tip { position: absolute; pointer-events: none; display: none; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-md); padding: 0.45rem 0.65rem; font-size: 0.78rem; white-space: nowrap; z-index: 5; }
+        .uh-tip .d { color: var(--ink-3); margin-bottom: 0.2rem; }
+        .uh-tip .row { display: flex; align-items: center; gap: 0.45rem; color: var(--ink-2); line-height: 1.55; }
+        .uh-tip .row .sw { width: 8px; height: 8px; border-radius: 2px; }
+        .uh-tip .row b { margin-left: auto; padding-left: 0.9rem; color: var(--ink); font-weight: 600; }
+        .uh-note { font-size: 0.72rem; color: var(--ink-3); margin-top: var(--sp-2); }
+        </style>
+        <div class="card uh-card">
+            <div class="uh-head">
+                <div class="uh-title">Stat cards over time</div>
+                <div class="uh-ranges" role="group" aria-label="Time range">
+                    <button type="button" class="uh-range" data-days="30" aria-pressed="false">30 days</button>
+                    <button type="button" class="uh-range" data-days="90" aria-pressed="false">90 days</button>
+                    <button type="button" class="uh-range" data-days="0" aria-pressed="true">All</button>
+                </div>
+            </div>
+            <div class="uh-chips" id="uhChips" role="group" aria-label="Lines to show"></div>
+            <div class="uh-chart" id="uhCounts" style="height:280px;" role="img" aria-label="People tracked, one-time, returning, regular, and active users per day since <?= htmlspecialchars(date('M j, Y', strtotime($vs['history'][0][0]))) ?>"></div>
+            <div class="uh-note">Click a name to show or hide its line; the scale adjusts to the lines shown. Each day shows the cards as they stood at the end of that day.</div>
+        </div>
+        <div class="card uh-card">
+            <div class="uh-head">
+                <div class="uh-title">Came back (joined 7+ days ago)</div>
+            </div>
+            <div class="uh-chart" id="uhPct" style="height:170px;" role="img" aria-label="Share of people who came back on a second day, among those who joined at least 7 days earlier"></div>
+            <div class="uh-note">A percentage, so it has its own chart rather than sharing the headcount scale. Starts 7 days after tracking began.</div>
+        </div>
+        <script>
+        (function () {
+            var hist = <?= json_encode($vs['history']) ?>;
+            // Fixed colour per card (never reassigned when lines are hidden).
+            var SERIES = [
+                {key: 'total',    col: 1, label: 'People tracked',         color: '#2a78d6'},
+                {key: 'once',     col: 2, label: 'Came once, never back',  color: '#eb6834'},
+                {key: 'few',      col: 3, label: 'Returning (2-3 days)',   color: '#1baf7a'},
+                {key: 'regular',  col: 4, label: 'Regulars (4+ days)',     color: '#eda100'},
+                {key: 'active7',  col: 5, label: 'Active last 7 days',     color: '#e87ba4'},
+                {key: 'active30', col: 6, label: 'Active last 30 days',    color: '#008300'}
+            ];
+            var PCT = [{key: 'cameback', col: 7, label: 'Came back', color: '#2a78d6'}];
+            var NS = 'http://www.w3.org/2000/svg';
+            var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            var css = getComputedStyle(document.documentElement);
+            var C = {grid: css.getPropertyValue('--border').trim(), axis: css.getPropertyValue('--ink-3').trim(),
+                     base: css.getPropertyValue('--border-2').trim(), ink: css.getPropertyValue('--ink-2').trim(), surface: '#fff'};
+            var store = {get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+                         set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} }};
+
+            var hidden = {};
+            try { (JSON.parse(store.get('godUsersChartHidden') || '[]') || []).forEach(function (k) { hidden[k] = true; }); } catch (e) {}
+            var rangeDays = parseInt(store.get('godUsersChartRange') || '0', 10) || 0;
+
+            function label(ymd, withYear) {
+                var p = ymd.split('-');
+                return MONTHS[+p[1] - 1] + ' ' + (+p[2]) + (withYear ? ', ' + p[0] : '');
+            }
+            function el(name, attrs, parent) {
+                var e = document.createElementNS(NS, name);
+                for (var k in attrs) e.setAttribute(k, attrs[k]);
+                if (parent) parent.appendChild(e);
+                return e;
+            }
+            function niceStep(raw) {
+                var p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+                return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p;
+            }
+            function fmt(v, pct) { return v === null ? '-' : (pct ? Math.round(v) + '%' : String(v)); }
+
+            // opts: {box, series, pct, fixedMax}
+            function draw(o) {
+                var box = o.box;
+                box.innerHTML = '';
+                var rows = rangeDays ? hist.slice(-rangeDays) : hist;
+                var shown = o.series.filter(function (s) { return !hidden[s.key]; });
+                var W = box.clientWidth, H = box.clientHeight;
+                var m = {l: 40, r: 34, t: 12, b: 26};
+                var pw = W - m.l - m.r, ph = H - m.t - m.b;
+                var n = rows.length;
+                var x = function (i) { return m.l + (n > 1 ? i / (n - 1) : 0.5) * pw; };
+
+                // Scale fits only the lines currently shown, over the chosen range.
+                var vmax = 0;
+                shown.forEach(function (s) { rows.forEach(function (r) { if (r[s.col] !== null && r[s.col] > vmax) vmax = r[s.col]; }); });
+                var step, ymax;
+                if (o.fixedMax) { step = o.fixedMax / 4; ymax = o.fixedMax; }
+                else { step = niceStep(Math.max(vmax, 4) / 4); if (step < 1) step = 1; ymax = Math.ceil(Math.max(vmax, 1) / step) * step; if (ymax === vmax) ymax += step; }
+                var y = function (v) { return m.t + ph - v / ymax * ph; };
+
+                var svg = el('svg', {width: W, height: H, 'aria-hidden': 'true'}, box);
+                svg.style.fontFamily = 'var(--font-sans)';
+                for (var v = 0; v <= ymax + 1e-9; v += step) {
+                    el('line', {x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: v === 0 ? C.base : C.grid, 'stroke-width': 1}, svg);
+                    el('text', {x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: C.axis}, svg).textContent = o.pct ? Math.round(v) + '%' : Math.round(v * 10) / 10;
+                }
+                // Date labels, thinned to fit.
+                var every = Math.max(1, Math.ceil(n / Math.max(1, Math.floor(pw / 64))));
+                for (var i = 0; i < n; i += every) {
+                    el('text', {x: x(i), y: H - 6, 'text-anchor': i === 0 ? 'start' : 'middle', 'font-size': 11, fill: C.axis}, svg).textContent = label(rows[i][0]);
+                }
+
+                if (!shown.length) {
+                    var em = document.createElement('div');
+                    em.className = 'uh-empty';
+                    em.textContent = 'Pick at least one line above.';
+                    box.appendChild(em);
+                    return;
+                }
+
+                var ends = [];
+                shown.forEach(function (s) {
+                    var d = '', pen = false;
+                    rows.forEach(function (r, i) {
+                        if (r[s.col] === null) { pen = false; return; }
+                        d += (pen ? 'L' : 'M') + x(i).toFixed(1) + ',' + y(r[s.col]).toFixed(1);
+                        pen = true;
+                    });
+                    el('path', {d: d, fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round'}, svg);
+                    var last = rows[n - 1][s.col];
+                    if (last !== null) {
+                        el('circle', {cx: x(n - 1), cy: y(last), r: 4, fill: s.color, stroke: C.surface, 'stroke-width': 2}, svg);
+                        ends.push({y: y(last), text: fmt(last, o.pct)});
+                    }
+                });
+                // Latest value at the end of each line, nudged apart so labels never overlap.
+                ends.sort(function (a, b) { return a.y - b.y; });
+                for (var k = 1; k < ends.length; k++) if (ends[k].y - ends[k - 1].y < 13) ends[k].y = ends[k - 1].y + 13;
+                ends.forEach(function (e) {
+                    el('text', {x: x(n - 1) + 8, y: e.y + 4, 'font-size': 11, 'font-weight': 600, fill: C.ink}, svg).textContent = e.text;
+                });
+
+                var tip = document.createElement('div');
+                tip.className = 'uh-tip';
+                box.appendChild(tip);
+                var cross = el('line', {y1: m.t, y2: m.t + ph, stroke: C.axis, 'stroke-width': 1, visibility: 'hidden'}, svg);
+                var dots = shown.map(function (s) { return el('circle', {r: 4, fill: s.color, stroke: C.surface, 'stroke-width': 2, visibility: 'hidden'}, svg); });
+                var hit = el('rect', {x: m.l - 6, y: 0, width: pw + 12, height: H, fill: 'transparent'}, svg);
+
+                function show(clientX) {
+                    var bx = box.getBoundingClientRect();
+                    var i = n > 1 ? Math.round((clientX - bx.left - m.l) / pw * (n - 1)) : 0;
+                    i = Math.max(0, Math.min(n - 1, i));
+                    var px = x(i), r = rows[i], topY = H;
+                    cross.setAttribute('x1', px); cross.setAttribute('x2', px); cross.setAttribute('visibility', 'visible');
+                    var lines = [];
+                    shown.forEach(function (s, j) {
+                        var val = r[s.col];
+                        if (val === null) { dots[j].setAttribute('visibility', 'hidden'); }
+                        else {
+                            dots[j].setAttribute('cx', px); dots[j].setAttribute('cy', y(val)); dots[j].setAttribute('visibility', 'visible');
+                            topY = Math.min(topY, y(val));
+                        }
+                        lines.push({s: s, v: val});
+                    });
+                    lines.sort(function (a, b) { return (b.v === null ? -1 : b.v) - (a.v === null ? -1 : a.v); });
+                    tip.innerHTML = '<div class="d">' + label(r[0], true) + '</div>' + lines.map(function (l) {
+                        return '<div class="row"><span class="sw" style="background:' + l.s.color + '"></span>' + l.s.label + '<b>' + fmt(l.v, o.pct) + '</b></div>';
+                    }).join('');
+                    tip.style.display = 'block';
+                    var tx = px + 14;
+                    if (tx + tip.offsetWidth > W) tx = px - 14 - tip.offsetWidth;
+                    tip.style.left = Math.max(0, tx) + 'px';
+                    tip.style.top = Math.max(0, Math.min(H - tip.offsetHeight, topY - tip.offsetHeight / 2)) + 'px';
+                }
+                function hide() {
+                    cross.setAttribute('visibility', 'hidden');
+                    dots.forEach(function (d) { d.setAttribute('visibility', 'hidden'); });
+                    tip.style.display = 'none';
+                }
+                hit.addEventListener('mousemove', function (e) { show(e.clientX); });
+                hit.addEventListener('mouseleave', hide);
+                hit.addEventListener('touchstart', function (e) { show(e.touches[0].clientX); }, {passive: true});
+                hit.addEventListener('touchmove', function (e) { show(e.touches[0].clientX); }, {passive: true});
+            }
+
+            var countsBox = document.getElementById('uhCounts'), pctBox = document.getElementById('uhPct');
+            function drawAll() {
+                draw({box: countsBox, series: SERIES});
+                draw({box: pctBox, series: PCT, pct: true, fixedMax: 100});
+            }
+
+            // Toggle chips (also the legend): swatch, name, latest value.
+            var chipBox = document.getElementById('uhChips'), latest = hist[hist.length - 1];
+            var chips = {};
+            // One button that shows every line, or hides them all when they are all showing.
+            var allBtn = document.createElement('button');
+            allBtn.type = 'button';
+            allBtn.className = 'uh-all';
+            chipBox.appendChild(allBtn);
+            function syncChips() {
+                var anyHidden = false;
+                SERIES.forEach(function (s) {
+                    chips[s.key].setAttribute('aria-pressed', hidden[s.key] ? 'false' : 'true');
+                    if (hidden[s.key]) anyHidden = true;
+                });
+                allBtn.textContent = anyHidden ? 'Show all' : 'Hide all';
+                store.set('godUsersChartHidden', JSON.stringify(Object.keys(hidden).filter(function (k) { return hidden[k]; })));
+                draw({box: countsBox, series: SERIES});
+            }
+            SERIES.forEach(function (s) {
+                var b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'uh-chip';
+                b.innerHTML = '<span class="sw" style="background:' + s.color + '"></span><span>' + s.label + '</span><span class="v">' + latest[s.col] + '</span>';
+                b.addEventListener('click', function () { hidden[s.key] = !hidden[s.key]; syncChips(); });
+                chips[s.key] = b;
+                chipBox.appendChild(b);
+            });
+            allBtn.addEventListener('click', function () {
+                var hideAll = allBtn.textContent === 'Hide all';
+                SERIES.forEach(function (s) { hidden[s.key] = hideAll; });
+                syncChips();
+            });
+            syncChips();
+
+            var rangeBtns = document.querySelectorAll('.uh-range');
+            function markRange() {
+                rangeBtns.forEach(function (b) { b.setAttribute('aria-pressed', +b.dataset.days === rangeDays ? 'true' : 'false'); });
+            }
+            rangeBtns.forEach(function (b) {
+                b.addEventListener('click', function () {
+                    rangeDays = +b.dataset.days;
+                    store.set('godUsersChartRange', String(rangeDays));
+                    markRange();
+                    drawAll();
+                });
+            });
+            if ([0, 30, 90].indexOf(rangeDays) < 0) rangeDays = 0;
+            markRange();
+            drawAll();
+            var resizeTimer;
+            window.addEventListener('resize', function () { clearTimeout(resizeTimer); resizeTimer = setTimeout(drawAll, 150); });
+        })();
+        </script>
+        <?php endif; ?>
 
         <?php if ($weekly_active): $maxw = max(array_column($weekly_active, 'n')); ?>
         <div class="card" style="padding:1rem 1.25rem; margin-bottom:var(--sp-4);">
