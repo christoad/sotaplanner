@@ -10,16 +10,16 @@
  * Admin (KI6CR) only. Run on production only.
  *
  * JSON actions (GET ?action=):
- *   stats   — counts of total / have trailhead / need trailhead
- *   queue   — list of summits needing a trailhead lookup
- *   lookup  — query Overpass for one summit, store result
+ *   stats  : counts of total / have trailhead / need trailhead
+ *   queue  : list of summits needing a trailhead lookup
+ *   lookup : query Overpass for one summit, store result
  */
 
 require_once 'config.php';
 session_start();
 requireLogin();
 
-if (!isGodMode()) {
+if (!isAdminMode()) {
     http_response_code(403);
     die('Admin only.');
 }
@@ -128,7 +128,7 @@ if ($action === 'stats') {
 
 if ($action === 'reset') {
     header('Content-Type: application/json');
-    // Clear auto-imported trailheads only — never touch manually-set ones
+    // Clear auto-imported trailheads only; never touch manually-set ones
     $tracks_cleared  = $db->exec("UPDATE global_gpx_tracks SET trailhead_lat = NULL, trailhead_lon = NULL");
     $summits_cleared = $db->exec("
         UPDATE summits SET trailhead_lat = NULL, trailhead_lng = NULL
@@ -197,7 +197,7 @@ if ($action === 'lookup') {
 
     // Decide whether to use the OSM result or fall back to the GPX start point.
     // Dedicated trailhead tags (highway/tourism=trailhead) are trusted up to 400 m.
-    // Generic parking is only used if within 100 m — a distant lot adds noise.
+    // Generic parking is only used if within 100 m, since a distant lot adds noise.
     // If nothing qualifies, the GPX low-elevation endpoint is itself the trailhead.
     $use_osm = false;
     if ($result) {
@@ -253,7 +253,7 @@ if ($action === 'lookup') {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OSM Trailhead Lookup — Admin</title>
+<title>OSM Trailhead Lookup: Admin</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -302,12 +302,12 @@ h2{font-size:.95rem;font-weight:600;margin-bottom:1rem;color:var(--ink-2)}
 </head>
 <body>
 <div class="page">
-  <p style="margin-bottom:.75rem"><a href="god_mode.php?tab=data" style="color:var(--ink-3);font-size:.875rem">&larr; Data Tools</a></p>
+  <p style="margin-bottom:.75rem"><a href="admin_mode.php?tab=data" style="color:var(--ink-3);font-size:.875rem">&larr; Data Tools</a></p>
   <h1>OSM Trailhead Lookup</h1>
   <p class="subtitle">Queries <strong>OpenStreetMap</strong> (via Overpass API) for tagged trailheads and public parking areas for summits that have GPX track data but no trailhead location set. The GPX track's low-elevation endpoint is used as the precise search origin, and OSM is queried within <strong>400 m</strong> of that point. Summits without a GPX track are skipped. The nearest result (prioritising <code>highway=trailhead</code> and <code>tourism=trailhead</code> over generic parking) is stored as the trailhead.</p>
 
   <div class="note-box">
-    Results are written directly to the <code>summits</code> table. OSM data quality varies by region — denser areas like W6/W7 are well-tagged; remote international associations may have little parking data. Manually-set trailheads are never overwritten.
+    Results are written directly to the <code>summits</code> table. OSM data quality varies by region. Denser areas like W6/W7 are well-tagged; remote international associations may have little parking data. Manually-set trailheads are never overwritten.
   </div>
 
   <div class="stats-grid">
@@ -327,7 +327,7 @@ h2{font-size:.95rem;font-weight:600;margin-bottom:1rem;color:var(--ink-2)}
     <div class="delay-row">
       <span>Delay between requests:</span>
       <input type="number" id="delay-ms" value="1500" min="500" max="5000"> ms
-      <span style="color:var(--ink-4)">(Overpass API is a public service — be considerate)</span>
+      <span style="color:var(--ink-4)">(Overpass API is a public service, so be considerate)</span>
     </div>
   </div>
 
@@ -417,26 +417,26 @@ function runNext() {
         counts.found++;
         const summitNote = d.summits_updated > 0 ? `  +${d.summits_updated} summit(s)` : '';
         if (d.source === 'gpx') {
-          log(`✓ ${s.sota_ref}  [GPX start point — no qualifying OSM result]${summitNote}`, 'ok');
+          log(`✓ ${s.sota_ref}  [GPX start point, no qualifying OSM result]${summitNote}`, 'ok');
         } else {
-          const typeLabel = d.name ? `${d.type} — "${d.name}"` : d.type;
+          const typeLabel = d.name ? `${d.type}: "${d.name}"` : d.type;
           log(`✓ ${s.sota_ref}  ${d.dist_m} m away  [${typeLabel}]${summitNote}`, 'ok');
         }
       } else if (d.status === 'none') {
         counts.none++;
-        log(`· ${s.sota_ref} — no OSM match within 400 m of GPX start`, 'none');
+        log(`· ${s.sota_ref}: no OSM match within 400 m of GPX start`, 'none');
       } else if (d.status === 'skip') {
         counts.skip++;
-        log(`⏭ ${s.sota_ref} — ${d.msg}`, 'skip');
+        log(`⏭ ${s.sota_ref}: ${d.msg}`, 'skip');
       } else {
         counts.err++;
-        log(`✗ ${s.sota_ref} — ${d.msg}`, 'err');
+        log(`✗ ${s.sota_ref}: ${d.msg}`, 'err');
       }
       updateSummary();
     })
     .catch(e => {
       counts.err++;
-      log(`✗ ${s.sota_ref} — network error: ${e.message}`, 'err');
+      log(`✗ ${s.sota_ref}: network error: ${e.message}`, 'err');
       updateSummary();
     })
     .finally(() => {
@@ -499,7 +499,7 @@ async function resetTrailheads() {
   const r = await fetch('admin_trailhead_osm.php?action=reset');
   const d = await r.json();
   if (d.status === 'ok') {
-    log(`✓ Reset complete — ${d.tracks_cleared} global GPX track(s) cleared, ${d.summits_cleared} nominated summit(s) cleared. Ready to re-run lookup.`, 'ok');
+    log(`✓ Reset complete: ${d.tracks_cleared} global GPX track(s) cleared, ${d.summits_cleared} nominated summit(s) cleared. Ready to re-run lookup.`, 'ok');
     loadStats();
   } else {
     log('✗ Reset failed', 'err');

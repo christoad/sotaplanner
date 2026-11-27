@@ -4,7 +4,7 @@ session_start();
 requireLogin();
 
 $callsign = $_SESSION['sota_callsign'] ?? '';
-$real     = $_SESSION['_god_mode_real_callsign'] ?? '';
+$real     = $_SESSION['_admin_mode_real_callsign'] ?? '';
 if ($callsign !== 'KI6CR' && $real !== 'KI6CR') {
     header('Location: index.php');
     exit;
@@ -23,7 +23,7 @@ $bkey = defined('GOOGLE_MAPS_BROWSER_KEY') ? GOOGLE_MAPS_BROWSER_KEY : '';
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GPX Coverage Map — SOTA Planner</title>
+<title>GPX Coverage Map: SOTA Planner</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -136,11 +136,11 @@ html, body { height: 100%; font-family: var(--font-sans); background: var(--bg);
     </a>
     <div class="topbar-divider"></div>
     <span class="topbar-crumb">
-      <a href="god_mode.php?tab=data">God Mode &rsaquo; Data Tools</a>
+      <a href="admin_mode.php?tab=data">Admin Mode &rsaquo; Data Tools</a>
       &rsaquo; GPX Coverage Map
     </span>
     <div class="topbar-right">
-      <a href="god_mode.php?tab=data" style="font-size:0.82rem; color:var(--ink-3); text-decoration:none; padding:0.3rem 0.6rem; border:1px solid var(--border); border-radius:var(--r-sm); background:var(--bg);">&larr; Back to Data Tools</a>
+      <a href="admin_mode.php?tab=data" style="font-size:0.82rem; color:var(--ink-3); text-decoration:none; padding:0.3rem 0.6rem; border:1px solid var(--border); border-radius:var(--r-sm); background:var(--bg);">&larr; Back to Data Tools</a>
     </div>
   </nav>
 
@@ -175,7 +175,7 @@ html, body { height: 100%; font-family: var(--font-sans); background: var(--bg);
 
 <script src="https://unpkg.com/@googlemaps/markerclusterer/dist/index.min.js"></script>
 <script>
-// All raw data — plain JS objects, no Marker objects created upfront
+// All raw data: plain JS objects, no Marker objects created upfront
 let allData = [];
 let map, clusterer, infoWindow;
 let activeMarkers = [];
@@ -283,9 +283,9 @@ function updateHint(zoom, visibleCount) {
   if (zoom < 4) {
     el.textContent = 'Zoom in to start exploring summits  ›';
   } else if (visibleCount > MAX_VISIBLE) {
-    el.textContent = `Showing ${MAX_VISIBLE.toLocaleString()} of ${visibleCount.toLocaleString()} in view — zoom in for more`;
+    el.textContent = `Showing ${MAX_VISIBLE.toLocaleString()} of ${visibleCount.toLocaleString()} in view. Zoom in for more`;
   } else if (zoom >= 8) {
-    el.textContent = visibleCount > 0 ? `${visibleCount.toLocaleString()} summits in view — click any dot for details` : 'No summits with routes in this area';
+    el.textContent = visibleCount > 0 ? `${visibleCount.toLocaleString()} summits in view. Click any dot for details` : 'No summits with routes in this area';
   } else {
     el.textContent = 'Zoom in to see individual summits  ›';
   }

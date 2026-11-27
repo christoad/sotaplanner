@@ -1,6 +1,6 @@
 <?php
 /**
- * Trail discovery (God Mode test phase, started 2026-11-15).
+ * Trail discovery (Admin Mode test phase, started 2026-11-15).
  *
  * Finds hiking routes from a summit down to a place an activator can drive to, using only our own
  * BRouter server (no Overpass, so it can later run on every summit).

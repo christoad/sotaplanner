@@ -4,7 +4,7 @@ session_start();
 requireLogin();
 
 $callsign      = $_SESSION['sota_callsign'] ?? '';
-$real_callsign = $_SESSION['_god_mode_real_callsign'] ?? '';
+$real_callsign = $_SESSION['_admin_mode_real_callsign'] ?? '';
 
 // Only KI6CR may access (even while impersonating)
 if ($callsign !== 'KI6CR' && $real_callsign !== 'KI6CR') {
@@ -23,8 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Exit impersonation
     if (isset($_POST['exit_impersonate'])) {
         $_SESSION['sota_callsign'] = 'KI6CR';
-        unset($_SESSION['_god_mode_real_callsign']);
-        header('Location: god_mode.php');
+        unset($_SESSION['_admin_mode_real_callsign']);
+        header('Location: admin_mode.php');
         exit;
     }
 
@@ -32,7 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['impersonate'])) {
         $target = strtoupper(trim($_POST['target_callsign'] ?? ''));
         if ($target && $target !== 'KI6CR' && preg_match('/^[A-Z0-9]{3,10}$/', $target)) {
-            $_SESSION['_god_mode_real_callsign'] = 'KI6CR';
+            $_SESSION['_admin_mode_real_callsign'] = 'KI6CR';
             $_SESSION['sota_callsign']           = $target;
             $stmt = $db->prepare("
                 SELECT pg.id FROM planning_groups pg
@@ -110,14 +110,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = "Could not save. Has db_migrate_beta.php been run? (" . $e->getMessage() . ")";
             }
         }
-        if (!$error) { header('Location: god_mode.php?tab=beta&msg=' . urlencode($message)); exit; }
+        if (!$error) { header('Location: admin_mode.php?tab=beta&msg=' . urlencode($message)); exit; }
     }
     if (isset($_POST['beta_remove'])) {
         $bcs = strtoupper(trim($_POST['beta_callsign'] ?? ''));
         try {
             $db->prepare("DELETE FROM beta_testers WHERE callsign = ?")->execute([$bcs]);
             betaForget($bcs);
-            header('Location: god_mode.php?tab=beta&msg=' . urlencode("Removed $bcs from the beta testers."));
+            header('Location: admin_mode.php?tab=beta&msg=' . urlencode("Removed $bcs from the beta testers."));
             exit;
         } catch (PDOException $e) {
             $error = "Could not remove: " . $e->getMessage();
@@ -514,7 +514,7 @@ if ($active_tab === 'beta') {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow">
-<title>God Mode: SOTA Planner</title>
+<title>Admin Mode: SOTA Planner</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -559,7 +559,7 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--ink); 
 .topbar-logo:hover { text-decoration: none; color: var(--ink); }
 .topbar-logo .logo-mark { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; }
 .topbar-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
-.god-badge { background: var(--ink); color: #fff; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.2rem 0.55rem; border-radius: var(--r-sm); }
+.admin-badge { background: var(--ink); color: #fff; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.2rem 0.55rem; border-radius: var(--r-sm); }
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: var(--sp-3); }
 .btn-sm-ghost { display: inline-flex; align-items: center; gap: 0.35rem; height: 30px; padding: 0 var(--sp-3); border-radius: var(--r-md); font-family: var(--font-sans); font-size: 0.8rem; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--ink-2); transition: background 0.15s; text-decoration: none; }
 .btn-sm-ghost:hover { background: var(--bg-2); color: var(--ink); }
@@ -665,7 +665,7 @@ select.form-input { cursor: pointer; }
         <span>SOTAplanner</span>
     </a>
     <div class="topbar-divider"></div>
-    <span class="god-badge">God Mode</span>
+    <span class="admin-badge">Admin Mode</span>
     <a href="index.php" class="btn-sm-ghost" style="margin-left:.5rem;">← Dashboard</a>
     <div class="topbar-right">
         <?php if ($real_callsign === 'KI6CR'): ?>
@@ -680,7 +680,7 @@ select.form-input { cursor: pointer; }
 <div class="impersonate-bar">
     ⚠️ You are currently impersonating <strong><?= htmlspecialchars($callsign) ?></strong>.
     <form method="POST" class="inline-form">
-        <button type="submit" name="exit_impersonate">Exit &amp; return to God Mode</button>
+        <button type="submit" name="exit_impersonate">Exit &amp; return to Admin Mode</button>
     </form>
 </div>
 <?php endif; ?>
@@ -930,8 +930,8 @@ select.form-input { cursor: pointer; }
                          set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} }};
 
             var hidden = {};
-            try { (JSON.parse(store.get('godUsersChartHidden') || '[]') || []).forEach(function (k) { hidden[k] = true; }); } catch (e) {}
-            var rangeDays = parseInt(store.get('godUsersChartRange') || '0', 10) || 0;
+            try { (JSON.parse(store.get('adminUsersChartHidden') || '[]') || []).forEach(function (k) { hidden[k] = true; }); } catch (e) {}
+            var rangeDays = parseInt(store.get('adminUsersChartRange') || '0', 10) || 0;
 
             function label(ymd, withYear) {
                 var p = ymd.split('-');
@@ -1076,7 +1076,7 @@ select.form-input { cursor: pointer; }
                     if (hidden[s.key]) anyHidden = true;
                 });
                 allBtn.textContent = anyHidden ? 'Show all' : 'Hide all';
-                store.set('godUsersChartHidden', JSON.stringify(Object.keys(hidden).filter(function (k) { return hidden[k]; })));
+                store.set('adminUsersChartHidden', JSON.stringify(Object.keys(hidden).filter(function (k) { return hidden[k]; })));
                 draw({box: countsBox, series: SERIES});
             }
             SERIES.forEach(function (s) {
@@ -1102,7 +1102,7 @@ select.form-input { cursor: pointer; }
             rangeBtns.forEach(function (b) {
                 b.addEventListener('click', function () {
                     rangeDays = +b.dataset.days;
-                    store.set('godUsersChartRange', String(rangeDays));
+                    store.set('adminUsersChartRange', String(rangeDays));
                     markRange();
                     drawAll();
                 });
@@ -1246,7 +1246,7 @@ select.form-input { cursor: pointer; }
             var btn = document.getElementById('qrz-btn'), status = document.getElementById('qrz-status');
             btn.disabled = true; btn.textContent = 'Looking up...';
             status.textContent = 'Asking QRZ, this takes a few seconds.';
-            fetch('god_qrz_lookup.php', { method: 'POST' })
+            fetch('admin_qrz_lookup.php', { method: 'POST' })
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
                     btn.disabled = false; btn.textContent = 'Look up again';
@@ -1307,7 +1307,7 @@ select.form-input { cursor: pointer; }
                 </div>
                 <button type="submit" name="beta_save" class="btn btn-primary"><?= $beta_edit ? 'Save changes' : 'Add tester' ?></button>
                 <?php if ($beta_edit): ?>
-                    <a href="god_mode.php?tab=beta" class="btn btn-ghost">Cancel</a>
+                    <a href="admin_mode.php?tab=beta" class="btn btn-ghost">Cancel</a>
                 <?php endif; ?>
             </form>
             <p class="muted" style="font-size:0.78rem; margin-top:var(--sp-3);">
@@ -1333,7 +1333,7 @@ select.form-input { cursor: pointer; }
                         <td class="muted" style="font-size:0.8rem;"><?= $br['last_seen'] ? date('M j, Y', strtotime($br['last_seen'])) : '-' ?></td>
                         <td class="muted" style="font-size:0.8rem;"><?= date('M j, Y', strtotime($br['added_at'])) ?></td>
                         <td class="text-right" style="white-space:nowrap;">
-                            <a href="god_mode.php?tab=beta&amp;edit=<?= urlencode($br['callsign']) ?>" class="btn btn-ghost btn-sm">Edit</a>
+                            <a href="admin_mode.php?tab=beta&amp;edit=<?= urlencode($br['callsign']) ?>" class="btn btn-ghost btn-sm">Edit</a>
                             <form method="POST" class="inline-form" onsubmit="return confirm('Remove <?= htmlspecialchars($br['callsign']) ?> from the beta testers?');">
                                 <input type="hidden" name="beta_callsign" value="<?= htmlspecialchars($br['callsign']) ?>">
                                 <button type="submit" name="beta_remove" class="btn btn-danger btn-sm">Remove</button>
@@ -1694,7 +1694,7 @@ select.form-input { cursor: pointer; }
                 <h2>Cron Activity Log</h2>
                 <p>Output from the automated GPX and starting point cron jobs.</p>
             </div>
-            <a href="god_mode.php?tab=data" class="btn btn-ghost btn-sm">Refresh</a>
+            <a href="admin_mode.php?tab=data" class="btn btn-ghost btn-sm">Refresh</a>
         </div>
 
         <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:var(--sp-3); margin-bottom:var(--sp-4);">
@@ -2214,7 +2214,7 @@ select.form-input { cursor: pointer; }
                         <td style="padding:0.55rem 0; color:var(--ink-2);">The key's HTTP referrer allowlist is missing the site domains. Add <code>*.sotaplanner.com/*</code> and <code>*.ki6cr.com/*</code> in the key's "Application restrictions." <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--accent);">Edit key →</a></td>
                     </tr>
                     <tr style="border-bottom:1px solid var(--border);">
-                        <td style="padding:0.55rem 0.5rem 0.55rem 0; font-weight:500;">Maps JS API works here (god_mode) but not on other pages</td>
+                        <td style="padding:0.55rem 0.5rem 0.55rem 0; font-weight:500;">Maps JS API works here (admin_mode) but not on other pages</td>
                         <td style="padding:0.55rem 0; color:var(--ink-2);">This admin page loads the map from the server domain. Other pages may be blocked if the referrer allowlist doesn't include all domains.</td>
                     </tr>
                     <tr>
@@ -2303,7 +2303,7 @@ document.querySelectorAll('.js-add-member-form').forEach(function(form) {
         statusEl.textContent = '';
         statusEl.style.color = '';
 
-        fetch('god_mode_add_member.php', {
+        fetch('admin_mode_add_member.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: 'group_id=' + encodeURIComponent(groupId) + '&new_callsign=' + encodeURIComponent(callsign)

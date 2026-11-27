@@ -10,7 +10,7 @@
  * focus:   what we most want to hear about (short bullets)
  * cases:   specific test cases: title, steps (list), expect (what should happen)
  *
- * The real feature code must also check canSeeBeta() so only testers (and God Mode) get it.
+ * The real feature code must also check canSeeBeta() so only testers (and Admin Mode) get it.
  * User-facing text: no spaced em dashes, no emoji.
  */
 return [

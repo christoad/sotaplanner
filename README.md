@@ -113,7 +113,7 @@ The app is a flat set of PHP files in the project root. Shared logic lives in `c
 
 ### Admin tools (restricted)
 
-`admin.php`, `god_mode.php`, `admin_batch_gpx.php`, `admin_gpx_library.php`, `admin_gpx_map.php`, `admin_trailhead_osm.php`, `rebuild_sota_cache.php`, `bulk_delete_summits.php`, and the map data feeds `api_gpx_map_data.php` and `api_trail_data_map.php`.
+`admin.php`, `admin_mode.php`, `admin_batch_gpx.php`, `admin_gpx_library.php`, `admin_gpx_map.php`, `admin_trailhead_osm.php`, `rebuild_sota_cache.php`, `bulk_delete_summits.php`, and the map data feeds `api_gpx_map_data.php` and `api_trail_data_map.php`.
 
 ### Other
 

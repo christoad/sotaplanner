@@ -9,10 +9,10 @@
  * summit rows in planning groups that don't yet have a track.
  *
  * JSON actions:
- *   associations            — list of all associations with summit counts + library coverage
- *   stats?association=W7O   — counts for one association
- *   queue?association=W7O   — sota_refs in that association not yet in library
- *   process?sota_ref=W7O/NC-001 — fetch + import best SOTAmaps track into global library
+ *   associations           : list of all associations with summit counts + library coverage
+ *   stats?association=W7O  : counts for one association
+ *   queue?association=W7O  : sota_refs in that association not yet in library
+ *   process?sota_ref=W7O/NC-001: fetch + import best SOTAmaps track into global library
  */
 
 require_once 'config.php';
@@ -21,7 +21,7 @@ require_once 'gpx_import_lib.php';
 session_start();
 requireLogin();
 
-if (!isGodMode()) {
+if (!isAdminMode()) {
     http_response_code(403);
     die('Admin only.');
 }
@@ -32,7 +32,7 @@ $db = getDbConnection();
 $host = $_SERVER['HTTP_HOST'] ?? '';
 if (str_contains($host, 'christopherreddick.com')) {
     http_response_code(403);
-    die('<b>Error:</b> This tool cannot run on the staging server — staging shares the production database. Deploy and run on <b>sotaplanner.com</b> only.');
+    die('<b>Error:</b> This tool cannot run on the staging server, since staging shares the production database. Deploy and run on <b>sotaplanner.com</b> only.');
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -71,7 +71,7 @@ function _get_refs_for_assoc(string $assoc): array {
     $refs   = [];
 
     // Primary: read from local sota_cache.csv.gz (built by rebuild_sota_cache.php)
-    // Format: code|name|norm_name|points|alt_ft — filter by association prefix
+    // Format: code|name|norm_name|points|alt_ft; filter by association prefix
     if (file_exists(SOTA_CACHE_FILE)) {
         $gz = @gzopen(SOTA_CACHE_FILE, 'rb');
         if ($gz) {
@@ -148,7 +148,7 @@ function _get_refs_for_assoc(string $assoc): array {
 
 $action = $_GET['action'] ?? '';
 
-// Quick API structure test — visit ?action=api_test in browser
+// Quick API structure test: visit ?action=api_test in browser
 if ($action === 'api_test') {
     header('Content-Type: text/plain');
     $ctx = stream_context_create(['http' => ['timeout' => 20, 'ignore_errors' => true, 'header' => "User-Agent: SOTAPlanner/1.0\r\n"]]);
@@ -177,7 +177,7 @@ if ($action === 'api_test') {
     exit;
 }
 
-// Debug endpoint — visit ?action=debug in browser to see raw diagnostic info
+// Debug endpoint: visit ?action=debug in browser to see raw diagnostic info
 if ($action === 'debug') {
     header('Content-Type: text/plain');
     echo "=== admin_batch_gpx.php debug ===\n\n";
@@ -189,10 +189,10 @@ if ($action === 'debug') {
     $raw = @file_get_contents('https://api2.sota.org.uk/api/associations', false, $ctx);
     $elapsed = round((microtime(true) - $t0) * 1000);
     if ($raw === false) {
-        echo "   FAILED — file_get_contents returned false ({$elapsed}ms)\n";
+        echo "   FAILED: file_get_contents returned false ({$elapsed}ms)\n";
         echo "   Error: " . print_r(error_get_last(), true) . "\n";
     } else {
-        echo "   OK — got " . strlen($raw) . " bytes in {$elapsed}ms\n";
+        echo "   OK: got " . strlen($raw) . " bytes in {$elapsed}ms\n";
         $data = json_decode($raw, true);
         if (!is_array($data)) {
             echo "   JSON decode FAILED. First 200 chars: " . substr($raw, 0, 200) . "\n";
@@ -206,7 +206,7 @@ if ($action === 'debug') {
     // 2. Local cache file
     echo "\n2. Local SOTA cache file (" . SOTA_CACHE_FILE . ")...\n";
     if (file_exists(SOTA_CACHE_FILE)) {
-        echo "   Exists — " . round(filesize(SOTA_CACHE_FILE)/1024) . " KB\n";
+        echo "   Exists: " . round(filesize(SOTA_CACHE_FILE)/1024) . " KB\n";
     } else {
         echo "   MISSING\n";
     }
@@ -215,7 +215,7 @@ if ($action === 'debug') {
     echo "\n3. Database global_gpx_tracks count...\n";
     try {
         $n = $db->query("SELECT COUNT(*) FROM global_gpx_tracks")->fetchColumn();
-        echo "   OK — {$n} rows\n";
+        echo "   OK: {$n} rows\n";
     } catch (Exception $e) {
         echo "   ERROR: " . $e->getMessage() . "\n";
     }
@@ -258,7 +258,7 @@ if ($action === 'associations') {
         file_put_contents($cache_file, $json); // save for next time
         echo $json;
     } else {
-        // SOTA API failed — fall back to local summit cache
+        // SOTA API failed, so fall back to local summit cache
         $assocs = _read_cache_associations();
         if (empty($assocs)) {
             echo json_encode(['error' => 'SOTA API unreachable and no local cache found']);
@@ -375,7 +375,7 @@ if ($action === 'process') {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Batch GPX Import — Admin</title>
+<title>Batch GPX Import: Admin</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -425,7 +425,7 @@ h2{font-size:.95rem;font-weight:600;margin-bottom:1rem;color:var(--ink-2)}
 </head>
 <body>
 <div class="page">
-  <p style="margin-bottom:.75rem"><a href="god_mode.php?tab=data" style="color:var(--ink-3);font-size:.875rem">&larr; Data Tools</a></p>
+  <p style="margin-bottom:.75rem"><a href="admin_mode.php?tab=data" style="color:var(--ink-3);font-size:.875rem">&larr; Data Tools</a></p>
   <h1>Batch GPX Import</h1>
   <p class="subtitle">Fetches the best community track from <strong>SOTA Mapping Project</strong> for each summit in the selected association and adds it to the global GPX library. When any user nominates these summits, maps and trail stats will be pre-populated automatically. Tracks already in the library are skipped.</p>
 
@@ -530,9 +530,9 @@ function getAssoc() {
         const fmt     = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
         const multi   = s.multi_track_count > 0 ? ` · ${s.multi_track_count} with alt routes` : '';
         const label   = s.count > 0 ? `${s.count.toLocaleString()} tracks` : 'no tracks found';
-        opt.textContent = `${a.code} — ${a.name}  [${label} · ${fmt}${multi}]`;
+        opt.textContent = `${a.code}: ${a.name}  [${label} · ${fmt}${multi}]`;
       } else {
-        opt.textContent = `${a.code} — ${a.name}`;
+        opt.textContent = `${a.code}: ${a.name}`;
       }
       sel.appendChild(opt);
     });
@@ -560,7 +560,7 @@ async function onAssocChange() {
   document.getElementById('stat-total').textContent = '…';
   document.getElementById('stat-have').textContent  = '…';
   document.getElementById('stat-need').textContent  = '…';
-  document.getElementById('stats-heading').textContent  = `Stats — ${assoc}`;
+  document.getElementById('stats-heading').textContent  = `Stats: ${assoc}`;
   document.getElementById('stat-total-lbl').textContent = `Summits in ${assoc}`;
   document.getElementById('queue-status').textContent   = `Loading ${assoc} summit list…`;
   document.getElementById('queue-status').style.color   = 'var(--ink-3)';
@@ -573,7 +573,7 @@ async function onAssocChange() {
     if (s.count > 0) {
       notice.textContent = `⚠ Previously imported: ${s.count.toLocaleString()} tracks as of ${fmt}. Only missing summits will be re-queued.`;
     } else {
-      notice.textContent = `ℹ Previously scanned ${fmt} — no tracks were found on SOTAmaps.`;
+      notice.textContent = `ℹ Previously scanned ${fmt}, but no tracks were found on SOTAmaps.`;
     }
     notice.style.display = 'block';
   } else {
@@ -592,7 +592,7 @@ async function onAssocChange() {
     const text = await r.text();
     let d;
     try { d = JSON.parse(text); }
-    catch (je) { throw new Error('Bad JSON — ' + text.substring(0, 200)); }
+    catch (je) { throw new Error('Bad JSON: ' + text.substring(0, 200)); }
 
     queue = d.summits || [];
     document.getElementById('stat-total').textContent = d.total;
@@ -600,7 +600,7 @@ async function onAssocChange() {
     document.getElementById('stat-need').textContent  = queue.length;
     document.getElementById('queue-status').textContent =
       queue.length > 0
-        ? `Ready — ${queue.length} summit(s) to import. Press Start.`
+        ? `Ready: ${queue.length} summit(s) to import. Press Start.`
         : `✓ All ${assoc} summits already in the library.`;
     document.getElementById('btn-start').disabled = (queue.length === 0);
     log(`Queue ready: ${d.total} total ${assoc} summits, ${d.in_library} already in library, ${queue.length} to import.`, 'info');
@@ -643,24 +643,24 @@ function runNext() {
     .then(d => {
       if (d.status === 'imported') {
         counts.imported++;
-        let msg = `✓ ${sota_ref} — ${d.dist_mi} mi, ${d.gain_ft} ft gain (${d.points} pts)`;
+        let msg = `✓ ${sota_ref}: ${d.dist_mi} mi, ${d.gain_ft} ft gain (${d.points} pts)`;
         if (d.backfilled > 0) msg += ` [backfilled ${d.backfilled}]`;
         log(msg, 'ok');
       } else if (d.status === 'none') {
         counts.none++;
-        log(`· ${sota_ref} — no tracks on SOTAmaps`, 'none');
+        log(`· ${sota_ref}: no tracks on SOTAmaps`, 'none');
       } else if (d.status === 'skip') {
         counts.skip++;
-        log(`⏭ ${sota_ref} — already in library`, 'skip');
+        log(`⏭ ${sota_ref}: already in library`, 'skip');
       } else {
         counts.err++;
-        log(`✗ ${sota_ref} — ${d.msg}`, 'err');
+        log(`✗ ${sota_ref}: ${d.msg}`, 'err');
       }
       updateSummary();
     })
     .catch(e => {
       counts.err++;
-      log(`✗ ${sota_ref} — ${e.message}`, 'err');
+      log(`✗ ${sota_ref}: ${e.message}`, 'err');
       updateSummary();
     })
     .finally(() => {
@@ -709,7 +709,7 @@ function finish() {
     const prevNeed = parseInt(document.getElementById('stat-need').textContent) || 0;
     document.getElementById('stat-have').textContent = prevHave + counts.imported;
     document.getElementById('stat-need').textContent = Math.max(0, prevNeed - counts.imported);
-    document.getElementById('queue-status').textContent = `✓ Import complete — ${counts.imported} new track(s) added to the library.`;
+    document.getElementById('queue-status').textContent = `✓ Import complete: ${counts.imported} new track(s) added to the library.`;
   }
 
   const assoc = getAssoc();

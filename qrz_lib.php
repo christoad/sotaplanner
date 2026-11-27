@@ -1,6 +1,6 @@
 <?php
 // QRZ XML Data API helper. Credentials (QRZ_USERNAME / QRZ_PASSWORD) live in sotaplanner_secrets.php.
-// Used only by God Mode for one-off lookups; results are shown on screen and never stored.
+// Used only by Admin Mode for one-off lookups; results are shown on screen and never stored.
 
 const QRZ_XML_URL = 'https://xmldata.qrz.com/xml/current/';
 

@@ -1,6 +1,6 @@
 <?php
 /**
- * Trail Discovery test bench (God Mode only; linked from God Mode > Data Tools).
+ * Trail Discovery test bench (Admin Mode only; linked from Admin Mode > Data Tools).
  *
  * Runs the BRouter spiral search (trail_discovery_lib.php) on summits that already have a community
  * track, and scores each result against that track so we can tune the method before it ever runs
@@ -13,7 +13,7 @@ session_start();
 requireLogin();
 session_write_close();
 
-if (!isGodMode() && ($_SESSION['_god_mode_real_callsign'] ?? '') !== 'KI6CR') {
+if (!isAdminMode() && ($_SESSION['_admin_mode_real_callsign'] ?? '') !== 'KI6CR') {
     header('Location: index.php');
     exit;
 }
@@ -317,11 +317,11 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
 <body>
 <nav class="topbar">
     <a class="logo" href="index.php"><img src="sota-planner-logo.svg" width="32" height="32" alt=""><span>SOTAplanner</span></a>
-    <nav><a href="god_mode.php?tab=data">God Mode</a><a href="brouter_paths.php">Path Finder</a><a href="brouter_test.php">Test bench</a></nav>
+    <nav><a href="admin_mode.php?tab=data">Admin Mode</a><a href="brouter_paths.php">Path Finder</a><a href="brouter_test.php">Test bench</a></nav>
 </nav>
 <div class="page">
     <h1>Trail Discovery</h1>
-    <p class="sub">Searches outward from each summit in rings of probe points, routes every probe to the summit with our BRouter server, and reads each route from the top down until it reaches a road you can drive. Paved roads come first, dirt roads only when no paved start exists. Each test run covers one region's summits that already have a community track (this run: <?= tdp_h($curSet['region']) ?>, <?= count($testSet) ?> summits) and scores each result against that track. God Mode only.</p>
+    <p class="sub">Searches outward from each summit in rings of probe points, routes every probe to the summit with our BRouter server, and reads each route from the top down until it reaches a road you can drive. Paved roads come first, dirt roads only when no paved start exists. Each test run covers one region's summits that already have a community track (this run: <?= tdp_h($curSet['region']) ?>, <?= count($testSet) ?> summits) and scores each result against that track. Admin Mode only.</p>
 
 <?php if (!$tablesReady): ?>
     <div class="msg msg-error">The trail discovery tables do not exist yet. Run db_migrate.php first.</div>

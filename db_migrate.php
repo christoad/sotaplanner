@@ -8,7 +8,7 @@
 //   multi_stop_exit          per route: summits where the walk down goes on to a new trailhead
 //   multi_activations.finish_address_id  where a route's last drive ends (NULL = starting address)
 //   multi_activations.breaks             rest stops placed between summits (NULL = none)
-//   trail_disc_runs / trail_disc_results  trail discovery test runs (God Mode), plus parking distance columns
+//   trail_disc_runs / trail_disc_results  trail discovery test runs (Admin Mode), plus parking distance columns
 // Also: shared_summits table (public share links for a summit page), summit_advisories (Advisory Notices).
 // Additive and safe to run twice. Delete this file after running.
 require_once 'config.php';

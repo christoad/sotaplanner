@@ -4,7 +4,7 @@ session_start();
 requireLogin();
 // Read-only session use; QRZ calls can be slow, so release the lock.
 $sess_callsign = $_SESSION['sota_callsign'] ?? '';
-$sess_real     = $_SESSION['_god_mode_real_callsign'] ?? '';
+$sess_real     = $_SESSION['_admin_mode_real_callsign'] ?? '';
 session_write_close();
 
 header('Content-Type: application/json');

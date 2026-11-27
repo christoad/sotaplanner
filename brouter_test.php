@@ -1,6 +1,6 @@
 <?php
 /**
- * BRouter test bench (God Mode only). Standalone; nothing else links here.
+ * BRouter test bench (Admin Mode only). Standalone; nothing else links here.
  *
  * Mode 1: pick a summit that already has a recorded community GPX track, route the same
  *         trailhead-to-summit trip with BRouter, and compare distance, climb and path.
@@ -13,7 +13,7 @@ requireLogin();
 session_write_close();
 
 $callsign = $_SESSION['sota_callsign'] ?? '';
-$real     = $_SESSION['_god_mode_real_callsign'] ?? '';
+$real     = $_SESSION['_admin_mode_real_callsign'] ?? '';
 if ($callsign !== 'KI6CR' && $real !== 'KI6CR') {
     header('Location: index.php');
     exit;
@@ -262,7 +262,7 @@ td.num,th.num{text-align:right;font-family:var(--font-mono);white-space:nowrap}
 <body>
 <nav class="topbar">
     <a class="logo" href="index.php"><img src="sota-planner-logo.svg" width="32" height="32" alt=""><span>SOTAplanner</span></a>
-    <nav><a href="god_mode.php">God Mode</a></nav>
+    <nav><a href="admin_mode.php">Admin Mode</a></nav>
 </nav>
 <div class="page">
     <h1>BRouter test bench</h1>

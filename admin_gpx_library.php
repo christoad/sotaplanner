@@ -3,7 +3,7 @@ require_once 'config.php';
 session_start();
 requireLogin();
 
-if (!isGodMode()) {
+if (!isAdminMode()) {
     http_response_code(403);
     die('Admin only.');
 }
@@ -89,7 +89,7 @@ $tracks = $st->fetchAll();
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Global GPX Library — Admin</title>
+<title>Global GPX Library: Admin</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -152,9 +152,9 @@ tbody td{padding:.55rem .75rem;font-size:.85rem;vertical-align:middle}
 </head>
 <body>
 <div class="page">
-  <p style="margin-bottom:.75rem"><a href="god_mode.php?tab=data" style="color:var(--ink-3);font-size:.875rem">&larr; Data Tools</a></p>
+  <p style="margin-bottom:.75rem"><a href="admin_mode.php?tab=data" style="color:var(--ink-3);font-size:.875rem">&larr; Data Tools</a></p>
   <h1>Global GPX Library</h1>
-  <p class="subtitle">Community tracks imported from <strong>SOTA Mapping Project</strong> — pre-populated for every user who nominates these summits.</p>
+  <p class="subtitle">Community tracks imported from <strong>SOTA Mapping Project</strong>, pre-populated for every user who nominates these summits.</p>
 
   <?php if (isset($_SESSION['gpx_lib_flash'])): $f = $_SESSION['gpx_lib_flash']; unset($_SESSION['gpx_lib_flash']); ?>
   <div class="flash flash-<?= $f['type'] ?>"><?= htmlspecialchars($f['msg']) ?></div>

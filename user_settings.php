@@ -258,8 +258,8 @@ $additional_callsigns = $user_profile['additional_callsigns'] ?? '';
         <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
       <div class="user-dropdown">
-        <?php if ($current_user === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
-          <a href="god_mode.php">God Mode</a>
+        <?php if ($current_user === 'KI6CR' || !empty($_SESSION['_admin_mode_real_callsign'])): ?>
+          <a href="admin_mode.php">Admin Mode</a>
         <?php endif; ?>
         <?= betaMenuLink() ?>
         <a href="user_settings.php">Settings</a>

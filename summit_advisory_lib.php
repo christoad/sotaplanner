@@ -1,6 +1,6 @@
 <?php
 // Advisory Notices: community warnings and tips pinned to a summit (keyed by SOTA reference, so every
-// dashboard sees them). Any signed-in user can post one; only the poster or God Mode can remove it.
+// dashboard sees them). Any signed-in user can post one; only the poster or Admin Mode can remove it.
 // Removal is a soft delete (removed_at / removed_by) so a bad removal can be undone in the database.
 // Table: summit_advisories (created by db_migrate.php).
 
@@ -236,10 +236,10 @@ function advisory_render_banners($advisories, $db = null, $callsign = null, &$pi
 }
 
 /**
- * Change a notice's level and message (poster or God Mode only). Returns the row as it was before
+ * Change a notice's level and message (poster or Admin Mode only). Returns the row as it was before
  * the edit, or an error string.
  */
-function advisory_update($db, $id, $sota_ref, $level, $message, $callsign, $is_god) {
+function advisory_update($db, $id, $sota_ref, $level, $message, $callsign, $is_admin) {
     $message = trim(preg_replace('/\r\n?/', "\n", (string)$message));
     if (!isset(advisory_levels()[$level]))     return 'Pick a level for the notice.';
     if ($message === '')                        return 'Type a message for the notice.';
@@ -248,18 +248,18 @@ function advisory_update($db, $id, $sota_ref, $level, $message, $callsign, $is_g
     $st->execute([(int)$id, $sota_ref]);
     $row = $st->fetch(PDO::FETCH_ASSOC);
     if (!$row) return 'That notice was not found. It may have been removed.';
-    if (!$is_god && strcasecmp($row['created_by'], (string)$callsign) !== 0) return 'Only the person who posted this notice can edit it.';
+    if (!$is_admin && strcasecmp($row['created_by'], (string)$callsign) !== 0) return 'Only the person who posted this notice can edit it.';
     $db->prepare("UPDATE summit_advisories SET level = ?, message = ? WHERE id = ?")->execute([$level, $message, $row['id']]);
     return $row;
 }
 
-/** Remove a notice (poster or God Mode only). Returns the removed row, or null if not allowed / not found. */
-function advisory_remove($db, $id, $sota_ref, $callsign, $is_god) {
+/** Remove a notice (poster or Admin Mode only). Returns the removed row, or null if not allowed / not found. */
+function advisory_remove($db, $id, $sota_ref, $callsign, $is_admin) {
     $st = $db->prepare("SELECT * FROM summit_advisories WHERE id = ? AND sota_ref = ? AND removed_at IS NULL");
     $st->execute([(int)$id, $sota_ref]);
     $row = $st->fetch(PDO::FETCH_ASSOC);
     if (!$row) return null;
-    if (!$is_god && strcasecmp($row['created_by'], (string)$callsign) !== 0) return null;
+    if (!$is_admin && strcasecmp($row['created_by'], (string)$callsign) !== 0) return null;
     $db->prepare("UPDATE summit_advisories SET removed_at = NOW(), removed_by = ? WHERE id = ?")
        ->execute([$callsign, $row['id']]);
     return $row;

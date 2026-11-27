@@ -565,13 +565,13 @@ function requireLogin() {
 }
 
 /** Note that the signed-in user was active today (one row per callsign per day, used by the
- *  God Mode returning-users dashboard). Runs at most once per session per day, and never
+ *  Admin Mode returning-users dashboard). Runs at most once per session per day, and never
  *  while KI6CR is impersonating someone. */
 function recordDailyVisit() {
     $today = date('Y-m-d');
     if (($_SESSION['_visit_logged'] ?? '') === $today) return;
     $_SESSION['_visit_logged'] = $today;
-    if (!empty($_SESSION['_god_mode_real_callsign'])) return;
+    if (!empty($_SESSION['_admin_mode_real_callsign'])) return;
     try {
         getDbConnection()->prepare("INSERT IGNORE INTO user_visits (callsign, visit_date) VALUES (?, ?)")
             ->execute([$_SESSION['sota_callsign'], $today]);
@@ -583,12 +583,12 @@ function getCurrentCallsign() {
     return $_SESSION['sota_callsign'] ?? null;
 }
 
-/** True if the current user has admin/god-mode access to all groups. */
-function isGodMode() {
+/** True if the current user has Admin Mode access to all groups. */
+function isAdminMode() {
     return getCurrentCallsign() === 'KI6CR';
 }
 
-/** Podcast/demo helper: when God Mode's "Demo onboarding" switch is on, KI6CR is
+/** Podcast/demo helper: when Admin Mode's "Demo onboarding" switch is on, KI6CR is
  *  walked through the first-time-user onboarding wizard on every login. */
 function isDemoOnboarding($db, $callsign = null) {
     $callsign = $callsign ?? getCurrentCallsign();
@@ -1298,5 +1298,5 @@ function format_time_duration($seconds) {
     return $minutes . 'm';
 }
 
-// Beta tester list (God Mode) and the BETA tag on the user chip
+// Beta tester list (Admin Mode) and the BETA tag on the user chip
 require_once __DIR__ . "/beta_lib.php";

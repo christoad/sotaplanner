@@ -449,11 +449,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // Advisory Notice: post (any signed-in user), edit or remove (poster or God Mode)
+    // Advisory Notice: post (any signed-in user), edit or remove (poster or Admin Mode)
     if (isset($_POST['add_advisory']) || isset($_POST['remove_advisory']) || isset($_POST['edit_advisory'])) {
         $_back = "summit_detail.php?id=" . $summit_id . "&group=" . ($current_group['id'] ?? '');
         if (isset($_POST['edit_advisory'])) {
-            $_res = advisory_update($db, $_POST['advisory_id'] ?? 0, $log_sota_ref, $_POST['advisory_level'] ?? '', $_POST['advisory_message'] ?? '', $_SESSION['sota_callsign'], isGodMode());
+            $_res = advisory_update($db, $_POST['advisory_id'] ?? 0, $log_sota_ref, $_POST['advisory_level'] ?? '', $_POST['advisory_message'] ?? '', $_SESSION['sota_callsign'], isAdminMode());
             if (is_array($_res)) {
                 $_lv = advisory_levels();
                 logActivity($db, 'Advisory Notice edited', $log_summit_name, $log_sota_ref, $log_group_name);
@@ -475,7 +475,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header("Location: " . $_back . "&advisory_error=" . urlencode($_res) . "#advisory-form");
             }
         } else {
-            $_row = advisory_remove($db, $_POST['advisory_id'] ?? 0, $log_sota_ref, $_SESSION['sota_callsign'], isGodMode());
+            $_row = advisory_remove($db, $_POST['advisory_id'] ?? 0, $log_sota_ref, $_SESSION['sota_callsign'], isAdminMode());
             if ($_row) {
                 logActivity($db, 'Advisory Notice removed', $log_summit_name, $log_sota_ref, $log_group_name);
                 summit_log_event($db, $summit_id, 'Advisory Notice removed', advisory_levels()[$_row['level']]['label'] . ': ' . $_row['message'], '');
@@ -1466,8 +1466,8 @@ if ($tl_show) {
         <?= userChipName(getCurrentCallsign()) ?>
         <svg class="user-chip-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="2,3.5 5,6.5 8,3.5"/></svg>
         <div class="user-dropdown">
-            <?php if (getCurrentCallsign() === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
-                <a href="god_mode.php">God Mode</a>
+            <?php if (getCurrentCallsign() === 'KI6CR' || !empty($_SESSION['_admin_mode_real_callsign'])): ?>
+                <a href="admin_mode.php">Admin Mode</a>
             <?php endif; ?>
             <?= betaMenuLink() ?>
             <a href="user_settings.php">Settings</a>
@@ -2156,7 +2156,7 @@ if ($tl_show) {
       </script>
       <div class="adv-list">
         <?php foreach ($advisories as $adv):
-            $can_remove = isGodMode() || strcasecmp($adv['created_by'], $_SESSION['sota_callsign'] ?? '') === 0;
+            $can_remove = isAdminMode() || strcasecmp($adv['created_by'], $_SESSION['sota_callsign'] ?? '') === 0;
         ?>
         <div class="adv-item l-<?= htmlspecialchars($adv['level']) ?>">
           <div class="adv-item-body">

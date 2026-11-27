@@ -1,5 +1,5 @@
 <?php
-// One-off migration for the beta tester list (God Mode, Beta Testers tab).
+// One-off migration for the beta tester list (Admin Mode, Beta Testers tab).
 // Additive and safe to run twice. Delete this file from the server after running.
 require_once 'config.php';
 

@@ -4,7 +4,7 @@ session_start();
 requireLogin();
 
 $callsign = $_SESSION['sota_callsign'] ?? '';
-$real     = $_SESSION['_god_mode_real_callsign'] ?? '';
+$real     = $_SESSION['_admin_mode_real_callsign'] ?? '';
 if ($callsign !== 'KI6CR' && $real !== 'KI6CR') {
     http_response_code(403);
     exit;

@@ -1,6 +1,6 @@
 <?php
 /**
- * BRouter Path Finder (God Mode only; linked from God Mode > Data Tools).
+ * BRouter Path Finder (Admin Mode only; linked from Admin Mode > Data Tools).
  *
  * Routes between two summits (cached permanently, hike time each way).
  * The old "discover paths" tab (Overpass footpaths, bp_discover) was dropped on 2026-11-21 at Chris's
@@ -13,7 +13,7 @@ session_start();
 requireLogin();
 session_write_close();
 
-if (!isGodMode() && ($_SESSION['_god_mode_real_callsign'] ?? '') !== 'KI6CR') {
+if (!isAdminMode() && ($_SESSION['_admin_mode_real_callsign'] ?? '') !== 'KI6CR') {
     header('Location: index.php');
     exit;
 }
@@ -97,7 +97,7 @@ td.num,th.num{text-align:right;font-family:var(--font-mono);white-space:nowrap}
 <body>
 <nav class="topbar">
     <a class="logo" href="index.php"><img src="sota-planner-logo.svg" width="32" height="32" alt=""><span>SOTAplanner</span></a>
-    <nav><a href="god_mode.php?tab=data">God Mode</a><a href="trail_discovery.php">Trail Discovery</a><a href="brouter_test.php">Test bench</a></nav>
+    <nav><a href="admin_mode.php?tab=data">Admin Mode</a><a href="trail_discovery.php">Trail Discovery</a><a href="brouter_test.php">Test bench</a></nav>
 </nav>
 <div class="page">
     <h1>Path Finder</h1>

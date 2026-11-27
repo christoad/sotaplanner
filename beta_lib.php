@@ -1,11 +1,11 @@
 <?php
 /**
- * Beta testers: one list of callsigns (managed in God Mode, Beta Testers tab) who get
+ * Beta testers: one list of callsigns (managed in Admin Mode, Beta Testers tab) who get
  * early access to features before everyone else. Table: beta_testers (db_migrate_beta.php).
  *
  * isBetaTester()   true if the callsign is on the list (defaults to the signed-in user,
- *                  so while God Mode impersonates a tester you see what they see)
- * canSeeBeta()     what beta-only features should check: God Mode or a listed tester
+ *                  so while Admin Mode impersonates a tester you see what they see)
+ * canSeeBeta()     what beta-only features should check: Admin Mode or a listed tester
  * userChipName()   the callsign markup for the top-right user chip; adds the BETA USER tag
  *                  and switches the chip to the beta color for listed testers
  */
@@ -40,14 +40,14 @@ function isBetaTester($callsign = null) {
     return $memo[$callsign] = $is;
 }
 
-/** Forget the cached answer for a callsign (God Mode calls this after adding or removing). */
+/** Forget the cached answer for a callsign (Admin Mode calls this after adding or removing). */
 function betaForget($callsign) {
     $callsign = strtoupper(trim($callsign));
     unset($_SESSION['_beta_cache'][$callsign]);
 }
 
 function canSeeBeta($callsign = null) {
-    return isGodMode() || !empty($_SESSION['_god_mode_real_callsign']) || isBetaTester($callsign);
+    return isAdminMode() || !empty($_SESSION['_admin_mode_real_callsign']) || isBetaTester($callsign);
 }
 
 function userChipName($callsign) {

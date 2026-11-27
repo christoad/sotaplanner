@@ -10,7 +10,7 @@ $callsign = getCurrentCallsign();
 
 $error = '';
 
-// Demo mode (God Mode switch, KI6CR only): behave as if this were a brand-new user.
+// Demo mode (Admin Mode switch, KI6CR only): behave as if this were a brand-new user.
 // The session is reset once per login so the wizard starts at step 1, and any
 // dashboard created here is a real, separate one; existing dashboards are untouched.
 $demo = isDemoOnboarding($db, $callsign);

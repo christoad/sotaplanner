@@ -4,7 +4,7 @@ This is the "pick up where we left off" file for BRouter trail discovery. CLAUDE
 
 ## 1. Goal and Chris's rules
 
-- **Goal:** for every SOTA summit with no hike data, find likely trails and starting points with our own BRouter server. Run it on every such summit, then switch it on publicly on the day Chris presents SOTAplanner at Four Days in May (May 2027). Until then nothing discovered may be visible to the public. It is God Mode only.
+- **Goal:** for every SOTA summit with no hike data, find likely trails and starting points with our own BRouter server. Run it on every such summit, then switch it on publicly on the day Chris presents SOTAplanner at Four Days in May (May 2027). Until then nothing discovered may be visible to the public. It is Admin Mode only.
 - **Global scope (2026-11-16):** only methods that work worldwide. No country-specific data such as U.S. Forest Service MVUM.
 - **No paved-road assumption (2026-11-22, replaces the 2026-11-15 "paved first" rule):** Chris said a paved road cannot be assumed to exist near every summit worldwide. Routes are now picked by confidence, not by road surface. The default is `pick = confidence` and `source = both`.
   - The confidence pick still keeps one paved start in the top 3, but only when one was found. Whether to drop that guarantee too is an open question (see section 9).
@@ -17,7 +17,7 @@ This is the "pick up where we left off" file for BRouter trail discovery. CLAUDE
 
 | What | Where |
 |---|---|
-| Page (God Mode) | `trail_discovery.php` on production (sotaplanner.com) and staging slot A |
+| Page (Admin Mode) | `trail_discovery.php` on production (sotaplanner.com) and staging slot A |
 | Search, scoring, comparison | `trail_discovery_lib.php` (`td_discover`, `td_score_candidates`, `td_confidence`, `td_compare_known`, `td_community_evidence`) |
 | Parking list client | `parking_lib.php` (`pk_near`, `pk_nearest`, `pk_cell`, `pk_version`) |
 | BRouter client (two-summit Path Finder) | `brouter_lib.php`, `brouter_paths.php`, `brouter_paths_lib.php` (its old discover functions are unused) |
@@ -173,7 +173,7 @@ Current weights were fitted on runs 5 and 6 (1,164 routes, 194 summits): cross-v
    php research/trail_discovery_rescore.php <site dir> <run> ...
    ```
    Back up the run folders first (as done 2026-11-21: `sota_discovered/runs-{5,6}-before-rescore-20261121`).
-6. **Before and after long runs,** check CPU credits in God Mode > AWS Server. Not more often than every 5 minutes (Mark's rule).
+6. **Before and after long runs,** check CPU credits in Admin Mode > AWS Server. Not more often than every 5 minutes (Mark's rule).
 
 ## 8. Gotchas learned
 

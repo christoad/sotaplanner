@@ -54,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $db = getDbConnection();
 
-                // Demo mode (God Mode switch): run KI6CR through the new-user wizard
+                // Demo mode (Admin Mode switch): run KI6CR through the new-user wizard
                 if (isDemoOnboarding($db, $callsign)) {
                     unset($_SESSION['demo_onboarding_active']);
                     header('Location: onboarding.php');

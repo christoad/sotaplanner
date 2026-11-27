@@ -67,7 +67,7 @@ OPQ;
 // ── Background start-point snap (queue, retry and log) ────────────────────────
 // After a SOTA Maps import the summit gets the track's own low end as its starting point at once. The nicer
 // OpenStreetMap trailhead or parking spot is looked up afterwards, off the import request, retried on later page
-// views and by the nightly trailhead cron, and every attempt is logged where God Mode's Cron Activity Log shows it.
+// views and by the nightly trailhead cron, and every attempt is logged where Admin Mode's Cron Activity Log shows it.
 
 const TRAILHEAD_SNAP_MAX_ATTEMPTS = 6;
 

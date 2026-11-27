@@ -805,11 +805,11 @@ a:hover { text-decoration: underline; }
 </head>
 <body>
 
-<?php if (!empty($_SESSION['_god_mode_real_callsign'])): ?>
+<?php if (!empty($_SESSION['_admin_mode_real_callsign'])): ?>
 <style>.topbar { top: 36px !important; }</style>
 <div style="position:sticky; top:0; z-index:300; height:36px; box-sizing:border-box; background:oklch(52% 0.16 22); color:#fff; text-align:center; padding:0 1rem; font-size:0.82rem; font-weight:600; display:flex; align-items:center; justify-content:center; gap:1rem;">
     ⚠️ Impersonating <strong><?= htmlspecialchars($_SESSION['sota_callsign'] ?? '') ?></strong>
-    <a href="god_mode.php" style="color:#fff; background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.4); padding:0.2rem 0.75rem; border-radius:4px; font-size:0.78rem; text-decoration:none;">Return to God Mode</a>
+    <a href="admin_mode.php" style="color:#fff; background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.4); padding:0.2rem 0.75rem; border-radius:4px; font-size:0.78rem; text-decoration:none;">Return to Admin Mode</a>
 </div>
 <?php endif; ?>
 <nav class="topbar">
@@ -836,8 +836,8 @@ a:hover { text-decoration: underline; }
             <?= userChipName($current_callsign) ?>
             <svg class="user-chip-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="2,3.5 5,6.5 8,3.5"/></svg>
             <div class="user-dropdown">
-                <?php if (($current_callsign ?? '') === 'KI6CR' || !empty($_SESSION['_god_mode_real_callsign'])): ?>
-                    <a href="god_mode.php">God Mode</a>
+                <?php if (($current_callsign ?? '') === 'KI6CR' || !empty($_SESSION['_admin_mode_real_callsign'])): ?>
+                    <a href="admin_mode.php">Admin Mode</a>
                 <?php endif; ?>
                 <?= betaMenuLink() ?>
                 <a href="user_settings.php">Settings</a>

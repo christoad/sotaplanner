@@ -6,7 +6,7 @@ requireLogin();
 header('Content-Type: application/json');
 
 $callsign      = $_SESSION['sota_callsign'] ?? '';
-$real_callsign = $_SESSION['_god_mode_real_callsign'] ?? '';
+$real_callsign = $_SESSION['_admin_mode_real_callsign'] ?? '';
 
 if ($callsign !== 'KI6CR' && $real_callsign !== 'KI6CR') {
     http_response_code(403);
