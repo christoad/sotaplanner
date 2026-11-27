@@ -23,4 +23,21 @@ return [
         'focus'   => [],
         'cases'   => [],
     ],
+    [
+        'key'     => 'route_discovery',
+        'name'    => 'Hiking route auto-discovery',
+        'status'  => 'next',
+        'summary' => 'Many summits have no recorded track yet. For those, SOTAplanner will look for likely hiking routes on its own. '
+                   . 'Starting at the summit, it searches outward along the trails and roads in OpenStreetMap until it reaches a spot you can drive to, '
+                   . 'and it also tries every parking lot and trailhead mapped in OpenStreetMap nearby. '
+                   . 'Each summit gets up to three possible routes with the starting point, distance, climb and hike time. '
+                   . 'Every route carries a probability score: our estimate of how likely it is to be the way people actually go, '
+                   . 'based on how often the search kept arriving at that start, whether it is a mapped parking lot or trailhead, '
+                   . 'and how it compares with real tracks hikers have recorded on other summits. '
+                   . 'When a dirt road might be gated or closed, you will also see where to park on the paved road instead. '
+                   . 'You will be able to mark a route as right or wrong, and those votes make the scores better over time. '
+                   . 'Map data from OpenStreetMap contributors.',
+        'focus'   => [],
+        'cases'   => [],
+    ],
 ];
