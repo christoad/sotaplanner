@@ -287,6 +287,7 @@ session_start();
             <span class="version-badge">Current</span>
         </div>
         <ul>
+            <li>Multi-Activate follows loop trails through several summits</li>
             <li>Radio interference (RFI) map for US summits. Source: <a href="https://github.com/km6am/sota-rf" target="_blank" rel="noopener">Summit RFI by KM6AM</a>, from FCC, NOAA and USGS data</li>
             <li>Advisory Notices: warn others about a summit</li>
             <li>Plan Multi-Activate routes from the dashboard map, with breaks and elevation profiles</li>
