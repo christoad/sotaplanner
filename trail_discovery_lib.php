@@ -36,7 +36,7 @@ const TD_EXTRA_LOTS     = 4;     // mapped lots re-routed besides the best 6 sta
 /* ───────────────────────── settings ───────────────────────── */
 
 function td_default_settings() {
-    return ['max_km' => 8, 'spacing_km' => 1.0, 'stop' => 'full', 'profile' => 'hiking-mountain', 'pick' => 'confidence_any', 'region' => 'W6/CT', 'source' => 'both'];
+    return ['max_km' => 8, 'spacing_km' => 1.0, 'stop' => 'full', 'profile' => 'hiking-mountain', 'pick' => 'confidence_any', 'region' => 'W6/CT', 'source' => 'both', 'car_check' => true];
     // Defaults since 2026-11-22 (Chris): pick by confidence, not paved first, because a paved road cannot be
     // assumed to exist near every summit worldwide; start from both search rings and mapped parking (runs 11 / 12).
     // Since 2026-11-24 (Chris): no paved rule at all (confidence_any); keeping one paved start changed results by
@@ -58,6 +58,8 @@ function td_clean_settings(array $in) {
         'source'     => in_array($in['source'] ?? '', ['probes', 'parking', 'both'], true) ? $in['source'] : $d['source'],
         // Test region: summits in this SOTA association/region that have a community track
         'region'     => preg_match('~^[A-Z0-9]{1,8}/[A-Z0-9]{2}$~', strtoupper((string)($in['region'] ?? ''))) ? strtoupper($in['region']) : $d['region'],
+        // Car check (2026-11-27): ask BRouter's car profile whether each dirt-road start can be driven to (td_car_check)
+        'car_check'  => array_key_exists('car_check', $in) ? (bool)filter_var($in['car_check'], FILTER_VALIDATE_BOOLEAN) : $d['car_check'],
     ];
 }
 
@@ -557,7 +559,112 @@ function td_discover($ref, array $settings) {
     }
     unset($c);
 
-    // Merge starts that became the same place after re-routing, then drop routes that retrace a shorter one.
+    // Can a car actually get to each dirt-road start? (2026-11-27)
+    if (!empty($set['car_check'])) $calls += td_car_check($cands, $slat, $slon);
+
+    $kept = td_merge_cands($cands);
+    // Confidence (model fitted on test run 3, 2026-11-17): needs each route's speed rank and the
+    // community evidence from neighboring summits' tracks.
+    if (function_exists('getDbConnection')) {
+        try { td_community_evidence(getDbConnection(), $kept, $slat, $slon, $s['ref'] ?? $ref, __DIR__ . '/gpx_files/global'); }
+        catch (Throwable $e) { /* no evidence: the score then rests on the route itself */ }
+    }
+    td_score_candidates($kept, $slat, $slon, $set['max_km']);
+
+    [$chosen, $chosen_alt] = td_pick($kept, $set['pick']);
+    $found = count(array_filter($probes, fn($p) => $p['st'] === 'found'));
+    return [
+        'ok' => true, 'summit' => ['ref' => $s['ref'] ?? $ref, 'name' => $s['name'] ?? '', 'lat' => $slat, 'lon' => $slon, 'alt_ft' => $s['altFt'] ?? null],
+        'settings' => $set, 'rings' => $rings, 'probes' => $probes, 'candidates' => $kept, 'chosen' => $chosen, 'chosen_alt' => $chosen_alt,
+        'confidence' => td_summit_conf($kept, $chosen), 'confidence_alt' => td_summit_conf($kept, $chosen_alt), 'band' => td_conf_band(td_summit_conf($kept, $chosen)),
+        'stats' => ['calls' => $calls, 'probes' => count($probes), 'probes_found' => $found, 'lots_routed' => $lotsUsed, 'lots_found' => $lotsFound,
+                    'seconds' => round(microtime(true) - $t0, 1), 'clusters' => count($clusters)],
+    ];
+}
+
+/**
+ * Car check (2026-11-27, from the Norway test runs 19 / 20; one global rule, no region-specific logic):
+ * the hiking profile reads a road's tags only along the hike, so a dirt road that is closed to cars further
+ * out (access=private, a barrier, a closed link to the public network) still looks drivable. For each dirt
+ * start that is not a mapped lot, ask BRouter's car profile for a route from the start to the paved road:
+ * its gate-closed spot when it has one, otherwise the nearest paved start found (300 m to TD_CAR_TARGET_M
+ * away; up to 3 spots, the next one tried when a spot is itself cut off). "no track found" means no car can get there:
+ *  - with a gate-closed spot, the route becomes the hike from that paved spot ('car_blocked' keeps the old start);
+ *  - without one, or when that spot is itself cut off, the start is dropped (no usable measured alternative;
+ *    the paved starts already cover the area).
+ * When every spot answers "target island" (the spot itself is cut off) or times out, the route stays as it
+ * was with 'car' => null (unknown). Tested 2026-11-26 on 1,395 dirt starts in six regions:
+ * 6% had no car route and were right 10 to 18% of the time against 17 to 31% for reachable ones.
+ * Returns the number of BRouter calls made. Works on fresh candidates and on saved ones (rescoring old runs).
+ */
+const TD_CAR_PROFILE  = 'car-fast';
+const TD_CAR_TARGET_M = 10000;
+function td_car_check(array &$cands, $slat, $slon) {
+    // Paved spots to drive to, in order: the gate-closed spot, then the two nearest paved starts found
+    // (300 m to TD_CAR_TARGET_M away, 150 m apart). A "target island" answer means that spot is cut off
+    // itself, so the next one is tried.
+    $targets = [];
+    foreach ($cands as $i => $c) {
+        if ($c['cls'] !== 'dirt' || !empty($c['lot']) || array_key_exists('car', $c)) continue;
+        $t = [];
+        if (!empty($c['closed'])) $t[] = [$c['closed']['lat'], $c['closed']['lon']];
+        $near = [];
+        foreach ($cands as $p) {
+            if ($p['cls'] !== 'paved') continue;
+            $d = td_dist($c['lat'], $c['lon'], $p['lat'], $p['lon']);
+            if ($d > 300 && $d <= TD_CAR_TARGET_M) $near[] = [$d, $p['lat'], $p['lon']];
+        }
+        usort($near, fn($x, $y) => $x[0] <=> $y[0]);
+        foreach ($near as $q) {
+            if (count($t) >= 3) break;
+            foreach ($t as $u) if (td_dist($u[0], $u[1], $q[1], $q[2]) <= TD_CLUSTER_M) continue 2;
+            $t[] = [$q[1], $q[2]];
+        }
+        if ($t) $targets[$i] = $t;
+    }
+    $verdict = [];   // i => 'ok' | 'blocked'; missing = unknown
+    $closedCut = []; // i => true when the gate-closed spot is itself cut off from the road network
+    $calls = 0;
+    for ($pass = 0; $pass < 3; $pass++) {
+        $jobs = [];
+        foreach ($targets as $i => $t) {
+            if (isset($verdict[$i]) || !isset($t[$pass])) continue;
+            $jobs['k' . $i] = [[$cands[$i]['lat'], $cands[$i]['lon']], $t[$pass]];
+        }
+        if (!$jobs) break;
+        $res = td_route_many($jobs, TD_CAR_PROFILE);
+        $calls += count($jobs);
+        foreach ($jobs as $key => $_) {
+            $r = $res[$key] ?? null;
+            $i = (int)substr($key, 1);
+            if ($pass === 0 && !empty($cands[$i]['closed']) && $r && stripos((string)($r['error'] ?? ''), 'island') !== false) $closedCut[$i] = true;
+            if ($r && $r['ok']) $verdict[$i] = 'ok';
+            elseif ($r && (int)($r['http'] ?? 0) === 400 && stripos((string)($r['error'] ?? ''), 'no track found') !== false) $verdict[$i] = 'blocked';
+        }
+    }
+    $out = [];
+    foreach ($cands as $i => $c) {
+        if ($c['cls'] !== 'dirt' || !empty($c['lot']) || array_key_exists('car', $c)) { $out[] = $c; continue; }
+        if (($verdict[$i] ?? null) !== 'blocked') { $c['car'] = $verdict[$i] ?? null; $out[] = $c; continue; }
+        if (empty($c['closed']) || !empty($closedCut[$i])) continue;   // unreachable and no usable paved alternative measured: drop it
+        $cl = $c['closed'];
+        $c['car_blocked'] = ['lat' => $c['lat'], 'lon' => $c['lon'], 'road' => $c['road'], 'time_min' => $c['time_min']];
+        $c['car'] = 'blocked';
+        $c['cls'] = 'paved';
+        $c['lat'] = $cl['lat']; $c['lon'] = $cl['lon']; $c['road'] = $cl['road'];
+        $c['dist_m'] = $cl['dist_m']; $c['gain_m'] = $cl['gain_m']; $c['time_min'] = $cl['time_min'];
+        $c['route'] = $cl['route'];
+        $c['straight_m'] = (int)round(td_dist($cl['lat'], $cl['lon'], $slat, $slon));
+        if (isset($cl['ev_start_m'])) $c['ev_start_m'] = $cl['ev_start_m'];
+        $c['closed'] = null;
+        $out[] = $c;
+    }
+    $cands = $out;
+    return $calls;
+}
+
+/** Merge starts that became the same place after re-routing, then drop routes that retrace a shorter one. Returns the kept routes, quickest first. */
+function td_merge_cands(array $cands) {
     usort($cands, fn($a, $b) => $a['time_min'] <=> $b['time_min'] ?: $a['dist_m'] <=> $b['dist_m']);
     $kept = [];
     foreach ($cands as $c) {
@@ -584,23 +691,7 @@ function td_discover($ref, array $settings) {
     }
     // Moving a start back to a lot makes that route a little longer: keep the list quickest first for ranking.
     usort($kept, fn($a, $b) => $a['time_min'] <=> $b['time_min'] ?: $a['dist_m'] <=> $b['dist_m']);
-    // Confidence (model fitted on test run 3, 2026-11-17): needs each route's speed rank and the
-    // community evidence from neighboring summits' tracks.
-    if (function_exists('getDbConnection')) {
-        try { td_community_evidence(getDbConnection(), $kept, $slat, $slon, $s['ref'] ?? $ref, __DIR__ . '/gpx_files/global'); }
-        catch (Throwable $e) { /* no evidence: the score then rests on the route itself */ }
-    }
-    td_score_candidates($kept, $slat, $slon, $set['max_km']);
-
-    [$chosen, $chosen_alt] = td_pick($kept, $set['pick']);
-    $found = count(array_filter($probes, fn($p) => $p['st'] === 'found'));
-    return [
-        'ok' => true, 'summit' => ['ref' => $s['ref'] ?? $ref, 'name' => $s['name'] ?? '', 'lat' => $slat, 'lon' => $slon, 'alt_ft' => $s['altFt'] ?? null],
-        'settings' => $set, 'rings' => $rings, 'probes' => $probes, 'candidates' => $kept, 'chosen' => $chosen, 'chosen_alt' => $chosen_alt,
-        'confidence' => td_summit_conf($kept, $chosen), 'confidence_alt' => td_summit_conf($kept, $chosen_alt), 'band' => td_conf_band(td_summit_conf($kept, $chosen)),
-        'stats' => ['calls' => $calls, 'probes' => count($probes), 'probes_found' => $found, 'lots_routed' => $lotsUsed, 'lots_found' => $lotsFound,
-                    'seconds' => round(microtime(true) - $t0, 1), 'clusters' => count($clusters)],
-    ];
+    return $kept;
 }
 
 /**
@@ -766,6 +857,7 @@ function td_confidence(array $c, $rank = 3, $rel = 1.0) {
     }
     if ($c['cls'] === 'paved') $z -= 0.35;
     if ((int)($c['summit_gap_m'] ?? 0) > 120) { $z -= 0.34; $why[] = '- no mapped way to the very top'; }
+    if (!empty($c['car_blocked'])) $why[] = 'the dirt road beyond this spot is closed to cars on the map, so the hike starts here';
     if ((int)$c['time_min'] < 45) $z += 0.02;
     if ($rel > 2.5)      { $z -= 0.27; $why[] = '- more than 2.5 times as long as the quickest route here'; }
     elseif ($rel > 1.5)  { $z += 0.07; }

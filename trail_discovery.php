@@ -54,7 +54,7 @@ function td_run_settings($db, $run_id) {
     $j = $st->fetchColumn();
     if ($j === false) return null;
     // Runs saved before a setting existed used the old behaviour (rings only, paved first), not today's defaults.
-    return td_clean_settings((json_decode($j, true) ?: []) + ['pick' => 'paved_first', 'source' => 'probes']);
+    return td_clean_settings((json_decode($j, true) ?: []) + ['pick' => 'paved_first', 'source' => 'probes', 'car_check' => false]);
 }
 
 /* ───────── AJAX ───────── */
@@ -280,7 +280,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
                     <?php if (!$runs): ?><option value="0">No runs yet</option><?php endif; ?>
                     <?php foreach ($runs as $r): $s = json_decode($r['settings_json'], true); ?>
                         <option value="<?= (int)$r['id'] ?>" <?= (int)$r['id'] === $curRun ? 'selected' : '' ?>>
-                            Run <?= (int)$r['id'] ?>: <?= tdp_h(($s['region'] ?? 'W6/CT') . ', ' . ($s['max_km'] ?? '?') . ' km, ' . ($s['spacing_km'] ?? '?') . ' km spacing, ' . (($s['stop'] ?? '') === 'auto2' ? 'early stop' : 'full search') . ', ' . ['mixed' => 'quickest 3', 'confidence' => 'by confidence', 'confidence_any' => 'by confidence, no paved rule', 'paved_first' => 'paved first'][$s['pick'] ?? 'paved_first'] . ', ' . ['probes' => 'search rings', 'parking' => 'from mapped parking', 'both' => 'rings + mapped parking'][$s['source'] ?? 'probes']) ?>
+                            Run <?= (int)$r['id'] ?>: <?= tdp_h(($s['region'] ?? 'W6/CT') . ', ' . ($s['max_km'] ?? '?') . ' km, ' . ($s['spacing_km'] ?? '?') . ' km spacing, ' . (($s['stop'] ?? '') === 'auto2' ? 'early stop' : 'full search') . ', ' . ['mixed' => 'quickest 3', 'confidence' => 'by confidence', 'confidence_any' => 'by confidence, no paved rule', 'paved_first' => 'paved first'][$s['pick'] ?? 'paved_first'] . ', ' . ['probes' => 'search rings', 'parking' => 'from mapped parking', 'both' => 'rings + mapped parking'][$s['source'] ?? 'probes'] . (!empty($s['car_check']) ? ', car check' : '')) ?>
                             (<?= (int)$r['done'] ?> done<?= $r['note'] ? ', ' . tdp_h($r['note']) : '' ?>)
                         </option>
                     <?php endforeach; ?>
@@ -345,6 +345,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--bg)} tr.sel td{backg
                 <dt>Probes and rings</dt><dd>Search points placed in circles (rings) 0.75 to 12 km from the summit. Each is routed to the summit; the route is then read from the top down until it reaches a road you can drive. Green probe: found a start. Gray: stayed on trail the whole way. Red: no route.</dd>
                 <dt>Paved / dirt</dt><dd>The road type where the drive ends. Paved starts are preferred; dirt ones are kept when no paved start exists or as alternatives.</dd>
                 <dt>If the dirt road is closed</dt><dd>For a dirt start: the hike from the nearest paved road beyond it, in case a gate is shut (dashed line and square marker on the map).</dd>
+                <dt>Car check</dt><dd>Runs with the car check ask BRouter's car routing whether a car can actually drive to each dirt-road start. When the map says no car can get there (a private or closed road, a barrier further out), the route starts at the paved road below instead, or is dropped if no paved spot was found.</dd>
                 <dt>Off trail to the summit</dt><dd>When no mapped path reaches the top, the last stretch is a straight line from the end of the path to the summit (red dashed). It is included in distance and time.</dd>
                 <dt>First seen X km out</dt><dd>The ring where a probe first led to that start.</dd>
                 <dt>Mapped parking / trailhead X m away</dt><dd>Distance from a start to the nearest parking lot or trailhead in the OpenStreetMap list (blue P and green T on the map).</dd>
@@ -614,6 +615,7 @@ function drawDetail(fit) {
         '<span class="d2"><a href="https://www.google.com/maps/search/?api=1&query=' + c.lat + ',' + c.lon + '" target="_blank" rel="noopener">' + c.lat.toFixed(5) + ', ' + c.lon.toFixed(5) + '</a>, first seen ' + c.first_ring_km + ' km out' +
         (c.summit_gap_m > 40 ? ', <strong>last ' + c.summit_gap_m + ' m to the summit off trail</strong> (included in hike)' : '') + '</span>' +
         ('pk' in c ? pkLine(c.pk, 'Start') + (c.pk_t && (!c.pk || c.pk.k !== 'T') ? pkLine(c.pk_t, 'Nearest trailhead') : '') : '') +
+        (c.car_blocked ? '<div class="closed">The dirt road beyond here (' + esc(c.car_blocked.road) + ', <a href="https://www.google.com/maps/search/?api=1&query=' + c.car_blocked.lat + ',' + c.car_blocked.lon + '" target="_blank" rel="noopener">map</a>, ' + fmtT(c.car_blocked.time_min) + ' up from there) is closed to cars on the map, so the hike starts at the paved road</div>' : '') +
         (c.cls === 'dirt' ? '<div class="closed">' + (c.closed
             ? 'If the dirt road is closed: park at the paved road (' + esc(c.closed.road) + ', <a href="https://www.google.com/maps/search/?api=1&query=' + c.closed.lat + ',' + c.closed.lon + '" target="_blank" rel="noopener">map</a>), ' +
               mi(c.closed.dist_m) + ' mi, ' + ft(c.closed.gain_m) + ' ft, <strong>' + fmtT(c.closed.time_min) + '</strong> up (' + (c.closed.extra_min ? '+' + fmtT(c.closed.extra_min) : 'about the same') + ')' +

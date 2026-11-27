@@ -1,11 +1,11 @@
-# Trail discovery: status and handoff (updated 2026-11-24)
+# Trail discovery: status and handoff (updated 2026-11-26)
 
 This is the "pick up where we left off" file for BRouter trail discovery. CLAUDE.md has the short version under "Trail discovery". Read this file before continuing the work.
 
 ## 1. Goal and Chris's rules
 
 - **Goal:** for every SOTA summit with no hike data, find likely trails and starting points with our own BRouter server. Run it on every such summit, then switch it on publicly on the day Chris presents SOTAplanner at Four Days in May (May 2027). Until then nothing discovered may be visible to the public. It is God Mode only.
-- **Global scope (2026-11-16):** only methods that work worldwide. No country-specific data such as U.S. Forest Service MVUM.
+- **Global scope (2026-11-16):** only methods that work worldwide. No country-specific data such as U.S. Forest Service MVUM. **And no region-specific rules (Chris, 2026-11-27):** a pattern found in one region gets a general fix tested on all regions, unless a geographic special case is truly unavoidable.
 - **No paved-road assumption (2026-11-22, replaces the 2026-11-15 "paved first" rule):** Chris said a paved road cannot be assumed to exist near every summit worldwide. Routes are now picked by confidence, not by road surface. The default is `pick = confidence_any` (since 2026-11-24) and `source = both`.
   - The confidence pick (`confidence`) still keeps one paved start in the top 3 when one was found. `confidence_any` (added 2026-11-24) drops that guarantee. Tested on runs 13 to 18: the guarantee changes results by about 2 points either way. **Chris, 2026-11-24: no paved rule; `confidence_any` is the default.**
 - **Three confidence levels stay** (Chris, 2026-11-24): high, medium, low, even though medium and low are right about equally often today (section 5).
@@ -98,6 +98,23 @@ Table produced by `research/trail_discovery_compare.py`.
 | **16** | GM/SS | both, lot fix, retry | confidence, no paved rule | **51%** | 60% | 51% | 63/87/42 | 13 |
 | **17** | W6/CT | both, lot fix step 2 | confidence, no paved rule | **67%** | 77% | 68% | 52/46/7 | 16 |
 | 18 | W4C/WM | both, lot fix step 2 | confidence, no paved rule | 54% | 56% | 64% | 28/37/25 | 13 |
+| 19 | LA/OL (Norway, Oppland) | both, lot fix step 2 | confidence, no paved rule | 51% | 68% | 63% | 25/25/7 | 12 |
+| 20 | LA/BU (Norway, Buskerud) | both, lot fix step 2 | confidence, no paved rule | 58% | 71% | 60% | 19/21/5 | 13 |
+
+**Norway, runs 19 and 20 (2026-11-26, chosen because LB8VA activates most there; out of sample, weights not refit):** better than Scotland and Tyrol. "Any at 400 m" is 68 to 71%, so the gap to "shown" (about 17 points) is mostly ranking. Of the 47 misses: 17 found but not shown (in 9 the right start is a mapped lot reached only by its own route, 1 probe hit, typically 1.4 to 4x slower than the start we picked, which in 15 of 17 was a gravel forest road start), 23 near misses (0.4 to 1.5 km, mostly no mapped parking at their start), 7 nothing within 1.5 km. In 46 of 47 misses their start is not on any shown route (a different trail, not "parked lower on the same road"; in Scotland run 16 that was 17 cases). **Car check test (all six regions, 1,395 dirt starts with a paved fallback, car-fast from the start to its paved spot):** 77 (6%) have no car route at all (OSM access closes them, which `td_way_class` misses because BRouter's hiking profile reads fewer car tags), and those are right 10 to 18% of the time against 17 to 31% for car-reachable ones; 40 of them were shown (7 right). Example: Gyrihaugen LA/BU-027 showed a 5 min "drive-up" no car can reach; people hike 133 min from the Feristen lot. Toll booths (`barrier=toll_booth`, Norwegian bomvei) were on 19 Norwegian dirt starts and 7 in Tyrol, too few to judge. Scripts used were ad hoc (scratchpad); the car check is about 1 call per dirt start.
+
+**Car check built (2026-11-27, Chris asked for it; setting `car_check`, default on for new runs, `td_car_check()` in the lib).** For each dirt start that is not a mapped lot, BRouter `car-fast` routes from the start to the paved road (the gate-closed spot, then up to two nearest paved starts when a spot answers "target island"). "no track found" = no car can get there: the route becomes the hike from the gate-closed spot (`car_blocked` keeps the old start, shown on the page), or is dropped when there is no usable spot. Applied to the saved runs without searching again (`research/trail_discovery_carcheck.php`, writes NEW runs, old runs untouched):
+
+| Region | Old run, shown at 400 m | Car check run, shown at 400 m | Gains / losses (summits) |
+|---|---|---|---|
+| W6/CT | 17: 67% | 22: 69% | 2 / 0 |
+| W4C/WM | 18: 54% | 23: 54% | 0 / 0 |
+| GM/SS | 16: 51% | 21: 51% | 2 / 2 |
+| OE/TI | 14: 44% | 24: 41% | 0 / 2 |
+| LA/OL | 19: 51% | 26: 54% | 2 / 0 |
+| LA/BU | 20: 58% | 25: 58% | 0 / 0 |
+
+Net +3 of 569 summits; shown routes under 20 min fell only from 105 to 101; about 1 s more per summit. Example fixes: W6/CT-170 (a "0 min" drive-up on a closed road became a 2 h hike from the paved road), W6/CT-266, LA/OL-167, Gyrihaugen LA/BU-027 (the 5 min start is gone; Feristen still not shown). Losses are partly re-ranking side effects (GM/SS-029, OE/TI-553), partly closed-looking starts people do use (GM/SS-125, OE/TI-376). **Gotcha:** `car-fast` treats every `highway=track` without a motor vehicle tag as closed unless `profile:use_offroad=1` (value must be 1, `true` gives HTTP 500). Turning offroad on made the check worse (the 16 starts it let back in were right 1 time in 16), so the default strictness is kept. Verdict: a small, cheap, mostly honest improvement, not a big lever; the ceiling is still that on about 30 to 45% of summits none of our candidates is at the real start.
 
 Runs 11 to 14 were rescored on 2026-11-24 with the four-region weights (in sample, so a little flattering): shown at 400 m 62% / 56% / 51% / 44%. Runs 15 and 16 were searched with those weights. Backups before rescoring: `sota_discovered/runs-{11..14}-before-rescore-20261124` and `rows-11-12-before-rescore-20261124.tsv`. Run 14 lost 9 summits to BRouter timeouts (section 8) and 15 OE/TI summits are retired.
 
