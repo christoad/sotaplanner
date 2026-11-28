@@ -1033,7 +1033,7 @@ $difficulty_labels = [
     <?php if ($pa['trail_link'] || $pa['sotlas_link'] || ($pa['latitude'] && $pa['longitude'])): ?>
     <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:1rem;">
         <?php if ($pa['trail_link']): ?>
-            <a href="<?= htmlspecialchars($pa['trail_link']) ?>" target="_blank" class="btn btn-ghost" style="font-size:0.82rem;">Trail Info ↗</a>
+            <a href="<?= safeHref($pa['trail_link']) ?>" target="_blank" class="btn btn-ghost" style="font-size:0.82rem;">Trail Info ↗</a>
         <?php endif; ?>
         <?php if ($pa['latitude'] && $pa['longitude']): ?>
             <a href="https://www.google.com/maps/search/?api=1&query=<?= $pa['latitude'] ?>,<?= $pa['longitude'] ?>" target="_blank" class="btn btn-ghost" style="font-size:0.82rem;">Summit Map ↗</a>
@@ -1524,7 +1524,7 @@ $difficulty_labels = [
             <strong>Live Group Location</strong>
             The hiking group will be sharing their real-time location for the duration of this trip.
             Share this link with anyone who may need to know where the group is:<br>
-            <a href="<?= htmlspecialchars($pa['location_link']) ?>" target="_blank"
+            <a href="<?= safeHref($pa['location_link']) ?>" target="_blank"
                style="font-weight:600; word-break:break-all;"><?= htmlspecialchars($pa['location_link']) ?></a>
         </div>
     </div>

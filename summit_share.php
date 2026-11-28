@@ -396,7 +396,7 @@ $jsflags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
         <a href="https://sotl.as/summits/<?= str_replace('%2F', '/', urlencode($ref)) ?>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">SOTLAS &#8599;</a>
       <?php endif; ?>
       <?php if (!empty($summit['trail_link']) && preg_match('~^https?://~i', $summit['trail_link'])): ?>
-        <a href="<?= htmlspecialchars($summit['trail_link']) ?>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Trail &#8599;</a>
+        <a href="<?= safeHref($summit['trail_link']) ?>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Trail &#8599;</a>
       <?php endif; ?>
       <a href="https://www.google.com/maps/dir/?api=1&destination=<?= $dir_lat ?>,<?= $dir_lng ?>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Directions &#8599;</a>
     </div>
@@ -555,7 +555,7 @@ $jsflags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
           <span class="info-val"><?= $cell_label ? htmlspecialchars($cell_label) : '<span style="color:var(--ink-4);">Unknown</span>' ?></span></div>
         <?php if ($trail_link_ok): ?>
         <div class="info-row"><span class="info-label">Trail reference</span>
-          <span class="info-val"><a href="<?= htmlspecialchars($summit['trail_link']) ?>" target="_blank" rel="noopener nofollow">Open link &#8599;</a></span></div>
+          <span class="info-val"><a href="<?= safeHref($summit['trail_link']) ?>" target="_blank" rel="noopener nofollow">Open link &#8599;</a></span></div>
         <?php endif; ?>
       </div>
 

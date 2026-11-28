@@ -42,6 +42,13 @@ $error = '';
 $current_group = getCurrentPlanningGroup($db);
 $user_units = getUserUnits($db);
 
+// Only people on this summit's dashboard (or Admin Mode) may open it. This runs before every
+// save/delete handler below, which act on the summit id alone.
+if (!userCanAccessSummit($db, $summit_id)) {
+    header('Location: index.php');
+    exit;
+}
+
 // Flag: fetch GPX from SOTAmaps in the background after page load
 $fetch_gpx_async        = isset($_GET['fetch_gpx']) && $_GET['fetch_gpx'] === '1';
 $show_nomination_overlay = isset($_GET['nominated']);
@@ -287,7 +294,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_POST['hike_elevation_gain_ft'] ?: null,
                 $_POST['hike_time_up_min'] ?: null,
                 $_POST['hike_time_down_min'] ?: null,
-                $_POST['trail_link'] ?? '',
+                (cleanUserUrl($_POST['trail_link'] ?? '') ?? ''),
                 $summit_id
             ]);
         }
@@ -396,7 +403,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_POST['status'],
                 $_POST['difficulty'] ?? null,
                 $_POST['cell_service'] ?: null,
-                $_POST['trail_link'],
+                (cleanUserUrl($_POST['trail_link'] ?? '') ?? ''),
                 $_POST['hike_distance_mi'] ?: null,
                 $_POST['hike_elevation_gain_ft'] ?: null,
                 $trailhead_lat,
@@ -504,7 +511,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 (int)$_POST['activation_duration_min'],
                 $_POST['invitation_message'] ?: null,
                 $_POST['travel_notes'] ?: null,
-                $_POST['location_link'] ?: null,
+                cleanUserUrl($_POST['location_link'] ?? ''),
                 getCurrentCallsign()
             ]);
             logActivity($db, 'Activation scheduled', $log_summit_name, $log_sota_ref, $log_group_name);
@@ -571,7 +578,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 (int)$_POST['activation_duration_min'],
                 $_POST['invitation_message'] ?: null,
                 $_POST['travel_notes'] ?: null,
-                $_POST['location_link'] ?: null,
+                cleanUserUrl($_POST['location_link'] ?? ''),
                 $pa_id,
                 $current_group['id']
             ]);
@@ -1513,7 +1520,7 @@ if ($tl_show) {
         <a href="https://sotl.as/summits/<?= str_replace('%2F', '/', urlencode($summit['sota_ref'])) ?>" target="_blank" class="btn btn-ghost btn-sm">SOTLAS ↗</a>
       <?php endif; ?>
       <?php if (!empty($summit['trail_link'])): ?>
-        <a href="<?= htmlspecialchars($summit['trail_link']) ?>" target="_blank" class="btn btn-ghost btn-sm">Trail ↗</a>
+        <a href="<?= safeHref($summit['trail_link']) ?>" target="_blank" class="btn btn-ghost btn-sm">Trail ↗</a>
       <?php endif; ?>
       <?php if ($selected_address && $directions_lat && $directions_lng): ?>
         <a href="https://www.google.com/maps/dir/?api=1&origin=<?= urlencode(addressOrigin($db, $selected_address)) ?>&destination=<?= $directions_lat ?>,<?= $directions_lng ?>" target="_blank" class="btn btn-ghost btn-sm">Directions ↗</a>

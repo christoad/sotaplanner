@@ -1,7 +1,4 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
 require_once 'config.php';
 session_start();
 requireLogin();
@@ -32,7 +29,7 @@ $stmt = $db->prepare("SELECT * FROM summits WHERE id = ?");
 $stmt->execute([$summit_id]);
 $summit = $stmt->fetch();
 
-if (!$summit) {
+if (!$summit || !userCanAccessSummit($db, $summit)) {
     header('Location: index.php');
     exit;
 }
@@ -44,245 +41,18 @@ if (!$current_group) {
     exit;
 }
 
-// -----------------------------------------------------------------------
-// Trail URL scraper: tries AllTrails (__NEXT_DATA__), JSON-LD, meta tags
-// -----------------------------------------------------------------------
-function scrapeTrailUrl($url) {
-    $result = [
-        'trail_name'         => null,
-        'distance_mi'        => null,
-        'elevation_gain_ft'  => null,
-        'difficulty'         => null,
-        'trailhead_lat'      => null,
-        'trailhead_lng'      => null,
-        'source'             => null,
-        'fields_found'       => [],
-        'error'              => null,
-    ];
-
-    // Detect known Cloudflare-protected domains upfront
-    $blocked_domains = ['alltrails.com', 'gaiagps.com', 'strava.com', 'komoot.com'];
-    $host = strtolower(parse_url($url, PHP_URL_HOST) ?? '');
-    foreach ($blocked_domains as $d) {
-        if (str_contains($host, $d)) {
-            $result['error'] = "blocked:$d";
-            return $result;
-        }
-    }
-
-    // Fetch with browser-like headers; social bot UAs are sometimes whitelisted
-    $user_agents = [
-        'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
-        'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    ];
-
-    $html = null;
-    foreach ($user_agents as $ua) {
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_TIMEOUT        => 12,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_USERAGENT      => $ua,
-            CURLOPT_HTTPHEADER     => [
-                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language: en-US,en;q=0.9',
-                'Connection: keep-alive',
-                'Cache-Control: no-cache',
-            ],
-            CURLOPT_ENCODING       => '',
-        ]);
-        $body      = curl_exec($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        // Reject Cloudflare challenge pages even if they return 200
-        if ($http_code === 200 && $body && strlen($body) > 2000
-            && stripos($body, 'captcha') === false
-            && stripos($body, 'cf-browser-verification') === false
-            && stripos($body, 'Just a moment') === false) {
-            $html = $body;
-            break;
-        }
-    }
-
-    if (!$html) {
-        $result['error'] = 'Could not fetch that page. The site appears to be blocking automated requests. Please enter trail data manually below.';
-        return $result;
-    }
-
-    // ---- 1. AllTrails __NEXT_DATA__ (most reliable for AllTrails) ----
-    if (strpos($url, 'alltrails.com') !== false) {
-        if (preg_match('/<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)<\/script>/si', $html, $m)) {
-            $nd = json_decode($m[1], true);
-            // Navigate to trail object, structure: props.pageProps.trail
-            $trail = $nd['props']['pageProps']['trail'] ?? null;
-            if ($trail) {
-                $result['source'] = 'AllTrails';
-                // Distance: stored in meters, round-trip
-                if (isset($trail['length'])) {
-                    $result['distance_mi']       = round($trail['length'] * 0.000621371, 2);
-                    $result['fields_found'][]    = 'distance_mi';
-                }
-                // Elevation gain: stored in meters
-                if (isset($trail['elevation_gain'])) {
-                    $result['elevation_gain_ft'] = round($trail['elevation_gain'] * 3.28084);
-                    $result['fields_found'][]    = 'elevation_gain_ft';
-                }
-                // Difficulty: 1=easy, 2=moderate, 3=hard
-                if (isset($trail['difficulty_rating'])) {
-                    $d = (int)$trail['difficulty_rating'];
-                    $result['difficulty'] = $d <= 1 ? 'easy' : ($d === 2 ? 'moderate' : 'hard');
-                    $result['fields_found'][] = 'difficulty';
-                }
-                // Trailhead coordinates
-                if (isset($trail['lat'], $trail['lng'])) {
-                    $result['trailhead_lat']  = (float)$trail['lat'];
-                    $result['trailhead_lng']  = (float)$trail['lng'];
-                    $result['fields_found'][] = 'trailhead';
-                }
-                if (isset($trail['name'])) {
-                    $result['trail_name'] = $trail['name'];
-                }
-                return $result;
-            }
-        }
-    }
-
-    // ---- 2. JSON-LD structured data (works for many trail sites) ----
-    preg_match_all('/<script[^>]+type=["\']application\/ld\+json["\'][^>]*>(.*?)<\/script>/si', $html, $ldMatches);
-    foreach ($ldMatches[1] as $jsonStr) {
-        $ld = json_decode($jsonStr, true);
-        if (!$ld) continue;
-        $items = isset($ld['@graph']) ? $ld['@graph'] : [$ld];
-        foreach ($items as $item) {
-            $type = is_array($item['@type'] ?? null)
-                ? implode(',', $item['@type'])
-                : ($item['@type'] ?? '');
-            if (!preg_match('/Hiking|Exercise|Trail|Place/i', $type)) continue;
-
-            $result['source'] = 'Structured Data';
-
-            // Distance may be "7.1 miles", "11.4 km", or a number in meters
-            foreach (['distance', 'length'] as $dk) {
-                if (!isset($item[$dk])) continue;
-                $raw = $item[$dk];
-                preg_match('/[\d.]+/', (string)$raw, $dm);
-                if (!$dm) continue;
-                $val = (float)$dm[0];
-                if (stripos($raw, 'km') !== false)    $val *= 0.621371;
-                elseif (stripos($raw, 'm') !== false && !stripos($raw, 'mile')) $val *= 0.000621371;
-                $result['distance_mi']    = round($val, 2);
-                $result['fields_found'][] = 'distance_mi';
-                break;
-            }
-
-            // Elevation gain
-            foreach (['ascent', 'elevationGain', 'elevation_gain'] as $ek) {
-                if (!isset($item[$ek])) continue;
-                $raw = $item[$ek];
-                preg_match('/[\d.]+/', (string)$raw, $em);
-                if (!$em) continue;
-                $val = (float)$em[0];
-                // If unit is meters (< 300 is suspicious for feet, but could be a low trail)
-                // Check if the value looks like meters vs feet
-                if (stripos($raw, 'meter') !== false || stripos($raw, ' m') !== false) $val *= 3.28084;
-                $result['elevation_gain_ft'] = round($val);
-                $result['fields_found'][]    = 'elevation_gain_ft';
-                break;
-            }
-
-            // Difficulty
-            foreach (['difficulty', 'exerciseDifficulty'] as $dfk) {
-                if (!isset($item[$dfk])) continue;
-                $d = strtolower((string)$item[$dfk]);
-                if (strpos($d, 'easy') !== false)                               $result['difficulty'] = 'easy';
-                elseif (strpos($d, 'hard') !== false || strpos($d, 'strenuous') !== false) $result['difficulty'] = 'hard';
-                elseif (strpos($d, 'moderate') !== false)                       $result['difficulty'] = 'moderate';
-                if ($result['difficulty']) $result['fields_found'][] = 'difficulty';
-                break;
-            }
-
-            // Coordinates
-            if (isset($item['geo']['latitude'])) {
-                $result['trailhead_lat']  = (float)$item['geo']['latitude'];
-                $result['trailhead_lng']  = (float)$item['geo']['longitude'];
-                $result['fields_found'][] = 'trailhead';
-            }
-            if (isset($item['name'])) $result['trail_name'] = $item['name'];
-
-            if (!empty($result['fields_found'])) return $result;
-        }
-    }
-
-    // ---- 3. Meta tag fallback ----
-    $metas = [];
-    preg_match_all('/<meta[^>]+>/i', $html, $metaMatches);
-    foreach ($metaMatches[0] as $tag) {
-        $name    = '';
-        $content = '';
-        if (preg_match('/(?:name|property)=["\']([^"\']+)["\']/i', $tag, $n)) $name    = strtolower($n[1]);
-        if (preg_match('/content=["\']([^"\']+)["\']/i', $tag, $c))           $content = $c[1];
-        if ($name && $content) $metas[$name] = $content;
-    }
-    if (!empty($metas)) {
-        $result['source'] = 'Page Meta Tags';
-        if (isset($metas['og:title'])) $result['trail_name'] = $metas['og:title'];
-        // Some sites put distance/gain in description meta
-        $desc = $metas['og:description'] ?? $metas['description'] ?? '';
-        if ($desc) {
-            if (preg_match('/([\d.]+)\s*mi(?:les?)?/i', $desc, $dm))
-                { $result['distance_mi'] = (float)$dm[1]; $result['fields_found'][] = 'distance_mi'; }
-            if (preg_match('/([\d,]+)\s*ft?\s+(?:gain|elevation)/i', $desc, $em))
-                { $result['elevation_gain_ft'] = (int)str_replace(',', '', $em[1]); $result['fields_found'][] = 'elevation_gain_ft'; }
-        }
-    }
-
-    if (empty($result['fields_found'])) {
-        $result['error'] = 'Page was fetched but no trail data could be extracted. Please enter the details manually.';
-    }
-    return $result;
-}
-
-// Handle trail URL scrape (pre-populate form)
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['scrape_trail'])) {
-    $scrape_url    = trim($_POST['trail_link'] ?? '');
-    $scraped       = $scrape_url ? scrapeTrailUrl($scrape_url) : ['error' => 'No URL provided.', 'fields_found' => []];
-    // Pass results back to the form via session so we can show them
-    $_SESSION['trail_scrape'] = array_merge($scraped, ['url' => $scrape_url]);
-    header('Location: trail_research.php?id=' . $summit_id . '&group=' . $current_group['id'] . '&scraped=1');
-    exit;
-}
-
-// Pick up any scrape results from session
-$scraped = null;
-if (isset($_GET['scraped']) && isset($_SESSION['trail_scrape'])) {
-    $scraped = $_SESSION['trail_scrape'];
-    unset($_SESSION['trail_scrape']);
-}
-
 // Handle manual data entry
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_trail_data'])) {
     // Build SET clause dynamically so optional fields only update when present
     $sets   = ['trail_link = ?', 'hike_distance_mi = ?', 'hike_elevation_gain_ft = ?', "status = 'researched'"];
     $params = [
-        $_POST['trail_link'] ?: null,
+        cleanUserUrl($_POST['trail_link'] ?? ''),
         $_POST['hike_distance_mi'] ?: null,
         $_POST['hike_elevation_gain_ft'] ?: null,
     ];
     if (!empty($_POST['difficulty'])) {
         $sets[]   = 'difficulty = ?';
         $params[] = $_POST['difficulty'];
-    }
-    if (!empty($_POST['trailhead_lat'])) {
-        $sets[]   = 'trailhead_lat = ?';
-        $params[] = (float)$_POST['trailhead_lat'];
-    }
-    if (!empty($_POST['trailhead_lng'])) {
-        $sets[]   = 'trailhead_lng = ?';
-        $params[] = (float)$_POST['trailhead_lng'];
     }
     $params[] = $summit_id;
 
@@ -420,23 +190,14 @@ $google_maps = "https://www.google.com/maps/search/" . urlencode($summit_name . 
     .msg-warn { background: oklch(97% 0.04 80); border: 1px solid oklch(88% 0.09 80); color: oklch(42% 0.12 60); }
     .msg-ok { background: var(--green-bg); border: 1px solid oklch(85% 0.07 155); color: var(--green); }
 
-    /* Auto-filled badge */
-    .auto-badge { display: inline-block; font-size: 0.65rem; font-weight: 700; background: var(--green-bg); color: var(--green); border-radius: var(--r-sm); padding: 0.1rem 0.4rem; margin-left: 0.4rem; vertical-align: middle; }
-
     /* Tips */
     .tips-card { background: var(--accent-bg); border: 1px solid var(--accent-border); border-radius: var(--r-lg); padding: 1.25rem; margin-bottom: 1rem; }
     .tips-card ul { margin-left: 1.1rem; }
     .tips-card li { font-size: 0.85rem; color: var(--ink-2); line-height: 1.7; }
 
-    /* URL lookup row */
-    .url-row { display: flex; gap: 0.5rem; align-items: flex-start; }
-    .url-row .form-input { flex: 1; min-width: 0; }
-
     @media (max-width: 600px) {
       .search-links { grid-template-columns: 1fr 1fr; }
       .grid-2col { grid-template-columns: 1fr; }
-      .url-row { flex-direction: column; }
-      .url-row .btn { width: 100%; }
     }
     </style>
 </head>
@@ -485,7 +246,7 @@ $google_maps = "https://www.google.com/maps/search/" . urlencode($summit_name . 
         <ol>
           <li>Search the links below for trails near the summit coordinates</li>
           <li>Look for trails that lead TO or NEAR the summit (<?= number_format($summit['elevation_ft']) ?> ft elevation)</li>
-          <li>Once you find the right trail, copy its URL into the form below to auto-fill trail data</li>
+          <li>Once you find the right trail, paste its link and stats into the form below</li>
           <li>Review and save</li>
         </ol>
       </div>
@@ -516,107 +277,47 @@ $google_maps = "https://www.google.com/maps/search/" . urlencode($summit_name . 
       <!-- Trail data entry -->
       <div class="card">
         <div class="card-title">Enter Trail Information</div>
-        <p style="font-size:0.85rem; color:var(--ink-3); margin-bottom:1rem;">Paste a trail URL and click <strong>Look Up</strong> to auto-fill the fields, or enter stats manually.</p>
+        <p style="font-size:0.85rem; color:var(--ink-3); margin-bottom:1rem;">Paste the trail link and enter its stats.</p>
 
-        <?php if ($scraped): ?>
-          <?php if ($scraped['error']): ?>
-            <?php
-            $isBlocked = str_starts_with($scraped['error'], 'blocked:');
-            $blockedSite = $isBlocked ? ucfirst(explode(':', $scraped['error'])[1]) : '';
-            ?>
-            <div class="msg msg-warn">
-              <?php if ($isBlocked): ?>
-                <strong><?= htmlspecialchars($blockedSite) ?> blocks automated data fetching.</strong>
-                Enter the trail stats manually below. You can still save the link.
-              <?php else: ?>
-                <?= htmlspecialchars($scraped['error']) ?>
-              <?php endif; ?>
-            </div>
-          <?php elseif (!empty($scraped['fields_found'])): ?>
-            <div class="msg msg-ok">
-              <strong>Found from <?= htmlspecialchars($scraped['source']) ?>:</strong>
-              <?php
-              $labels = ['distance_mi'=>'Distance', 'elevation_gain_ft'=>'Elevation Gain', 'difficulty'=>'Difficulty', 'trailhead'=>'Starting Point'];
-              foreach ($scraped['fields_found'] as $f) {
-                if (isset($labels[$f])) echo ' <span class="auto-badge">' . $labels[$f] . '</span>';
-              }
-              ?>
-              &nbsp;— Review the values below and save.
-            </div>
-          <?php endif; ?>
-        <?php endif; ?>
-
-        <!-- Step 1: URL lookup -->
-        <form method="POST" style="margin-bottom:1.25rem;">
-          <input type="hidden" name="summit_id" value="<?= $summit_id ?>">
-          <div class="form-group">
-            <label class="form-label" for="trail_link_lookup">Trail Link</label>
-            <div class="url-row">
-              <input type="text" id="trail_link_lookup" name="trail_link" class="form-input"
-                     value="<?= htmlspecialchars($scraped['url'] ?? '') ?>"
-                     placeholder="https://www.alltrails.com/trail/...">
-              <button type="submit" name="scrape_trail" class="btn btn-primary">Look Up</button>
-            </div>
-            <div class="form-hint">Auto-fill works with Hiking Project, TrailLink, and most structured trail sites. AllTrails and GaiaGPS block automated access. Paste the link and enter stats manually.</div>
-          </div>
-        </form>
-
-        <!-- Step 2: Manual entry + save -->
         <form method="POST">
-          <input type="hidden" name="trail_link" id="save-trail-link" value="<?= htmlspecialchars($scraped['url'] ?? '') ?>">
-          <script>
-          document.getElementById('trail_link_lookup')?.addEventListener('input', function() {
-            document.getElementById('save-trail-link').value = this.value;
-          });
-          </script>
-          <input type="hidden" name="trailhead_lat" value="<?= htmlspecialchars($scraped['trailhead_lat'] ?? '') ?>">
-          <input type="hidden" name="trailhead_lng" value="<?= htmlspecialchars($scraped['trailhead_lng'] ?? '') ?>">
+          <div class="form-group">
+            <label class="form-label" for="trail_link">Trail Link</label>
+            <input type="text" id="trail_link" name="trail_link" class="form-input"
+                   value="<?= htmlspecialchars($summit['trail_link'] ?? '') ?>"
+                   placeholder="https://www.alltrails.com/trail/...">
+          </div>
 
           <div class="grid-2col">
             <div class="form-group">
               <label class="form-label" for="hike_distance_mi">
                 Round-Trip Distance (mi)
-                <?php if ($scraped && in_array('distance_mi', $scraped['fields_found'] ?? [])): ?>
-                  <span class="auto-badge">Auto-filled</span>
-                <?php endif; ?>
               </label>
               <input type="number" id="hike_distance_mi" name="hike_distance_mi" class="form-input"
                      step="0.01" placeholder="e.g. 1.4"
-                     value="<?= htmlspecialchars($scraped['distance_mi'] ?? '') ?>" required>
+                     value="<?= htmlspecialchars($summit['hike_distance_mi'] ?? '') ?>" required>
             </div>
             <div class="form-group">
               <label class="form-label" for="hike_elevation_gain_ft">
                 Elevation Gain (ft)
-                <?php if ($scraped && in_array('elevation_gain_ft', $scraped['fields_found'] ?? [])): ?>
-                  <span class="auto-badge">Auto-filled</span>
-                <?php endif; ?>
               </label>
               <input type="number" id="hike_elevation_gain_ft" name="hike_elevation_gain_ft" class="form-input"
                      placeholder="e.g. 300"
-                     value="<?= htmlspecialchars($scraped['elevation_gain_ft'] ?? '') ?>" required>
+                     value="<?= htmlspecialchars($summit['hike_elevation_gain_ft'] ?? '') ?>" required>
             </div>
           </div>
 
           <div class="form-group">
             <label class="form-label" for="difficulty">
               Difficulty
-              <?php if ($scraped && in_array('difficulty', $scraped['fields_found'] ?? [])): ?>
-                <span class="auto-badge">Auto-filled</span>
-              <?php endif; ?>
             </label>
             <select id="difficulty" name="difficulty" class="form-input">
-              <option value="">— select —</option>
+              <option value="">Select</option>
               <?php foreach (['drive-up'=>'Drive-Up','easy'=>'Easy','moderate'=>'Moderate','hard'=>'Hard / Strenuous'] as $val=>$lbl): ?>
-                <option value="<?= $val ?>" <?= ($scraped['difficulty'] ?? '') === $val ? 'selected' : '' ?>><?= $lbl ?></option>
+                <option value="<?= $val ?>" <?= ($summit['difficulty'] ?? '') === $val ? 'selected' : '' ?>><?= $lbl ?></option>
               <?php endforeach; ?>
             </select>
           </div>
 
-          <?php if ($scraped && in_array('trailhead', $scraped['fields_found'] ?? [])): ?>
-          <p style="font-size:0.82rem; color:var(--green); margin-bottom:1rem;">
-            Starting point coordinates captured: <?= $scraped['trailhead_lat'] ?>, <?= $scraped['trailhead_lng'] ?>
-          </p>
-          <?php endif; ?>
 
           <div class="btn-row">
             <button type="submit" name="save_trail_data" class="btn btn-primary">Save Trail Data</button>

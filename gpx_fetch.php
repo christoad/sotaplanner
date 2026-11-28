@@ -37,7 +37,7 @@ try { $db->exec("ALTER TABLE global_gpx_tracks ADD COLUMN sotamaps_track_count I
 $stmt = $db->prepare("SELECT id, sota_ref, planning_group_id, hike_distance_mi, hike_elevation_gain_ft, trailhead_lat, trailhead_lng FROM summits WHERE id = ?");
 $stmt->execute([$summit_id]);
 $summit = $stmt->fetch(PDO::FETCH_ASSOC);
-if (!$summit) {
+if (!$summit || !userCanAccessSummit($db, $summit)) {
     echo json_encode(['status' => 'error', 'msg' => 'Summit not found']);
     exit;
 }

@@ -1,9 +1,11 @@
 <?php
 define('APP_VERSION', '2026.11');
 
-// Enable error reporting for debugging
+// Errors: shown on staging/dev and in CLI (cron logs), never shown to visitors on the live site,
+// where they could reveal server paths and internals. They still go to the PHP error log there.
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
+ini_set('display_errors', (PHP_SAPI !== 'cli' && isProductionSite()) ? 0 : 1);
+ini_set('log_errors', 1);
 
 // Configure session for Safari/iOS compatibility
 // Must be called BEFORE session_start()
@@ -553,6 +555,47 @@ function isProductionSite() {
 }
 
 // ── Authentication helpers ─────────────────────────────────────────────────
+
+/** True when the signed-in user may see and change this summit row: they own or belong to the
+ *  summit's dashboard, or they are in Admin Mode. $summit is a summits row (needs
+ *  planning_group_id) or a summit id. Every page that takes a summit id from the request must
+ *  check this before reading or changing the summit (IDs are sequential and easy to guess). */
+function userCanAccessSummit($db, $summit) {
+    if (isAdminMode()) return true;
+    $cs = getCurrentCallsign();
+    if (!$cs) return false;
+    if (!is_array($summit)) {
+        $st = $db->prepare("SELECT planning_group_id FROM summits WHERE id = ?");
+        $st->execute([(int)$summit]);
+        $summit = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$summit) return false;
+    }
+    $st = $db->prepare("
+        SELECT 1 FROM planning_groups pg
+        LEFT JOIN planning_group_members pgm ON pgm.planning_group_id = pg.id AND pgm.callsign = ?
+        WHERE pg.id = ? AND (pg.owner_callsign = ? OR pgm.callsign IS NOT NULL)
+        LIMIT 1
+    ");
+    $st->execute([$cs, (int)($summit['planning_group_id'] ?? 0), $cs]);
+    return (bool)$st->fetchColumn();
+}
+
+/** Clean a web address a user typed before saving it: only http(s) links are kept, a bare
+ *  "www.example.com/..." gets https:// added, anything else (javascript:, data:, ...) becomes null. */
+function cleanUserUrl($url) {
+    $url = trim((string)$url);
+    if ($url === '') return null;
+    if (preg_match('#^https?://#i', $url)) return $url;
+    if (!preg_match('#^[a-z][a-z0-9+.-]*:#i', $url)) return 'https://' . ltrim($url, '/');
+    return null;
+}
+
+/** Escaped value for an href attribute holding a user-supplied link. Returns '#' for anything
+ *  that is not an http(s) address, so an old saved "javascript:" link can never run. */
+function safeHref($url) {
+    $url = cleanUserUrl($url);
+    return $url !== null ? htmlspecialchars($url, ENT_QUOTES) : '#';
+}
 
 /** Redirect to login if no authenticated callsign in session. */
 function requireLogin() {

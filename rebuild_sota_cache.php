@@ -1,7 +1,8 @@
 <?php
 // Rebuilds the local SOTA summit name cache from SOTA's official summit list CSV.
 // Run via CLI: php rebuild_sota_cache.php
-// Run from browser: rebuild_sota_cache.php?password=sota
+// Run from browser: open rebuild_sota_cache.php while signed in with Admin Mode
+// (the old ?password=sota gate was removed 2026-11-27: that password is public in the repo).
 // Safe to run multiple times. Takes ~30-60 seconds.
 //
 // Source: https://storage.sota.org.uk/summitslist.csv, SOTA's official worldwide
@@ -15,11 +16,14 @@ require_once 'config.php';
 require_once 'sota_cache_helper.php';
 
 $is_cli = (php_sapi_name() === 'cli');
-$password = $is_cli ? 'sota' : ($_GET['password'] ?? '');
-if ($password !== 'sota') {
-    if (!$is_cli) http_response_code(403);
-    echo "Unauthorized. Add ?password=sota to the URL.\n";
-    exit;
+if (!$is_cli) {
+    session_start();
+    if (!isAdminMode()) {
+        http_response_code(403);
+        echo "Admin Mode only. Sign in first.\n";
+        exit;
+    }
+    session_write_close();
 }
 
 if (!$is_cli) {
@@ -129,4 +133,4 @@ try {
 } catch (Throwable $e) {
     echo "WARNING: could not refresh the search index (" . $e->getMessage() . "). Search will keep using the previous index or the gz file.\n";
 }
-echo "Summit search is now active on the Nominate page, and winter bonus points are available for backfill_bonus_points.php.\n";
+echo "Summit search is now active on the Nominate page, and winter bonus points are refreshed for newly nominated summits.\n";

@@ -3,3 +3,15 @@
 RewriteEngine On
 RewriteRule ^s/([a-z0-9-]+)/?$ summit_share.php?s=$1 [NC,L,QSA]
 </IfModule>
+
+# Security (2026-11-27 audit)
+# No folder listings (gpx_files/ used to list every user's uploaded track).
+Options -Indexes
+
+# Never serve notes, scripts, backups or editor leftovers as plain files.
+<FilesMatch "(\.(md|sh|sql|log|py|psd|conf|ini|bak|orig|swp)$|\.bak[-_.]|~$)">
+    Require all denied
+</FilesMatch>
+
+# Developer-only folders: answer as if they do not exist.
+RedirectMatch 404 ^/(.*/)?(research|tests|promo|\.git|\.claude)(/|$)
